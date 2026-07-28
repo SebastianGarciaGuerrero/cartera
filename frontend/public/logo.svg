@@ -1,20 +1,17 @@
 <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
-  <!-- Logo Hadad & Asociados: cubo 2x2x2 de bloques -->
-  <g stroke="#c8c8cd" stroke-width="0.6" stroke-linejoin="round">
-    <!-- cara superior (mas clara) -->
-    <polygon points="100.0,37.0 125.1,51.2 100.0,65.5 74.9,51.2" fill="#fafafa"/>
-    <polygon points="72.3,52.7 97.4,67.0 72.3,81.3 47.2,67.0" fill="#fafafa"/>
-    <polygon points="127.7,52.7 152.8,67.0 127.7,81.3 102.6,67.0" fill="#fafafa"/>
-    <polygon points="100.0,68.5 125.1,82.8 100.0,97.0 74.9,82.8" fill="#fafafa"/>
-    <!-- cara izquierda (mas oscura, sombra) -->
-    <polygon points="44.6,71.5 69.7,85.7 69.7,114.3 44.6,100.0" fill="#d4d4d8"/>
-    <polygon points="44.6,103.0 69.7,117.2 69.7,145.8 44.6,131.5" fill="#d4d4d8"/>
-    <polygon points="72.3,87.2 97.4,101.5 97.4,130.0 72.3,115.8" fill="#d4d4d8"/>
-    <polygon points="72.3,118.7 97.4,133.0 97.4,161.5 72.3,147.3" fill="#d4d4d8"/>
-    <!-- cara derecha (intermedia) -->
-    <polygon points="102.6,101.5 127.7,87.2 127.7,115.8 102.6,130.0" fill="#ebebee"/>
-    <polygon points="102.6,133.0 127.7,118.7 127.7,147.3 102.6,161.5" fill="#ebebee"/>
-    <polygon points="130.3,85.7 155.4,71.5 155.4,100.0 130.3,114.3" fill="#ebebee"/>
-    <polygon points="130.3,117.2 155.4,103.0 155.4,131.5 130.3,145.8" fill="#ebebee"/>
-  </g>
+  <!-- Logo genérico: esfera con luz 3D, paleta gris neutra -->
+  <defs>
+    <radialGradient id="esfera" cx="38%" cy="32%" r="72%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="42%" stop-color="#cfcfd6"/>
+      <stop offset="82%" stop-color="#8a8a94"/>
+      <stop offset="100%" stop-color="#5c5c66"/>
+    </radialGradient>
+    <radialGradient id="brillo" cx="34%" cy="27%" r="26%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="100" cy="100" r="86" fill="url(#esfera)"/>
+  <ellipse cx="72" cy="64" rx="30" ry="21" fill="url(#brillo)"/>
 </svg>

@@ -7,7 +7,7 @@ import type { Cliente, Filial, Deudor, Cobranza } from '../api/tipos'
 
 // Alta de cobranza: cliente + filial + deudor (buscándolo por RUT/nombre)
 // + monto + documento que identifica la deuda (pagaré, factura...).
-// El N° Hadad lo asigna PostgreSQL; el saldo parte igual a la deuda.
+// El N° de cobranza lo asigna PostgreSQL; el saldo parte igual a la deuda.
 // Con enPagina=true el formulario vive en su propia página (siempre abierto).
 
 const TIPOS_DOCUMENTO = [
@@ -200,7 +200,7 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
       </label>
 
       <p className="nota">
-        El N° Hadad lo asigna el sistema automáticamente y no se puede cambiar.
+        El N° de cobranza lo asigna el sistema automáticamente y no se puede cambiar.
       </p>
       {error && <div className="alerta-error">{error}</div>}
       <div className="fila">

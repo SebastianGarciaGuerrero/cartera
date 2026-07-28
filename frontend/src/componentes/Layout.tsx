@@ -1,5 +1,6 @@
 import { NavLink, Outlet, Navigate } from 'react-router-dom'
 import { useAuth } from '../auth'
+import { MARCA } from '../marca'
 
 // Estructura general: barra lateral de navegación + contenido.
 // Si no hay sesión, redirige al login (esto protege todas las rutas hijas).
@@ -14,10 +15,10 @@ export default function Layout() {
     <div className="app">
       <aside className="sidebar">
         <div className="marca">
-          <img className="marca-logo-img" src="/logo.svg" alt="Hadad & Asociados" />
+          <img className="marca-logo-img" src="/logo.svg" alt={MARCA.nombre} />
           <div>
-            <div className="marca-nombre">Hadad &amp; Asociados</div>
-            <div className="marca-sub">Asesoría legal y financiera</div>
+            <div className="marca-nombre">{MARCA.nombre}</div>
+            <div className="marca-sub">{MARCA.eslogan}</div>
           </div>
         </div>
 

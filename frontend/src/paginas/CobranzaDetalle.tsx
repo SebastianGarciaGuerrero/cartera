@@ -101,7 +101,7 @@ export default function CobranzaDetalle() {
             <dd><Plata valor={cob.monto_original} /></dd>
             <dt>Saldo actual</dt>
             <dd className="negrita"><Plata valor={cob.monto_actual} /></dd>
-            <dt>Ingreso a Hadad</dt>
+            <dt>Fecha de ingreso</dt>
             <dd>{fechaLegible(cob.fecha_ingreso_hadad)}</dd>
             <dt>Tipo</dt>
             <dd>{cob.tipo}</dd>

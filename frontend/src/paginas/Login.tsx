@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { mensajeDeError, ES_DEMO } from '../api/client'
+import { MARCA } from '../marca'
 
 export default function Login() {
   const { login } = useAuth()
@@ -30,9 +31,9 @@ export default function Login() {
     <div className="login-fondo">
       <form className="login-caja" onSubmit={alEnviar}>
         <div className="login-marca">
-          <img className="login-logo" src="/logo.svg" alt="Hadad & Asociados" />
-          <div className="login-titulo">HADAD &amp; ASOCIADOS</div>
-          <div className="login-subtitulo">Asesoría legal y financiera</div>
+          <img className="login-logo" src="/logo.svg" alt={MARCA.nombre} />
+          <div className="login-titulo">{MARCA.nombre.toUpperCase()}</div>
+          <div className="login-subtitulo">{MARCA.eslogan}</div>
         </div>
 
         <label>
@@ -41,7 +42,7 @@ export default function Login() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="tu@hadad.cl"
+            placeholder="tu@empresa.cl"
             autoFocus
             required
           />
@@ -63,8 +64,8 @@ export default function Login() {
           <div className="aviso-demo">
             <strong>Versión demo</strong> — los datos son de práctica y se
             guardan solo en este navegador.<br />
-            Entra con <span className="mono">grv@hadad.cl</span> /{' '}
-            <span className="mono">giselle</span>
+            Entra con <span className="mono">admin@demo.cl</span> /{' '}
+            <span className="mono">demo1234</span>
           </div>
         )}
 

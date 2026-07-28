@@ -143,7 +143,7 @@ function NuevoUsuario({ roles, alCrear }: { roles: Rol[]; alCrear: () => void })
         <label>
           Email *
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="persona@hadad.cl" required />
+            placeholder="persona@empresa.cl" required />
         </label>
       </div>
       <div className="fila">

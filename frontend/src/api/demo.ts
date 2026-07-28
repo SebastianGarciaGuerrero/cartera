@@ -16,8 +16,8 @@
 
 import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 
-const CLAVE_DB = 'hadad_demo_db'
-const VERSION_SEMILLA = 4
+const CLAVE_DB = 'cobra_demo_db'
+const VERSION_SEMILLA = 5
 
 // ---------- utilidades ----------
 
@@ -76,7 +76,7 @@ function sinAcentos(s: string): string {
 }
 
 // Genera N deudores + sus cobranzas ficticias en la filial Santiago (id 7)
-// de Redsalud (cl-1). Todo inventado y determinístico (mismo resultado en
+// del cliente cl-1. Todo inventado y determinístico (mismo resultado en
 // cada reseed): sirve para poblar la demo sin usar datos reales.
 function generarCasosSantiago(cantidad: number, numeroInicial: number) {
   const nombres = ['José', 'María', 'Juan', 'Ana', 'Luis', 'Carmen', 'Pedro', 'Rosa', 'Carlos', 'Javiera', 'Diego', 'Fernanda', 'Matías', 'Camila', 'Sebastián', 'Valentina', 'Francisco', 'Antonia', 'Cristóbal', 'Catalina', 'Felipe', 'Isidora', 'Benjamín', 'Martina', 'Vicente']
@@ -134,13 +134,13 @@ function generarCasosSantiago(cantidad: number, numeroInicial: number) {
 
 function semilla() {
   const usuarios = [
-    { id: 'u-admin', nombre: 'Admin Hadad', email: 'admin@hadad.cl', password: 'hadad2026', rol_id: 1, activo: true },
-    { id: 'u-sgg', nombre: 'SGG', email: 'sgg@hadad.cl', password: 'sebastian', rol_id: 1, activo: true },
-    { id: 'u-grv', nombre: 'GRV', email: 'grv@hadad.cl', password: 'giselle', rol_id: 3, activo: true },
+    { id: 'u-admin', nombre: 'Administrador', email: 'admin@demo.cl', password: 'demo1234', rol_id: 1, activo: true },
+    { id: 'u-sgg', nombre: 'Ana Torres', email: 'ana@demo.cl', password: 'demo1234', rol_id: 2, activo: true },
+    { id: 'u-grv', nombre: 'María Soto', email: 'maria@demo.cl', password: 'demo1234', rol_id: 3, activo: true },
   ]
   const clientes = [
-    { id: 'cl-1', rut: '96570220-7', razon_social: 'RED SALUD S.A.', nombre_fantasia: 'Redsalud' },
-    { id: 'cl-2', rut: '99520000-1', razon_social: 'COPEC S.A.', nombre_fantasia: 'COPEC' },
+    { id: 'cl-1', rut: '96570220-7', razon_social: 'CLÍNICA LOS ANDES S.A.', nombre_fantasia: 'Clínica Los Andes' },
+    { id: 'cl-2', rut: '99520000-1', razon_social: 'COMERCIAL DEL SUR SPA', nombre_fantasia: 'Comercial Sur' },
   ]
   const filiales = [
     ...['Iquique', 'Elqui', 'Valparaíso', 'Rancagua', 'Temuco', 'Magallanes', 'Santiago', 'Providencia', 'Vitacura']
@@ -172,7 +172,7 @@ function semilla() {
       tipo_documento: 'pagare', numero_pagare: 'PG-2025-0145',
       estado: 'acuerdo_pago', tipo: 'extrajudicial',
       fecha_ingreso_hadad: '2026-06-02',
-      observaciones: 'Caso ingresado vía planilla mensual Redsalud. Paciente menor de edad atendida por urgencia.',
+      observaciones: 'Caso ingresado vía planilla mensual del cliente. Paciente menor de edad atendida por urgencia.',
     },
     {
       id: 'cob-2', numero: 20002, cliente_id: 'cl-1', filial_id: 3, deudor_id: 'd-2',
@@ -237,7 +237,7 @@ function semilla() {
     },
   ]
 
-  // 100 casos ficticios extra en la filial Santiago de Redsalud, para que la
+  // 100 casos ficticios extra en la filial Santiago del cliente 1, para que la
   // demo tenga volumen realista. Se anexan a los 3 casos guiados de arriba.
   const casosSantiago = generarCasosSantiago(100, 20004)
   deudores.push(...(casosSantiago.deudores as never[]))
