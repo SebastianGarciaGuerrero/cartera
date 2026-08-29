@@ -6,7 +6,7 @@ Endpoints de exportación a Excel (openpyxl).
   GET /api/exportar/recupero  → detalle de pagos de un mes (reemplaza el
       Excel de recupero mensual). Usa la vista SQL vista_recupero.
   GET /api/exportar/rendicion → cuadro resumen por cliente/filial de un mes
-      (lo que se envía a la clínica). Usa la vista SQL vista_rendicion.
+      (lo que se envía al cliente). Usa la vista SQL vista_rendicion.
 
 Los archivos se generan en memoria (BytesIO): no se escribe nada a disco.
 """
@@ -45,7 +45,7 @@ router = APIRouter(
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 ENCABEZADOS = [
-    "Fecha gestión", "N° Cobranza", "ID clínica", "RUT deudor", "Deudor",
+    "Fecha gestión", "N° Cobranza", "ID cliente", "RUT deudor", "Deudor",
     "Cliente", "Filial", "Tipo de gestión", "Descripción",
     "Próximo contacto", "Registrada por",
 ]
@@ -104,13 +104,13 @@ def _validar_cliente(db: Session, cliente_id: UUID) -> Cliente:
 @router.get("/gestiones")
 def exportar_gestiones(
     dias: int = Query(15, ge=1, le=365, description="Cuántos días hacia atrás incluir"),
-    cliente_id: Optional[UUID] = Query(None, description="Filtrar por cliente (clínica)"),
+    cliente_id: Optional[UUID] = Query(None, description="Filtrar por cliente"),
     filial_id: Optional[int] = Query(None, description="Filtrar por filial (sucursal)"),
     db: Session = Depends(get_db),
 ):
     """
     Descarga un Excel con las gestiones de los últimos `dias` días.
-    Filtros combinables: por cliente (toda la clínica) o por filial puntual.
+    Filtros combinables: por cliente completo o por filial puntual.
     """
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
 
@@ -154,7 +154,7 @@ def exportar_gestiones(
         ws.cell(row=i, column=1, value=g.fecha_gestion.replace(tzinfo=None)
                 ).number_format = "DD-MM-YYYY HH:MM"
         ws.cell(row=i, column=2, value=cob.numero)
-        ws.cell(row=i, column=3, value=cob.id_clinica)
+        ws.cell(row=i, column=3, value=cob.id_externo)
         ws.cell(row=i, column=4, value=deu.rut)
         ws.cell(row=i, column=5, value=deu.nombre)
         ws.cell(row=i, column=6, value=cli.nombre_fantasia or cli.razon_social)
@@ -205,8 +205,8 @@ def exportar_recupero(
 
     encabezados = [
         "Fecha pago", "N° Cobranza", "ID cliente", "Cliente", "Filial",
-        "Deudor", "RUT deudor", "Total recibido", "Capital clínica",
-        "Honorarios Hadad", "Interés clínica", "Gastos judiciales",
+        "Deudor", "RUT deudor", "Total recibido", "Capital cliente",
+        "Honorarios empresa", "Intereses cliente", "Gastos judiciales",
         "Estado", "Forma de pago", "N° comprobante", "Cuota", "Registrado por",
     ]
     anchos = [12, 10, 12, 16, 14, 30, 13, 14, 14, 15, 13, 15, 12, 14, 16, 8, 20]
@@ -215,13 +215,13 @@ def exportar_recupero(
     for i, r in enumerate(filas, start=2):
         ws.cell(row=i, column=1, value=r["fecha_pago"]).number_format = "DD-MM-YYYY"
         ws.cell(row=i, column=2, value=r["numero_cobranza"])
-        ws.cell(row=i, column=3, value=r["id_clinica"])
+        ws.cell(row=i, column=3, value=r["id_externo"])
         ws.cell(row=i, column=4, value=r["cliente"])
         ws.cell(row=i, column=5, value=r["filial"])
         ws.cell(row=i, column=6, value=r["deudor"])
         ws.cell(row=i, column=7, value=r["rut_deudor"])
-        for col, campo in [(8, "total_recibido"), (9, "capital_clinica"),
-                           (10, "honorarios_hadad"), (11, "interes_clinica"),
+        for col, campo in [(8, "total_recibido"), (9, "capital"),
+                           (10, "honorarios"), (11, "intereses"),
                            (12, "gastos_judiciales")]:
             ws.cell(row=i, column=col, value=r[campo]).number_format = FORMATO_PESOS
         ws.cell(row=i, column=13, value=r["estado_pago"])
@@ -254,8 +254,8 @@ def exportar_rendicion(
 ):
     """
     Descarga el CUADRO DE RENDICIÓN del mes: resumen por cliente/filial de
-    cuánto se rinde a la clínica (capital + interés) y cuánto queda en Hadad
-    (honorarios). Es lo que se envía a la clínica cada mes.
+    cuánto se rinde al cliente (capital + interés) y cuánto queda para la empresa de cobranza
+    (honorarios). Es lo que se envía al cliente cada mes.
     Usa la vista SQL vista_rendicion.
     """
     ahora = datetime.now(timezone.utc)
@@ -279,9 +279,9 @@ def exportar_rendicion(
     filas = db.execute(text(sql), params).mappings().all()
 
     encabezados = [
-        "Cliente", "Filial", "Cantidad de pagos", "Capital clínica",
-        "Interés clínica", "Total a rendir a clínica",
-        "Honorarios Hadad", "Total recibido",
+        "Cliente", "Filial", "Cantidad de pagos", "Capital cliente",
+        "Intereses cliente", "Total a rendir al cliente",
+        "Honorarios empresa", "Total recibido",
     ]
     anchos = [20, 16, 16, 15, 14, 20, 16, 14]
     wb, ws = _hoja_con_encabezados(f"Rendición {mes:02d}-{anio}", encabezados, anchos)
@@ -290,8 +290,8 @@ def exportar_rendicion(
         ws.cell(row=i, column=1, value=r["cliente"])
         ws.cell(row=i, column=2, value=r["filial"])
         ws.cell(row=i, column=3, value=r["cantidad_pagos"])
-        for col, campo in [(4, "total_capital_clinica"), (5, "total_interes_clinica"),
-                           (6, "total_a_rendir_clinica"), (7, "total_honorarios_hadad"),
+        for col, campo in [(4, "total_capital"), (5, "total_intereses"),
+                           (6, "total_a_rendir_cliente"), (7, "total_honorarios"),
                            (8, "total_recibido")]:
             ws.cell(row=i, column=col, value=r[campo]).number_format = FORMATO_PESOS
 

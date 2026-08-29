@@ -3,7 +3,7 @@ Schemas Pydantic para pagos.
 
 Los pagos son INMUTABLES: no existe PagoUpdate ni endpoint PUT/DELETE.
 
-Desglose (capital_clinica + honorarios_hadad + interes_clinica): si se
+Desglose (capital + honorarios + intereses): si se
 informa (suma > 0), debe cuadrar exactamente con 'monto'. Se puede omitir
 (quedan en 0) para pagos simples donde todavía no se separa el desglose.
 """
@@ -33,9 +33,9 @@ class PagoBase(BaseModel):
     fecha_pago: Optional[date] = None
     monto: Decimal = Field(..., gt=0, max_digits=15, decimal_places=2)
 
-    capital_clinica: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
-    honorarios_hadad: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
-    interes_clinica: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    capital: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    honorarios: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    intereses: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
     gastos_judiciales: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
 
     forma_pago: Optional[FormaPago] = None
@@ -51,8 +51,8 @@ class PagoCreate(PagoBase):
     @model_validator(mode="after")
     def _validar_desglose(self):
         """Si se informó desglose, la suma debe igualar el monto total."""
-        suma = (self.capital_clinica + self.honorarios_hadad
-                + self.interes_clinica + self.gastos_judiciales)
+        suma = (self.capital + self.honorarios
+                + self.intereses + self.gastos_judiciales)
         if suma > 0 and suma != self.monto:
             raise ValueError(
                 f"El desglose (capital + honorarios + interés + gastos = {suma}) "

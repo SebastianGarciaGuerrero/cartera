@@ -21,10 +21,11 @@ SQLS = [
     RAIZ / "database" / "init" / "002_verificacion.sql",
 ]
 
-USUARIOS_EXTRA = [
-    # (nombre, email, password, rol: 1=admin 3=operador)
-    ("GRV", "grv@hadad.cl", "giselle", 3),
-    ("SGG", "sgg@hadad.cl", "sebastian", 1),
+# Cuentas adicionales al admin que ya crea 002_verificacion.sql.
+# Cambiar por las personas reales de la empresa antes de correr el script;
+# dejar la lista vacía crea solo el admin.
+USUARIOS_EXTRA: list[tuple[str, str, str, int]] = [
+    # (nombre, email, password inicial, rol: 1=admin 2=supervisor 3=operador 4=viewer)
 ]
 
 

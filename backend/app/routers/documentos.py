@@ -1,6 +1,10 @@
 """
-Documentos Word (.docx) formales para entregar a clínicas, deudores o
-tribunales. Diseño sobrio de estudio jurídico (membrete Hadad & Asociados).
+Documentos Word (.docx) formales para entregar a clientes, deudores o
+tribunales.
+
+El membrete, la firma y el pie de página NO están escritos acá: salen de la
+tabla `empresa` (Configuración → Mi empresa). Así el mismo código sirve para
+cualquier empresa que instale el sistema.
 
   GET /api/documentos/informe-gestiones/{cobranza_id} → Word con el historial
       completo de gestiones del caso a la fecha.
@@ -26,6 +30,7 @@ from app.models.cobranza import Cobranza
 from app.models.gestion import Gestion, TipoGestion
 from app.models.acuerdo import AcuerdoPago
 from app.models.pago import Pago
+from app.models.empresa import Empresa
 
 
 router = APIRouter(
@@ -57,22 +62,22 @@ def _fecha_corta(f) -> str:
     return f.strftime("%d-%m-%Y") if f else "—"
 
 
-def _membrete(doc: Document):
+def _membrete(doc: Document, emp: Empresa):
     """Encabezado institucional: wordmark centrado + línea divisoria."""
     titulo = doc.add_paragraph()
     titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = titulo.add_run("HADAD & ASOCIADOS")
+    r = titulo.add_run(emp.wordmark)
     r.bold = True
     r.font.size = Pt(18)
     r.font.color.rgb = GRIS_OSCURO
 
-    sub = doc.add_paragraph()
-    sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = sub.add_run("ASESORÍA LEGAL Y FINANCIERA")
-    r.font.size = Pt(9)
-    r.font.color.rgb = GRIS_SUAVE
-    # espaciado entre letras (estilo del logo)
-    r.font.name = "Segoe UI"
+    if emp.bajada:
+        sub = doc.add_paragraph()
+        sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = sub.add_run(emp.bajada)
+        r.font.size = Pt(9)
+        r.font.color.rgb = GRIS_SUAVE
+        r.font.name = "Segoe UI"
 
     linea = doc.add_paragraph()
     linea.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -108,7 +113,7 @@ def _tabla_datos(doc: Document, pares: list):
     return tabla
 
 
-def _pie_firma(doc: Document):
+def _pie_firma(doc: Document, emp: Empresa):
     doc.add_paragraph()
     doc.add_paragraph()
     firma = doc.add_paragraph()
@@ -117,14 +122,44 @@ def _pie_firma(doc: Document):
     r.font.color.rgb = GRIS_OSCURO
     quien = doc.add_paragraph()
     quien.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = quien.add_run("González & Hadad Profesionales Asociados")
+    r = quien.add_run(emp.firma_documentos or emp.razon_social)
     r.bold = True
     r.font.size = Pt(10)
-    dire = doc.add_paragraph()
-    dire.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    r = dire.add_run("Valparaíso, Chile")
-    r.font.size = Pt(9)
-    r.font.color.rgb = GRIS_SUAVE
+    if emp.ciudad:
+        dire = doc.add_paragraph()
+        dire.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = dire.add_run(emp.ciudad)
+        r.font.size = Pt(9)
+        r.font.color.rgb = GRIS_SUAVE
+
+
+def _empresa(db: Session) -> Empresa:
+    """
+    Datos de la empresa que emite el documento (fila única id=1).
+    Si la fila no existe, mejor un error explícito que un documento con el
+    membrete en blanco.
+    """
+    emp = db.query(Empresa).filter(Empresa.id == 1).first()
+    if emp is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Faltan los datos de la empresa. Cárgalos en "
+                   "Configuración → Mi empresa antes de emitir documentos.",
+        )
+    return emp
+
+
+def _pie_carta(emp: Empresa) -> str:
+    """Pie de página de la carta, armado con lo que tenga cargado la empresa."""
+    primera = ", ".join(x for x in (emp.direccion, emp.ciudad) if x)
+    if emp.horario_atencion:
+        primera = (f"{primera} ({emp.horario_atencion})" if primera
+                   else emp.horario_atencion)
+    if emp.telefonos:
+        primera = (f"{primera}. Fono: {emp.telefonos}" if primera
+                   else f"Fono: {emp.telefonos}")
+    segunda = " ".join(x for x in (emp.emails, emp.sitio_web) if x)
+    return "\n".join(x for x in (primera, segunda) if x)
 
 
 def _cargar_cobranza(db: Session, cobranza_id: UUID) -> Cobranza:
@@ -151,6 +186,7 @@ def _responder_docx(doc: Document, nombre: str) -> StreamingResponse:
 @router.get("/informe-gestiones/{cobranza_id}")
 def informe_gestiones(cobranza_id: UUID, db: Session = Depends(get_db)):
     """Word formal con todas las gestiones del caso a la fecha."""
+    emp = _empresa(db)
     cob = _cargar_cobranza(db, cobranza_id)
     gestiones = (
         db.query(Gestion)
@@ -161,12 +197,12 @@ def informe_gestiones(cobranza_id: UUID, db: Session = Depends(get_db)):
     tipos = {t.id: t.nombre for t in db.query(TipoGestion).all()}
 
     doc = Document()
-    _membrete(doc)
+    _membrete(doc, emp)
     _titulo_documento(doc, "INFORME DE GESTIONES DE COBRANZA")
 
     intro = doc.add_paragraph()
     r = intro.add_run(
-        f"En Valparaíso, a {_fecha_larga(date.today())}, se informa el detalle "
+        f"En {emp.ciudad or chr(8212)}, a {_fecha_larga(date.today())}, se informa el detalle "
         f"de las gestiones de cobranza realizadas a la fecha respecto del "
         f"siguiente caso:"
     )
@@ -174,7 +210,7 @@ def informe_gestiones(cobranza_id: UUID, db: Session = Depends(get_db)):
 
     _tabla_datos(doc, [
         ("N° de cobranza", cob.numero),
-        ("ID cliente", cob.id_clinica or "—"),
+        ("ID cliente", cob.id_externo or "—"),
         ("Deudor", f"{cob.deudor.nombre} — RUT {cob.deudor.rut}" if cob.deudor else "—"),
         ("Cliente", (cob.cliente.nombre_fantasia or cob.cliente.razon_social) if cob.cliente else "—"),
         ("Filial", cob.filial.nombre if cob.filial else "—"),
@@ -208,28 +244,20 @@ def informe_gestiones(cobranza_id: UUID, db: Session = Depends(get_db)):
             tipos.get(g.tipo_id, "Gestión")).font.size = Pt(9.5)
         fila[2].paragraphs[0].add_run(g.descripcion).font.size = Pt(9.5)
 
-    _pie_firma(doc)
+    _pie_firma(doc, emp)
 
     nombre = f"informe_gestiones_cobranza_{cob.numero}_{date.today().isoformat()}.docx"
     return _responder_docx(doc, nombre)
 
 
 # ------------------------------------------------------------
-# Estado de cuenta: carta formal calcada de la "BASE CARTAS
-# REDSALUD" real del estudio (Courier New, estilo legal).
+# Estado de cuenta: carta formal en formato legal chileno
+# (Courier New, columnas monoespaciadas).
 # ------------------------------------------------------------
 
 ABREV_DOCUMENTO = {
     "pagare": "PA", "factura": "FA", "letra": "LE", "cheque": "CH", "otro": "OT",
 }
-
-PIE_CARTA = (
-    "Errázuriz N° 1178, oficina 74, Valparaíso (Atención de 10 a 16 hrs.). "
-    "Fono: (32)2450990 – (9)79593717\n"
-    " gisellerojas.hadadyasociados@gmail.com; recepcion@hadadyasociados.cl "
-    "www.hadadyasociados.cl"
-)
-
 
 def _rut_con_puntos(rut) -> str:
     """'5743070-2' → '5.743.070-2' (formato de la carta)."""
@@ -265,12 +293,13 @@ def _linea(doc: Document, texto: str, tam: float = 8.5, negrita: bool = False,
 @router.get("/estado-cuenta/{cobranza_id}")
 def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     """
-    Carta de estado de cuenta con los datos actualizados del caso,
-    con el mismo formato de la carta que el estudio envía (BASE REDSALUD).
+    Carta de estado de cuenta con los datos actualizados del caso, en el
+    formato de carta formal que se le envía al deudor.
     """
     from docx.shared import Cm as _Cm
     from app.models.paciente import Paciente
 
+    emp = _empresa(db)
     cob = _cargar_cobranza(db, cobranza_id)
     pagos = db.query(Pago).filter(Pago.cobranza_id == cobranza_id).all()
 
@@ -291,10 +320,10 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     # Cifras del cuadro resumen. El SALDO suma lo que resta de capital más
     # honorarios/intereses/gastos informados de la cobranza.
     nominal = int(cob.monto_original)
-    gastos = int(cob.gastos_hadad or 0)
-    abonos = int(sum((p.capital_clinica or 0) for p in pagos))
-    honorarios = int(cob.honorarios_hadad or 0)
-    intereses = int(cob.intereses_hadad or 0)
+    gastos = int(cob.gastos or 0)
+    abonos = int(sum((p.capital or 0) for p in pagos))
+    honorarios = int(cob.honorarios or 0)
+    intereses = int(cob.intereses or 0)
     saldo = int(cob.monto_actual) + honorarios + intereses + gastos
 
     doc = Document()
@@ -304,11 +333,12 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     seccion.right_margin = _Cm(2.0)
 
     hoy = date.today()
-    _linea(doc, f"{'':>49}Valparaíso, {hoy.day} de {MESES[hoy.month - 1]}, {hoy.year}")
+    lugar = f"{emp.ciudad}, " if emp.ciudad else ""
+    _linea(doc, f"{'':>49}{lugar}{hoy.day} de {MESES[hoy.month - 1]}, {hoy.year}")
     _linea(doc, "")
     _linea(doc, "")
     _linea(doc, "          Señor(es)")
-    id_texto = f" ID {cob.id_clinica}" if cob.id_clinica else ""
+    id_texto = f" ID {cob.id_externo}" if cob.id_externo else ""
     nombre_deudor = (deudor.nombre.upper() if deudor else "—") + id_texto
     _linea(doc, f"         {nombre_deudor:<52}N° COB.: {cob.numero}")
     _linea(doc, f"         R.U.T.: {_rut_con_puntos(deudor.rut if deudor else '')}")
@@ -341,7 +371,7 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     fecha_vcto = (cob.fecha_vencimiento_pagare.strftime("%d-%m-%Y")
                   if cob.fecha_vencimiento_pagare else "—")
     tip = ABREV_DOCUMENTO.get(cob.tipo_documento or "pagare", "OT")
-    nro = cob.numero_pagare or (cob.id_clinica or "—")
+    nro = cob.numero_pagare or (cob.id_externo or "—")
     _linea(doc, f"         {fecha_vcto:<19}{tip:<17}{nro:<17}{_miles(nominal):<15}0")
     _linea(doc, "")
 
@@ -352,29 +382,25 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     _linea(doc, "")
     _linea(doc, "")
 
-    # Formas de pago (bloque Redsalud tal cual; genérico para otros clientes).
-    _linea(doc, f"    Formas de pago {estudio}:", tam=9, negrita=True)
-    if "SALUD" in estudio:
-        _linea(doc, "    - Directo en cajas en Clínica de su atención", tam=9)
-        _linea(doc, "    - Transferencia electrónica a la cuenta de la clínica.", tam=9)
-        _linea(doc, "    - Medios de pago electrónicos https://www.redsalud.cl/pagos-enlinea "
-                    "(10 cuotas sin interés con tarjeta de crédito Banco Estado y hasta 10 "
-                    "cuotas sin interés con tarjeta de crédito)", tam=9)
-    else:
-        _linea(doc, "    - Transferencia electrónica a la cuenta del cliente.", tam=9)
-        _linea(doc, "    - Coordinar directamente con nuestro estudio al fono (32)2450990.", tam=9)
+    # Formas de pago: texto libre cargado en Configuración → Mi empresa,
+    # una forma de pago por línea.
+    _linea(doc, "    Formas de pago:", tam=9, negrita=True)
+    for forma in (emp.instrucciones_pago or "").splitlines():
+        forma = forma.strip().lstrip("-").strip()
+        if forma:
+            _linea(doc, f"    - {forma}", tam=9)
     _linea(doc, "    * una vez pagada su deuda debe enviarnos el comprobante por esta vía "
                 "para registrarlo y terminar su cobranza", tam=9)
     _linea(doc, "")
     _linea(doc, "")
     _linea(doc, "    Sin otro particular le saluda atentamente,", tam=9)
     _linea(doc, "")
-    _linea(doc, "ESTUDIO JURÍDICO HADAD & ASOCIADOS", tam=9, negrita=True,
+    _linea(doc, emp.wordmark, tam=9, negrita=True,
            alineacion=WD_ALIGN_PARAGRAPH.RIGHT)
 
-    # Pie de página con los datos de contacto del estudio (como la carta).
+    # Pie de página con los datos de contacto de la empresa.
     pie = seccion.footer.paragraphs[0]
-    r = pie.add_run(PIE_CARTA)
+    r = pie.add_run(_pie_carta(emp))
     r.font.name = "Courier New"
     r.font.size = Pt(8.5)
 

@@ -221,7 +221,7 @@ def actualizar_estado_acuerdo(
     db: Session = Depends(get_db)
 ):
     """
-    Actualiza SOLO el estado, la firma de la clínica y observaciones de un
+    Actualiza SOLO el estado, la firma del cliente y observaciones de un
     acuerdo. Los montos y las cuotas no se pueden editar (son inmutables).
     """
     acuerdo = db.query(AcuerdoPago).filter(AcuerdoPago.id == acuerdo_id).first()

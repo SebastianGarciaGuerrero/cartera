@@ -140,7 +140,7 @@ def registrar_pago(
     db.add(nuevo_pago)
 
     monto = Decimal(pago_data.monto)
-    capital = Decimal(pago_data.capital_clinica)
+    capital = Decimal(pago_data.capital)
 
     # 1. Descontar del saldo de la cobranza (sin bajar de 0).
     # REGLA: SOLO el capital descuenta el saldo capital del cliente (que es lo
@@ -173,10 +173,10 @@ def registrar_pago(
     desglose = []
     if capital > 0:
         desglose.append(f"Saldo Capital: {_clp(capital)}")
-    if pago_data.honorarios_hadad > 0:
-        desglose.append(f"Honorarios: {_clp(pago_data.honorarios_hadad)}")
-    if pago_data.interes_clinica > 0:
-        desglose.append(f"Interés: {_clp(pago_data.interes_clinica)}")
+    if pago_data.honorarios > 0:
+        desglose.append(f"Honorarios: {_clp(pago_data.honorarios)}")
+    if pago_data.intereses > 0:
+        desglose.append(f"Interés: {_clp(pago_data.intereses)}")
     if pago_data.gastos_judiciales > 0:
         desglose.append(f"Gastos judiciales: {_clp(pago_data.gastos_judiciales)}")
     encabezado = (

@@ -2,7 +2,7 @@
 chcp 65001 >nul
 cls
 echo ========================================
-echo   Deteniendo PostgreSQL Hadad 2.0
+echo   Deteniendo PostgreSQL Cartera
 echo ========================================
 echo.
 

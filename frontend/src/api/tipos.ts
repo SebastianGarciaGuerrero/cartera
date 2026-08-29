@@ -65,14 +65,14 @@ export interface Cobranza {
   cliente_id: string
   deudor_id: string
   filial_id: number | null
-  id_clinica: string | null
+  id_externo: string | null
   monto_original: string
   monto_actual: string
   tipo_documento: TipoDocumento
   numero_pagare: string | null
   estado: EstadoCobranza
   tipo: 'extrajudicial' | 'judicial'
-  fecha_ingreso_hadad: string | null
+  fecha_ingreso: string | null
   observaciones: string | null
 }
 
@@ -140,9 +140,9 @@ export interface Pago {
   cuota_id: string | null
   fecha_pago: string
   monto: string
-  capital_clinica: string
-  honorarios_hadad: string
-  interes_clinica: string
+  capital: string
+  honorarios: string
+  intereses: string
   gastos_judiciales: string
   forma_pago: FormaPago | null
   numero_comprobante: string | null
@@ -158,4 +158,23 @@ export interface ReporteUsuario {
   acuerdos_creados: number
   pagos_ingresados: number
   monto_pagos: string
+}
+
+// Datos de la empresa que usa el sistema (tabla `empresa`, fila única).
+// De acá salen el membrete y el pie de los documentos Word.
+export interface Empresa {
+  razon_social: string
+  nombre_fantasia: string | null
+  rut: string | null
+  wordmark: string
+  bajada: string | null
+  firma_documentos: string | null
+  direccion: string | null
+  ciudad: string | null
+  horario_atencion: string | null
+  telefonos: string | null
+  emails: string | null
+  sitio_web: string | null
+  instrucciones_pago: string | null
+  updated_at?: string | null
 }

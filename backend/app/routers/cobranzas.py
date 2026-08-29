@@ -3,7 +3,7 @@ Endpoints HTTP para gestión de cobranzas (el núcleo del sistema).
 
 Endpoints:
   GET  /api/cobranzas            → listar con paginación y filtros
-  GET  /api/cobranzas/buscar     → buscar por N° Hadad, ID clínica, RUT o nombre deudor
+  GET  /api/cobranzas/buscar     → buscar por N° de cobranza, ID cliente, RUT o nombre deudor
   GET  /api/cobranzas/{id}       → ficha completa (cliente, filial y deudor anidados)
   POST /api/cobranzas            → crear una nueva
   PUT  /api/cobranzas/{id}       → actualizar (numero, cliente_id y deudor_id NO cambian)
@@ -90,7 +90,7 @@ def buscar_cobranzas(
 
     condiciones = [
         cast(Cobranza.numero, String).like(patron),
-        Cobranza.id_clinica.ilike(patron),
+        Cobranza.id_externo.ilike(patron),
         Deudor.rut.ilike(patron),
         Deudor.nombre.ilike(patron),
     ]
@@ -116,9 +116,9 @@ def obtener_cobranza(cobranza_id: UUID, db: Session = Depends(get_db)):
 def crear_cobranza(cobranza_data: CobranzaCreate, db: Session = Depends(get_db)):
     """
     Crea una cobranza nueva.
-    - El N° Hadad lo asigna PostgreSQL automáticamente.
+    - El N° de cobranza lo asigna PostgreSQL automáticamente.
     - monto_actual se inicializa igual a monto_original.
-    - Si id_clinica ya existe para ese cliente, devuelve error 400.
+    - Si id_externo ya existe para ese cliente, devuelve error 400.
     """
     datos = cobranza_data.model_dump()
     # Regla de negocio: al crear, el saldo actual = la deuda original.
@@ -136,7 +136,7 @@ def crear_cobranza(cobranza_data: CobranzaCreate, db: Session = Depends(get_db))
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "No se pudo crear la cobranza. Verifica que el cliente y el "
-                "deudor existan y que el ID clínica no esté repetido para ese cliente."
+                "deudor existan y que el ID externo no esté repetido para ese cliente."
             )
         )
 
@@ -150,7 +150,7 @@ def actualizar_cobranza(
     db: Session = Depends(get_db)
 ):
     """
-    Actualiza una cobranza. El N° Hadad, el cliente y el deudor NO se pueden
+    Actualiza una cobranza. El N° de cobranza, el cliente y el deudor NO se pueden
     cambiar (no están en CobranzaUpdate). Aquí se cambia el estado.
     """
     cobranza = db.query(Cobranza).filter(Cobranza.id == cobranza_id).first()
@@ -172,7 +172,7 @@ def actualizar_cobranza(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se pudo actualizar: posible ID clínica repetido para el cliente."
+            detail="No se pudo actualizar: posible ID externo repetido para el cliente."
         )
 
     return cobranza

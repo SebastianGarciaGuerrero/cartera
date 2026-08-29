@@ -166,8 +166,8 @@ export default function Finanzas({ cobranza }: { cobranza: Cobranza }) {
               <tr key={p.id}>
                 <td>{fechaLegible(p.fecha_pago)}</td>
                 <td className="der"><Plata valor={p.monto} /></td>
-                <td className="der"><Plata valor={p.capital_clinica} /></td>
-                <td className="der"><Plata valor={p.honorarios_hadad} /></td>
+                <td className="der"><Plata valor={p.capital} /></td>
+                <td className="der"><Plata valor={p.honorarios} /></td>
                 <td>{p.estado_pago}</td>
                 <td>{p.forma_pago ?? '—'}</td>
                 <td className="mono">{p.numero_comprobante ?? '—'}</td>
@@ -300,9 +300,9 @@ export function FormPago({ cobranzaId, cuota, alTerminar, alCancelar }: {
         cobranza_id: cobranzaId,
         cuota_id: cuota?.id ?? null,
         monto: String(total),
-        capital_clinica: capital || '0',
-        honorarios_hadad: honorarios || '0',
-        interes_clinica: interes || '0',
+        capital: capital || '0',
+        honorarios: honorarios || '0',
+        intereses: interes || '0',
         gastos_judiciales: gastos || '0',
         forma_pago: forma,
         numero_comprobante: comprobante || null,

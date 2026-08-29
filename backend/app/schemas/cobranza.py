@@ -2,7 +2,7 @@
 Schemas Pydantic para la entidad Cobranza (el núcleo del sistema).
 
 Reglas reflejadas aquí:
-- 'numero' (N° Hadad) lo genera PostgreSQL: nunca se recibe en Create/Update.
+- 'numero' (N° de cobranza) lo genera PostgreSQL: nunca se recibe en Create/Update.
 - 'cliente_id' y 'deudor_id' se fijan al crear y NO se pueden cambiar después
   (no aparecen en CobranzaUpdate).
 - 'monto_actual' arranca igual a 'monto_original' (lo hace el router) y luego
@@ -39,15 +39,15 @@ class CobranzaBase(BaseModel):
     paciente_id: Optional[UUID] = None
 
     # Identificadores externos
-    id_clinica: Optional[str] = Field(None, max_length=50)
+    id_externo: Optional[str] = Field(None, max_length=50)
     numero_liquidacion: Optional[str] = Field(None, max_length=50)
 
     # Montos
     monto_original: Decimal = Field(..., ge=0, max_digits=15, decimal_places=2)
-    capital_hadad: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
-    intereses_hadad: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
-    honorarios_hadad: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
-    gastos_hadad: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
+    capital: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
+    intereses: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
+    honorarios: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
+    gastos: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
 
     # Fechas de la atención médica
     fecha_atencion: Optional[date] = None
@@ -55,7 +55,7 @@ class CobranzaBase(BaseModel):
     prevision: Optional[str] = Field(None, max_length=80)
 
     # Fechas operacionales
-    fecha_ingreso_hadad: Optional[date] = None
+    fecha_ingreso: Optional[date] = None
     fecha_traspaso: Optional[date] = None
 
     # Documento que identifica la deuda (pagaré, factura, letra...)
@@ -96,20 +96,20 @@ class CobranzaUpdate(BaseModel):
     """
     filial_id: Optional[int] = None
     paciente_id: Optional[UUID] = None
-    id_clinica: Optional[str] = None
+    id_externo: Optional[str] = None
     numero_liquidacion: Optional[str] = None
 
     monto_original: Optional[Decimal] = Field(None, ge=0, max_digits=15, decimal_places=2)
     monto_actual: Optional[Decimal] = Field(None, ge=0, max_digits=15, decimal_places=2)
-    capital_hadad: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
-    intereses_hadad: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
-    honorarios_hadad: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
-    gastos_hadad: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
+    capital: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
+    intereses: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
+    honorarios: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
+    gastos: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
 
     fecha_atencion: Optional[date] = None
     fecha_alta: Optional[date] = None
     prevision: Optional[str] = None
-    fecha_ingreso_hadad: Optional[date] = None
+    fecha_ingreso: Optional[date] = None
     fecha_traspaso: Optional[date] = None
 
     tipo_documento: Optional[TipoDocumento] = None

@@ -54,7 +54,7 @@ const CAMPOS_COBRANZA: [string, boolean, string][] = [
   ['Nombre deudor', true, 'Nombre completo. Solo se usa si el deudor es nuevo.'],
   ['Teléfono', false, 'Se guarda como contacto del deudor (si es nuevo).'],
   ['Email', false, 'Se guarda como contacto del deudor (si es nuevo).'],
-  ['Cliente', true, 'Debe existir en el sistema (ej: Redsalud, COPEC). Se busca por nombre.'],
+  ['Cliente', true, 'Debe existir en el sistema. Se busca por nombre.'],
   ['Filial', false, 'Sucursal del cliente (ej: Valparaíso). Debe existir si se indica.'],
   ['ID cliente', false, 'N° interno del cliente (SAP, HIS…). No puede repetirse para el mismo cliente.'],
   ['Monto deuda', true, 'Capital adeudado, solo números (ej: 450000).'],
@@ -176,7 +176,7 @@ function CargaGestiones() {
       <section className="tarjeta">
         <h2>Paso 1 · Elegir el cliente</h2>
         <p className="suave">
-          Los ID pueden repetirse entre clientes (Redsalud, COPEC, CCDM…), así
+          Los ID pueden repetirse entre clientes distintos, así
           que primero indica a cuál pertenecen las gestiones de tu planilla.
         </p>
         <label>

@@ -5,7 +5,7 @@ echo ========================================
 echo   ATENCION: RESET TOTAL
 echo ========================================
 echo.
-echo Esto BORRARA TODOS LOS DATOS de Hadad 2.0
+echo Esto BORRARA TODOS LOS DATOS de Cartera
 echo y volvera a ejecutar el DDL desde cero.
 echo.
 echo Usar solo si quieres empezar limpio.

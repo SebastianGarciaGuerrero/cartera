@@ -97,11 +97,11 @@ export default function Cobranzas() {
             {cobranzas?.map((c) => (
               <tr key={c.id}>
                 <td className="mono negrita">{c.numero}</td>
-                <td className="mono">{c.id_clinica ?? '—'}</td>
+                <td className="mono">{c.id_externo ?? '—'}</td>
                 <td><EtiquetaEstado estado={c.estado} /></td>
                 <td className="der"><Plata valor={c.monto_original} /></td>
                 <td className="der"><Plata valor={c.monto_actual} /></td>
-                <td>{c.fecha_ingreso_hadad ?? '—'}</td>
+                <td>{c.fecha_ingreso ?? '—'}</td>
                 <td>
                   <Link className="btn btn-chico btn-secundario" to={`/cobranzas/${c.id}`}>
                     Ver ficha

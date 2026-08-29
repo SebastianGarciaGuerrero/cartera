@@ -37,7 +37,7 @@ class FilialResponse(FilialBase):
 class FilialConCliente(FilialResponse):
     """
     Versión extendida con datos del cliente incluidos.
-    Útil para listados donde quieres ver "Redsalud - Iquique" sin hacer otra query.
+    Útil para listados donde quieres ver "Cliente - Iquique" sin hacer otra query.
     """
     cliente_razon_social: Optional[str] = None
     cliente_rut: Optional[str] = None

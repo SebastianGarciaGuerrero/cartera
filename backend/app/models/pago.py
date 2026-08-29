@@ -2,7 +2,7 @@
 Modelo SQLAlchemy para 'pagos'.
 
 Cada pago real recibido. Es la fuente del recupero mensual y del cuadro de
-rendición a la clínica.
+rendición al cliente.
 
 INMUTABLE (igual que gestiones): sin updated_at, sin PUT ni DELETE. Un error
 se corrige registrando un pago correctivo, no editando el original.
@@ -37,9 +37,9 @@ class Pago(Base):
     # Desglose para el cuadro de rendición. El CAPITAL es la guía: es lo
     # único que descuenta el saldo de la cobranza (honorarios/interés varían
     # según el abono y la UF del día, el capital siempre es fijo).
-    capital_clinica = Column(Numeric(15, 2), server_default=text("0"))
-    honorarios_hadad = Column(Numeric(15, 2), server_default=text("0"))
-    interes_clinica = Column(Numeric(15, 2), server_default=text("0"))
+    capital = Column(Numeric(15, 2), server_default=text("0"))
+    honorarios = Column(Numeric(15, 2), server_default=text("0"))
+    intereses = Column(Numeric(15, 2), server_default=text("0"))
     gastos_judiciales = Column(Numeric(15, 2), server_default=text("0"))
 
     forma_pago = Column(String(30))

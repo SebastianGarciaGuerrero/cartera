@@ -2,11 +2,11 @@
 chcp 65001 >nul
 cls
 echo ========================================
-echo   Estado del container Hadad PostgreSQL
+echo   Estado del container PostgreSQL de Cartera
 echo ========================================
 echo.
 
-docker ps --filter "name=hadad-postgres" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+docker ps --filter "name=cartera-postgres" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 echo.
 echo ========================================
@@ -18,7 +18,7 @@ echo.
 echo ========================================
 echo   Verificacion rapida de tablas
 echo ========================================
-docker exec hadad-postgres psql -U hadad_admin -d hadad_v2 -c "SELECT count(*) AS total_tablas FROM information_schema.tables WHERE table_schema = 'public';"
+docker exec cartera-postgres psql -U cartera_admin -d cartera -c "SELECT count(*) AS total_tablas FROM information_schema.tables WHERE table_schema = 'public';"
 
 echo.
 pause

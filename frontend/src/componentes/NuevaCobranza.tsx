@@ -25,7 +25,7 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
 
   const [clienteId, setClienteId] = useState('')
   const [filialId, setFilialId] = useState('')
-  const [idClinica, setIdClinica] = useState('')
+  const [idExterno, setIdExterno] = useState('')
   const [monto, setMonto] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState('pagare')
   const [numeroDocumento, setNumeroDocumento] = useState('')
@@ -64,7 +64,7 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
         cliente_id: clienteId,
         filial_id: filialId ? Number(filialId) : null,
         deudor_id: deudor!.id,
-        id_clinica: idClinica || null,
+        id_externo: idExterno || null,
         monto_original: monto,
         tipo_documento: tipoDocumento,
         numero_pagare: numeroDocumento || null,
@@ -104,7 +104,7 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
 
       <div className="fila">
         <label>
-          Cliente (clínica) *
+          Cliente *
           <select value={clienteId} required
             onChange={(e) => { setClienteId(e.target.value); setFilialId('') }}>
             <option value="">Seleccionar…</option>
@@ -168,7 +168,7 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
         </label>
         <label>
           ID cliente
-          <input value={idClinica} onChange={(e) => setIdClinica(e.target.value)}
+          <input value={idExterno} onChange={(e) => setIdExterno(e.target.value)}
             placeholder="N° interno del cliente (SAP, HIS…)" />
         </label>
         <label>

@@ -11,6 +11,7 @@ import Usuarios from './paginas/Usuarios'
 import NuevaCobranzaPagina from './paginas/NuevaCobranzaPagina'
 import Abonos from './paginas/Abonos'
 import CargaMasiva from './paginas/CargaMasiva'
+import MiEmpresa from './paginas/MiEmpresa'
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/informes" element={<Informes />} />
             <Route path="/equipo" element={<Equipo />} />
             <Route path="/usuarios" element={<Usuarios />} />
+            <Route path="/mi-empresa" element={<MiEmpresa />} />
           </Route>
         </Routes>
       </BrowserRouter>

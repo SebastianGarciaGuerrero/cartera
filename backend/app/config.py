@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     database_url: str
     
     # Configuración general
-    app_name: str = "Hadad 2.0 API"
+    app_name: str = "Cartera API"
     environment: str = "development"
     debug: bool = True
 

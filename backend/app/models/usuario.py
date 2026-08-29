@@ -1,5 +1,5 @@
 """
-Modelo SQLAlchemy para 'usuarios' (las personas del equipo Hadad).
+Modelo SQLAlchemy para 'usuarios' (las personas del equipo de cobranza).
 
 Todavía no tiene router/schema propios (eso llega con la autenticación JWT),
 pero el modelo se define ahora para que las FK de otras tablas

@@ -1,5 +1,5 @@
 # ============================================================
-# Hadad 2.0 — imagen de producción (backend + frontend juntos)
+# Cartera — imagen de producción (backend + frontend juntos)
 # Etapa 1: compila el frontend React con Node.
 # Etapa 2: imagen Python con FastAPI sirviendo la API y el frontend.
 # ============================================================

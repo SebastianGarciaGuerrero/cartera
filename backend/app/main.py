@@ -1,5 +1,5 @@
 """
-Hadad 2.0 - Backend API
+Cartera - Backend API
 Punto de entrada principal de la aplicación FastAPI.
 """
 
@@ -23,6 +23,7 @@ from app.models import rol, usuario, paciente  # noqa: F401
 from app import auditoria  # noqa: F401
 
 from app.routers import auth
+from app.routers import empresa
 from app.routers import usuarios
 from app.routers import clientes
 from app.routers import filiales
@@ -42,13 +43,14 @@ from app.routers import auditoria as auditoria_router
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    description="Sistema de cobranza extrajudicial y judicial - González & Hadad"
+    description="Plataforma de gestión de cobranza extrajudicial y judicial"
 )
 
 
 # Registrar routers (módulos de endpoints)
 app.include_router(auth.router)
 app.include_router(usuarios.router)
+app.include_router(empresa.router)
 app.include_router(clientes.router)
 app.include_router(filiales.router)
 app.include_router(deudores.router)
@@ -116,6 +118,6 @@ else:
     @app.get("/", include_in_schema=False)
     def root():
         return {
-            "mensaje": "Hadad 2.0 API funcionando correctamente",
+            "mensaje": "Cartera API funcionando correctamente",
             "documentacion": "/docs",
         }

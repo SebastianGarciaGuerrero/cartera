@@ -2,7 +2,7 @@
 chcp 65001 >nul
 cls
 echo ========================================
-echo   HADAD 2.0 - Iniciando base de datos
+echo   CARTERA - Iniciando base de datos
 echo ========================================
 echo.
 
@@ -53,7 +53,7 @@ echo.
 echo ========================================
 echo   Estado del container
 echo ========================================
-docker ps --filter "name=hadad-postgres" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+docker ps --filter "name=cartera-postgres" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 echo.
 echo ========================================
@@ -64,8 +64,8 @@ echo Datos de conexion para DBeaver:
 echo.
 echo   Host:     localhost
 echo   Port:     5433
-echo   Database: hadad_v2
-echo   User:     hadad_admin
+echo   Database: cartera
+echo   User:     cartera_admin
 echo   Password: desarrollo_local_2026
 echo.
 echo Para ver los logs: ejecuta verificar.bat

@@ -1,5 +1,5 @@
 ========================================
-  HADAD 2.0 - Setup local de desarrollo
+  CARTERA - Setup local de desarrollo
 ========================================
 
 PASOS RAPIDOS:
@@ -16,8 +16,8 @@ PASOS RAPIDOS:
 4. En DBeaver, crea una conexion PostgreSQL con:
    Host:     localhost
    Port:     5433
-   Database: hadad_v2
-   User:     hadad_admin
+   Database: cartera
+   User:     cartera_admin
    Password: desarrollo_local_2026
 
 

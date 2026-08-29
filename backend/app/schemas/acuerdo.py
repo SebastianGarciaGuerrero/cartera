@@ -5,7 +5,7 @@ Las cuotas NO se reciben en el Create: las genera el backend automáticamente
 a partir de monto_total_acordado, pie, numero_cuotas y fecha_primera_cuota.
 
 El único cambio permitido sobre un acuerdo existente es su estado y la firma
-de la clínica (AcuerdoEstadoUpdate). Montos y cuotas son inmutables: una
+del cliente (AcuerdoEstadoUpdate). Montos y cuotas son inmutables: una
 renegociación crea un acuerdo nuevo.
 """
 
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 EstadoAcuerdo = Literal["vigente", "cumplido", "incumplido", "renegociado"]
 TipoPago = Literal["extrajudicial", "abonos"]
-FirmaClinica = Literal["sin_firmar", "pendiente", "firmado_confirmado"]
+FirmaCliente = Literal["sin_firmar", "pendiente", "firmado_confirmado"]
 EstadoCuota = Literal["pendiente", "pagada", "vencida", "pagada_parcial"]
 
 
@@ -50,13 +50,13 @@ class AcuerdoBase(BaseModel):
     fecha_primera_cuota: date
 
     # Desglose para rendición
-    capital_clinica: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
-    honorarios_hadad: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
-    interes_clinica: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    capital: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    honorarios: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    intereses: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
     gastos_judiciales: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
 
     tipo_pago: TipoPago = "extrajudicial"
-    firma_clinica: FirmaClinica = "sin_firmar"
+    firma_cliente: FirmaCliente = "sin_firmar"
     fecha_firma: Optional[date] = None
     observaciones: Optional[str] = None
 
@@ -77,7 +77,7 @@ class AcuerdoEstadoUpdate(BaseModel):
     de la clínica. NO se editan montos ni cuotas.
     """
     estado: Optional[EstadoAcuerdo] = None
-    firma_clinica: Optional[FirmaClinica] = None
+    firma_cliente: Optional[FirmaCliente] = None
     fecha_firma: Optional[date] = None
     observaciones: Optional[str] = None
 

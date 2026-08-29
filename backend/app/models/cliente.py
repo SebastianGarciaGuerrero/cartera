@@ -1,7 +1,7 @@
 """
 Modelo SQLAlchemy para la tabla 'clientes'.
-Representa las empresas que contratan a Hadad para cobrar
-(Redsalud, COPEC, etc.)
+Representa las empresas mandantes que entregan su cartera para cobrar
+(clínicas, retail, servicios: cualquier empresa con cartera morosa).
 """
 
 from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP, text

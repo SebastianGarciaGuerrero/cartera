@@ -55,7 +55,7 @@ COLUMNAS = [
 
 EJEMPLO = [
     "12345678-9", "Juan Pérez Soto", "+56 9 1234 5678", "juan@correo.cl",
-    "Redsalud", "Valparaíso", "155001", 450000,
+    "Clínica Los Andes", "Valparaíso", "155001", 450000,
     "pagare", "PG-4521",
     "2026-05-12", "FONASA", "Ingresado por carga masiva",
 ]
@@ -219,7 +219,7 @@ async def importar_cobranzas(
                 cliente_id=cliente.id,
                 filial_id=filial.id if filial else None,
                 deudor_id=deudor.id,
-                id_clinica=id_cliente or None,
+                id_externo=id_cliente or None,
                 monto_original=monto,
                 monto_actual=monto,
                 tipo_documento=tipo_documento or "pagare",
@@ -233,7 +233,7 @@ async def importar_cobranzas(
         except Exception as e:
             db.rollback()
             mensaje = str(e)
-            if "uq_cobranza_clinica" in mensaje:
+            if "uq_cobranza_id_externo" in mensaje:
                 mensaje = f"ID cliente '{id_cliente}' ya existe para {nombre_cliente}"
             errores.append({"fila": i, "error": mensaje[:200]})
 
@@ -351,7 +351,7 @@ async def importar_gestiones(
             cobranza = (
                 db.query(Cobranza)
                 .filter(Cobranza.cliente_id == cliente.id,
-                        Cobranza.id_clinica == id_cliente)
+                        Cobranza.id_externo == id_cliente)
                 .first()
             )
             if cobranza is None:

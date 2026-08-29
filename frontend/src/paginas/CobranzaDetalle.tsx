@@ -91,7 +91,7 @@ export default function CobranzaDetalle() {
               {cob.filial && <span className="suave"> · {cob.filial.nombre}</span>}
             </dd>
             <dt>ID cliente</dt>
-            <dd className="mono">{cob.id_clinica ?? '—'}</dd>
+            <dd className="mono">{cob.id_externo ?? '—'}</dd>
             <dt>Documento</dt>
             <dd>
               {cob.tipo_documento === 'pagare' ? 'Pagaré' : cob.tipo_documento}
@@ -102,7 +102,7 @@ export default function CobranzaDetalle() {
             <dt>Saldo actual</dt>
             <dd className="negrita"><Plata valor={cob.monto_actual} /></dd>
             <dt>Fecha de ingreso</dt>
-            <dd>{fechaLegible(cob.fecha_ingreso_hadad)}</dd>
+            <dd>{fechaLegible(cob.fecha_ingreso)}</dd>
             <dt>Tipo</dt>
             <dd>{cob.tipo}</dd>
           </dl>

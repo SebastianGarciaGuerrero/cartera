@@ -77,7 +77,7 @@ export default function Abonos() {
             {resultados.map((c) => (
               <tr key={c.id}>
                 <td className="mono negrita">{c.numero}</td>
-                <td className="mono">{c.id_clinica ?? '—'}</td>
+                <td className="mono">{c.id_externo ?? '—'}</td>
                 <td><EtiquetaEstado estado={c.estado} /></td>
                 <td className="der"><Plata valor={c.monto_actual} /></td>
                 <td>

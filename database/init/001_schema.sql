@@ -1,5 +1,5 @@
 -- ============================================================
--- HADAD 2.0 — DDL Definitivo PostgreSQL 16
+-- CARTERA — DDL Definitivo PostgreSQL 16
 -- Versión: 1.0.0 | Fecha: 2026-06
 -- ============================================================
 -- CONVENCIONES:
@@ -12,6 +12,61 @@
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- gen_random_uuid()
+
+-- ============================================================
+-- [0] EMPRESA
+-- Los datos de la empresa que USA el sistema (la que cobra).
+-- Tabla de UNA SOLA FILA (id fijo = 1).
+--
+-- De aquí salen el membrete, la firma y el pie de página de
+-- todos los documentos Word, y el nombre que se muestra en la
+-- barra lateral. Es lo que hace que el sistema sea white-label:
+-- cada instalación edita esta fila desde Configuración → Mi
+-- empresa, sin tocar una línea de código.
+-- ============================================================
+CREATE TABLE empresa (
+    id                 SMALLINT     PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+
+    -- Identidad legal
+    razon_social       VARCHAR(200) NOT NULL,
+    nombre_fantasia    VARCHAR(100),
+    rut                VARCHAR(12),
+
+    -- Membrete de los documentos
+    wordmark           VARCHAR(100) NOT NULL,   -- línea grande del encabezado
+    bajada             VARCHAR(150),            -- línea chica bajo el wordmark
+    firma_documentos   VARCHAR(200),            -- nombre bajo la línea de firma
+
+    -- Contacto (pie de las cartas)
+    direccion          VARCHAR(200),
+    ciudad             VARCHAR(100),
+    horario_atencion   VARCHAR(120),
+    telefonos          VARCHAR(120),
+    emails             VARCHAR(200),
+    sitio_web          VARCHAR(120),
+
+    -- Formas de pago que se imprimen en el estado de cuenta.
+    -- Texto libre, una forma de pago por línea.
+    instrucciones_pago TEXT,
+
+    updated_at         TIMESTAMPTZ  DEFAULT NOW()
+);
+
+-- Fila única con valores neutros: es la primera pantalla que
+-- llena quien instala el sistema.
+INSERT INTO empresa (
+    id, razon_social, nombre_fantasia, wordmark, bajada,
+    firma_documentos, ciudad, instrucciones_pago
+) VALUES (
+    1,
+    'Mi Empresa de Cobranza SpA',
+    'Mi Empresa',
+    'MI EMPRESA DE COBRANZA',
+    'GESTIÓN Y RECUPERO DE CARTERA',
+    'Mi Empresa de Cobranza SpA',
+    'Santiago, Chile',
+    'Transferencia electrónica a la cuenta del cliente.'
+);
 
 -- ============================================================
 -- [1] ROLES
@@ -50,8 +105,8 @@ CREATE TABLE usuarios (
 
 -- ============================================================
 -- [3] CLIENTES
--- Empresas que contratan a Hadad para cobrar.
--- Ejemplo: COPEC S.A. (RUT 99520000-1), Clínica Redsalud
+-- Empresas mandantes que entregan su cartera para cobrar.
+-- Ejemplo: una cadena de clínicas, una empresa de retail, una distribuidora.
 -- Un cliente puede tener múltiples filiales.
 -- ============================================================
 CREATE TABLE clientes (
@@ -72,7 +127,7 @@ CREATE TABLE clientes (
 -- ============================================================
 -- [4] FILIALES
 -- Sucursales de un cliente.
--- Ejemplo Redsalud: Iquique, Elqui, Valparaíso, Rancagua,
+-- Ejemplo: Iquique, Elqui, Valparaíso, Rancagua,
 --                   Temuco, Magallanes, Santiago, Providencia, Vitacura
 -- Clientes sin sucursales tienen una filial "Principal".
 -- ============================================================
@@ -128,7 +183,7 @@ CREATE TABLE contactos_paciente (
 -- La persona que firmó el pagaré. Es A QUIEN SE LE COBRA.
 -- CLAVE: un deudor puede tener múltiples cobranzas.
 --   → Misma persona, distintas deudas (reincidente, varias atenciones)
---   → Cada cobranza tiene su propio N° Cobranza (Hadad) e ID (clínica)
+--   → Cada cobranza tiene su propio N° interno e ID del cliente
 --   → El RUT del deudor es la llave que agrupa todas sus deudas
 -- ============================================================
 CREATE TABLE deudores (
@@ -182,14 +237,14 @@ CREATE TABLE contactos_deudor (
 -- *** El núcleo del sistema. Una cobranza = una deuda. ***
 --
 -- IDENTIFICADORES:
---   numero     → N° Hadad. ÚNICO GLOBAL. Autoincremental.
---                Generado por Hadad. NUNCA se repite, NUNCA cambia.
+--   numero     → N° de cobranza. ÚNICO GLOBAL. Autoincremental.
+--                Generado por el sistema. NUNCA se repite, NUNCA cambia.
 --                Ejemplo: 14220
 --
---   id_clinica → ID del sistema HIS de la clínica.
---                ÚNICO POR CLIENTE (restricción compuesta cliente_id + id_clinica).
+--   id_externo → ID de la cobranza en el sistema del cliente.
+--                ÚNICO POR CLIENTE (restricción compuesta cliente_id + id_externo).
 --                Dos clientes distintos pueden tener el mismo número.
---                Ejemplo: "122838" en Redsalud
+--                Ejemplo: "122838" en el sistema del cliente
 --
 -- DEUDOR vs PACIENTE:
 --   deudor_id  → quien firmó el pagaré, a quien se le cobra
@@ -197,7 +252,7 @@ CREATE TABLE contactos_deudor (
 --
 -- UN DEUDOR → N COBRANZAS:
 --   Mismo deudor puede tener varias cobranzas (deudas distintas).
---   Cada cobranza tiene su propio numero (Hadad) e id_clinica (clínica).
+--   Cada cobranza tiene su propio numero interno e id_externo (el del cliente).
 --   El sistema agrupa por deudor_id para mostrar todas las deudas de una persona.
 --
 -- ESTADOS:
@@ -228,27 +283,27 @@ CREATE TABLE cobranzas (
     -- En ese caso, el RUT del deudor = RUT del paciente
 
     -- Identificadores externos
-    id_clinica               VARCHAR(50),
-    -- UNIQUE por cliente: misma clínica no puede tener dos cobranzas con el mismo ID
+    id_externo               VARCHAR(50),
+    -- UNIQUE por cliente: mismo cliente no puede tener dos cobranzas con el mismo ID
     numero_liquidacion       VARCHAR(50),
 
     -- Montos
     monto_original           NUMERIC(15,2) NOT NULL,  -- deuda al momento de ingreso
     monto_actual             NUMERIC(15,2) NOT NULL,  -- se actualiza con cada pago
-    -- Desglose (columnas que completa Hadad en la planilla)
-    capital_hadad            NUMERIC(15,2),
-    intereses_hadad          NUMERIC(15,2) DEFAULT 0,
-    honorarios_hadad         NUMERIC(15,2) DEFAULT 0,
-    gastos_hadad             NUMERIC(15,2) DEFAULT 0,
+    -- Desglose (columnas que completa la empresa de cobranza)
+    capital                  NUMERIC(15,2),
+    intereses                NUMERIC(15,2) DEFAULT 0,
+    honorarios               NUMERIC(15,2) DEFAULT 0,
+    gastos                   NUMERIC(15,2) DEFAULT 0,
 
     -- Fechas de la atención médica
-    fecha_atencion           DATE,         -- fecha ingreso a clínica
-    fecha_alta               DATE,         -- fecha alta clínica
+    fecha_atencion           DATE,         -- fecha de la prestación/operación de origen
+    fecha_alta               DATE,         -- fecha de alta o cierre de la prestación
     prevision                VARCHAR(80),  -- FONASA / BANMEDICA / CONSALUD / etc.
 
     -- Fechas operacionales
-    fecha_ingreso_hadad      DATE          NOT NULL DEFAULT CURRENT_DATE,  -- cuando entró a Hadad
-    fecha_traspaso           DATE,         -- cuando la clínica derivó a cobranza judicial
+    fecha_ingreso            DATE          NOT NULL DEFAULT CURRENT_DATE,  -- cuando entró a cobranza
+    fecha_traspaso           DATE,         -- cuando el cliente derivó a cobranza judicial
 
     -- Documento que identifica la deuda (para clínicas es el pagaré;
     -- también hay facturas, letras, cheques...)
@@ -283,8 +338,8 @@ CREATE TABLE cobranzas (
     created_at               TIMESTAMPTZ   DEFAULT NOW(),
     updated_at               TIMESTAMPTZ   DEFAULT NOW(),
 
-    -- RESTRICCIÓN CLAVE: id_clinica único por cliente
-    CONSTRAINT uq_cobranza_clinica UNIQUE (cliente_id, id_clinica)
+    -- RESTRICCIÓN CLAVE: id_externo único por cliente
+    CONSTRAINT uq_cobranza_id_externo UNIQUE (cliente_id, id_externo)
 );
 
 -- ============================================================
@@ -342,7 +397,7 @@ CREATE TABLE gestiones (
 -- Una cobranza puede tener varios acuerdos en el tiempo
 -- (renegociaciones). Solo uno puede estar 'vigente' a la vez.
 --
--- El desglose (capital_clinica + honorarios_hadad + interes_clinica)
+-- El desglose (capital + honorarios + intereses)
 -- es la base del cuadro de rendición mensual a la clínica.
 -- ============================================================
 CREATE TABLE acuerdos_pago (
@@ -361,9 +416,9 @@ CREATE TABLE acuerdos_pago (
     fecha_primera_cuota  DATE          NOT NULL,
 
     -- Desglose del monto acordado (para rendición)
-    capital_clinica      NUMERIC(15,2) DEFAULT 0,
-    honorarios_hadad     NUMERIC(15,2) DEFAULT 0,
-    interes_clinica      NUMERIC(15,2) DEFAULT 0,
+    capital              NUMERIC(15,2) DEFAULT 0,
+    honorarios           NUMERIC(15,2) DEFAULT 0,
+    intereses            NUMERIC(15,2) DEFAULT 0,
     gastos_judiciales    NUMERIC(15,2) DEFAULT 0,
 
     -- Estado del acuerdo
@@ -377,9 +432,9 @@ CREATE TABLE acuerdos_pago (
     tipo_pago            VARCHAR(20)   DEFAULT 'extrajudicial'
                              CHECK (tipo_pago IN ('extrajudicial','abonos')),
 
-    -- Firma de la clínica (Redsalud debe aprobar el acuerdo)
-    firma_clinica        VARCHAR(30)   DEFAULT 'sin_firmar'
-                             CHECK (firma_clinica IN (
+    -- Firma del cliente (el mandante debe aprobar el acuerdo)
+    firma_cliente        VARCHAR(30)   DEFAULT 'sin_firmar'
+                             CHECK (firma_cliente IN (
                                  'sin_firmar',
                                  'pendiente',
                                  'firmado_confirmado'
@@ -434,8 +489,8 @@ CREATE TABLE cuotas (
 --      acuerdo pasa a 'cumplido', cobranza pasa a 'pagada'
 --
 -- DESGLOSE: cada pago se divide en capital+honorarios+interés
---   → capital_clinica + interes_clinica = lo que se rinde a la clínica
---   → honorarios_hadad = ingreso de Hadad
+--   → capital + intereses = lo que se rinde a la clínica
+--   → honorarios = ingreso de la empresa de cobranza
 -- ============================================================
 CREATE TABLE pagos (
     id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -451,9 +506,9 @@ CREATE TABLE pagos (
     -- Desglose del pago (para cuadro de rendición)
     -- El CAPITAL es la guía: es lo único que descuenta el saldo de la
     -- cobranza. Honorarios/interés varían según el abono y la UF del día.
-    capital_clinica     NUMERIC(15,2) DEFAULT 0,
-    honorarios_hadad    NUMERIC(15,2) DEFAULT 0,
-    interes_clinica     NUMERIC(15,2) DEFAULT 0,
+    capital             NUMERIC(15,2) DEFAULT 0,
+    honorarios          NUMERIC(15,2) DEFAULT 0,
+    intereses           NUMERIC(15,2) DEFAULT 0,
     gastos_judiciales   NUMERIC(15,2) DEFAULT 0,
 
     -- Forma de pago
@@ -530,8 +585,8 @@ CREATE UNIQUE INDEX idx_cobranzas_numero
     ON cobranzas(numero);
     -- Ya es UNIQUE en la columna, pero el índice explícito es más rápido
 
-CREATE INDEX idx_cobranzas_id_clinica
-    ON cobranzas(id_clinica);
+CREATE INDEX idx_cobranzas_id_externo
+    ON cobranzas(id_externo);
     -- Para buscar por ID de la clínica
 
 CREATE INDEX idx_cobranzas_cliente_filial
@@ -624,15 +679,15 @@ SELECT
     p.fecha_pago,
     date_trunc('month', p.fecha_pago)::date AS mes,
     c.numero                                AS numero_cobranza,
-    c.id_clinica,
+    c.id_externo,
     cl.razon_social                         AS cliente,
     f.nombre                                AS filial,
     d.nombre                                AS deudor,
     d.rut                                   AS rut_deudor,
     p.monto                                 AS total_recibido,
-    p.capital_clinica,
-    p.honorarios_hadad,
-    p.interes_clinica,
+    p.capital,
+    p.honorarios,
+    p.intereses,
     p.estado_pago,
     p.descripcion_estado,
     p.forma_pago,
@@ -668,17 +723,17 @@ FROM deudores d
 LEFT JOIN cobranzas c ON c.deudor_id = d.id
 GROUP BY d.id, d.rut, d.nombre;
 
--- Vista: cuadro de rendición (lo que se envía a la clínica)
+-- Vista: cuadro de rendición (lo que se envía al cliente)
 CREATE VIEW vista_rendicion AS
 SELECT
     date_trunc('month', p.fecha_pago)::date  AS mes,
     cl.razon_social                           AS cliente,
     f.nombre                                  AS filial,
     count(p.id)                               AS cantidad_pagos,
-    sum(p.capital_clinica)                    AS total_capital_clinica,
-    sum(p.honorarios_hadad)                   AS total_honorarios_hadad,
-    sum(p.interes_clinica)                    AS total_interes_clinica,
-    sum(p.capital_clinica + p.interes_clinica) AS total_a_rendir_clinica,
+    sum(p.capital)                            AS total_capital,
+    sum(p.honorarios)                         AS total_honorarios,
+    sum(p.intereses)                          AS total_intereses,
+    sum(p.capital + p.intereses)              AS total_a_rendir_cliente,
     sum(p.monto)                              AS total_recibido
 FROM pagos p
 JOIN cobranzas c  ON c.id = p.cobranza_id
@@ -695,7 +750,7 @@ CREATE VIEW vista_acuerdos_estado AS
 SELECT
     ap.id                                    AS acuerdo_id,
     c.numero                                 AS numero_cobranza,
-    c.id_clinica,
+    c.id_externo,
     cl.razon_social                          AS cliente,
     f.nombre                                 AS filial,
     d.nombre                                 AS deudor,
@@ -706,7 +761,7 @@ SELECT
     ap.dia_pago,
     ap.fecha_acuerdo,
     ap.fecha_termino,
-    ap.firma_clinica,
+    ap.firma_cliente,
     ap.estado,
     -- Cuotas calculadas
     count(cu.id) FILTER (WHERE cu.estado = 'pagada')   AS cuotas_pagadas,
@@ -723,15 +778,15 @@ LEFT JOIN filiales f ON f.id = c.filial_id
 LEFT JOIN cuotas cu  ON cu.acuerdo_id = ap.id
 WHERE ap.estado = 'vigente'
 GROUP BY
-    ap.id, c.numero, c.id_clinica,
+    ap.id, c.numero, c.id_externo,
     cl.razon_social, f.nombre, d.nombre, d.rut,
     ap.pie, ap.monto_total_acordado, ap.numero_cuotas,
     ap.dia_pago, ap.fecha_acuerdo, ap.fecha_termino,
-    ap.firma_clinica, ap.estado;
+    ap.firma_cliente, ap.estado;
 
 -- ============================================================
 -- FIN DEL DDL
--- Tablas: 16
+-- Tablas: 17
 -- Índices: 17 (incluyendo 3 parciales)
 -- Vistas: 4
 -- ============================================================

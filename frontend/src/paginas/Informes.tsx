@@ -97,7 +97,7 @@ export default function Informes() {
         <section className="tarjeta">
           <h2>Cuadro de rendición</h2>
           <p className="suave">
-            Resumen por cliente y filial: cuánto se rinde a la clínica en el
+            Resumen por cliente y filial: cuánto se rinde al cliente en el
             mes. Usa el mismo mes y año del recupero.
           </p>
           <button

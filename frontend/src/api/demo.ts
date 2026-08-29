@@ -16,8 +16,8 @@
 
 import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 
-const CLAVE_DB = 'cobra_demo_db'
-const VERSION_SEMILLA = 5
+const CLAVE_DB = 'cartera_demo_db'
+const VERSION_SEMILLA = 6
 
 // ---------- utilidades ----------
 
@@ -117,12 +117,12 @@ function generarCasosSantiago(cantidad: number, numeroInicial: number) {
     cobranzas.push({
       id: `cob-s${i + 1}`, numero: numeroInicial + i,
       cliente_id: 'cl-1', filial_id: 7 as number | null, deudor_id: idDeudor,
-      id_clinica: String(360000 + i * 7),
+      id_externo: String(360000 + i * 7),
       monto_original: String(monto), monto_actual: pagada ? '0' : String(monto),
       tipo_documento: tipoDoc,
       numero_pagare: tipoDoc === 'pagare' ? `PG-2026-${String(1000 + i)}` : null,
       estado: pagada ? 'pagada' : 'activa', tipo: 'extrajudicial',
-      fecha_ingreso_hadad: `2026-${mm}-${dd}`,
+      fecha_ingreso: `2026-${mm}-${dd}`,
       observaciones: null as string | null,
     })
   }
@@ -168,25 +168,25 @@ function semilla() {
   const cobranzas = [
     {
       id: 'cob-1', numero: 20001, cliente_id: 'cl-1', filial_id: 3 as number | null, deudor_id: 'd-1',
-      id_clinica: '145678', monto_original: '850000', monto_actual: '705000',
+      id_externo: '145678', monto_original: '850000', monto_actual: '705000',
       tipo_documento: 'pagare', numero_pagare: 'PG-2025-0145',
       estado: 'acuerdo_pago', tipo: 'extrajudicial',
-      fecha_ingreso_hadad: '2026-06-02',
+      fecha_ingreso: '2026-06-02',
       observaciones: 'Caso ingresado vía planilla mensual del cliente. Paciente menor de edad atendida por urgencia.',
     },
     {
       id: 'cob-2', numero: 20002, cliente_id: 'cl-1', filial_id: 3, deudor_id: 'd-2',
-      id_clinica: '198765', monto_original: '420000', monto_actual: '420000',
+      id_externo: '198765', monto_original: '420000', monto_actual: '420000',
       tipo_documento: 'pagare', numero_pagare: null,
       estado: 'activa', tipo: 'extrajudicial',
-      fecha_ingreso_hadad: '2026-06-08', observaciones: null,
+      fecha_ingreso: '2026-06-08', observaciones: null,
     },
     {
       id: 'cob-3', numero: 20003, cliente_id: 'cl-2', filial_id: 10, deudor_id: 'd-2',
-      id_clinica: 'SAP-77120', monto_original: '1250000', monto_actual: '1250000',
+      id_externo: 'SAP-77120', monto_original: '1250000', monto_actual: '1250000',
       tipo_documento: 'factura', numero_pagare: 'F-00981',
       estado: 'activa', tipo: 'extrajudicial',
-      fecha_ingreso_hadad: '2026-06-08', observaciones: null,
+      fecha_ingreso: '2026-06-08', observaciones: null,
     },
   ]
   const tiposGestion = [
@@ -230,8 +230,8 @@ function semilla() {
   const pagos = [
     {
       id: 'p-1', cobranza_id: 'cob-1', cuota_id: 'cu-1', fecha_pago: '2026-07-12',
-      monto: '145000', capital_clinica: '123750', honorarios_hadad: '21250',
-      interes_clinica: '0', gastos_judiciales: '0',
+      monto: '145000', capital: '123750', honorarios: '21250',
+      intereses: '0', gastos_judiciales: '0',
       forma_pago: 'transferencia', numero_comprobante: 'BCI-20260712-458912',
       estado_pago: 'cuota', usuario_id: 'u-grv',
     },
@@ -243,7 +243,29 @@ function semilla() {
   deudores.push(...(casosSantiago.deudores as never[]))
   cobranzas.push(...(casosSantiago.cobranzas as never[]))
 
-  return { version: VERSION_SEMILLA, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosSantiago.cobranzas.length }
+  // Datos de la empresa que "usa" el sistema en la demo. En la versión
+  // completa se editan desde Configuración → Mi empresa.
+  const empresa = {
+    razon_social: 'Mi Empresa de Cobranza SpA',
+    nombre_fantasia: 'Mi Empresa',
+    rut: '76123456-7',
+    wordmark: 'MI EMPRESA DE COBRANZA',
+    bajada: 'GESTIÓN Y RECUPERO DE CARTERA',
+    firma_documentos: 'Mi Empresa de Cobranza SpA',
+    direccion: 'Av. Siempre Viva 1234, oficina 56',
+    ciudad: 'Santiago, Chile',
+    horario_atencion: 'Atención de 9 a 18 hrs.',
+    telefonos: '(2) 2345 6789',
+    emails: 'contacto@miempresa.cl',
+    sitio_web: 'www.miempresa.cl',
+    instrucciones_pago: [
+      'Transferencia electrónica a la cuenta del cliente.',
+      'Pago presencial en nuestras oficinas.',
+    ].join('\n'),
+    updated_at: ahora(),
+  }
+
+  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosSantiago.cobranzas.length }
 }
 
 // ---------- base de datos en localStorage ----------
@@ -328,6 +350,16 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const u = usuarioDelToken(config, db)
     const { password: _p, ...seguro } = u
     return ok(config, seguro)
+  }
+
+  // ---- mi empresa ----
+  if (metodo === 'GET' && url === '/empresa') return ok(config, db.empresa)
+  if (metodo === 'PUT' && url === '/empresa') {
+    const u = usuarioDelToken(config, db)
+    if (u.rol_id !== 1) return error(403, 'Solo un administrador puede editar los datos de la empresa')
+    db.empresa = { ...db.empresa, ...(cuerpo(config) as Record<string, unknown>), updated_at: ahora() } as typeof db.empresa
+    guardarDB(db)
+    return ok(config, db.empresa)
   }
 
   // ---- catálogos ----
@@ -419,7 +451,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const q = (params.q ?? '').toLowerCase()
     const lista = db.cobranzas.filter((c) => {
       const d = db.deudores.find((x) => x.id === c.deudor_id)
-      return String(c.numero).includes(q) || (c.id_clinica ?? '').toLowerCase().includes(q)
+      return String(c.numero).includes(q) || (c.id_externo ?? '').toLowerCase().includes(q)
         || d?.rut.includes(q) || d?.nombre.toLowerCase().includes(q)
     })
     return ok(config, lista)
@@ -445,18 +477,18 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   }
   if (metodo === 'POST' && url === '/cobranzas/') {
     const datos = cuerpo(config) as Record<string, string | number | null>
-    if (datos.id_clinica && db.cobranzas.some((c) => c.cliente_id === datos.cliente_id && c.id_clinica === datos.id_clinica)) {
+    if (datos.id_externo && db.cobranzas.some((c) => c.cliente_id === datos.cliente_id && c.id_externo === datos.id_externo)) {
       return error(400, 'El ID cliente ya existe para ese cliente')
     }
     const nueva = {
       id: uid(), numero: db.proximoNumero++,
       cliente_id: datos.cliente_id as string, filial_id: (datos.filial_id as number) ?? null,
-      deudor_id: datos.deudor_id as string, id_clinica: (datos.id_clinica as string) ?? null,
+      deudor_id: datos.deudor_id as string, id_externo: (datos.id_externo as string) ?? null,
       monto_original: String(datos.monto_original), monto_actual: String(datos.monto_original),
       tipo_documento: (datos.tipo_documento as string) ?? 'pagare',
       numero_pagare: (datos.numero_pagare as string) ?? null,
       estado: 'activa', tipo: 'extrajudicial',
-      fecha_ingreso_hadad: hoy(), observaciones: (datos.observaciones as string) ?? null,
+      fecha_ingreso: hoy(), observaciones: (datos.observaciones as string) ?? null,
     }
     db.cobranzas.push(nueva as never)
     guardarDB(db)
@@ -542,14 +574,14 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     if (!cob) return error(404, 'Cobranza no encontrada')
     const u = usuarioDelToken(config, db)
     const monto = Number(datos.monto)
-    const capital = Number(datos.capital_clinica ?? 0)
+    const capital = Number(datos.capital ?? 0)
 
     const nuevo = {
       id: uid(), cobranza_id: cob.id, cuota_id: datos.cuota_id ?? null,
       fecha_pago: hoy(), monto: String(monto),
-      capital_clinica: String(capital),
-      honorarios_hadad: String(datos.honorarios_hadad ?? 0),
-      interes_clinica: String(datos.interes_clinica ?? 0),
+      capital: String(capital),
+      honorarios: String(datos.honorarios ?? 0),
+      intereses: String(datos.intereses ?? 0),
       gastos_judiciales: String(datos.gastos_judiciales ?? 0),
       forma_pago: (datos.forma_pago as string) ?? null,
       numero_comprobante: (datos.numero_comprobante as string) ?? null,
@@ -581,8 +613,8 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     // Desglose: solo se listan los conceptos con monto; los vacíos se omiten.
     const desglose: string[] = []
     if (capital > 0) desglose.push(`Saldo Capital: ${clp(capital)}`)
-    if (Number(nuevo.honorarios_hadad) > 0) desglose.push(`Honorarios: ${clp(Number(nuevo.honorarios_hadad))}`)
-    if (Number(nuevo.interes_clinica) > 0) desglose.push(`Interés: ${clp(Number(nuevo.interes_clinica))}`)
+    if (Number(nuevo.honorarios) > 0) desglose.push(`Honorarios: ${clp(Number(nuevo.honorarios))}`)
+    if (Number(nuevo.intereses) > 0) desglose.push(`Interés: ${clp(Number(nuevo.intereses))}`)
     if (Number(nuevo.gastos_judiciales) > 0) desglose.push(`Gastos judiciales: ${clp(Number(nuevo.gastos_judiciales))}`)
     const encabezado = numeroCuota
       ? `Pago de cuota ${numeroCuota} por un total de ${clp(monto)}`

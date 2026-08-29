@@ -2,7 +2,7 @@
 chcp 65001 >nul
 cls
 echo ========================================
-echo   Consola SQL - Hadad 2.0
+echo   Consola SQL - Cartera
 echo ========================================
 echo.
 echo Estas dentro de PostgreSQL.
@@ -13,4 +13,4 @@ echo   \q               Salir
 echo.
 
 
-docker exec -it hadad-postgres psql -U hadad_admin -d hadad_v2
+docker exec -it cartera-postgres psql -U cartera_admin -d cartera

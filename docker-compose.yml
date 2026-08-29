@@ -1,5 +1,5 @@
 # ============================================================
-# Hadad 2.0 — Configuración Docker para desarrollo local
+# Cartera — Configuración Docker para desarrollo local
 # ============================================================
 # Levanta PostgreSQL 16 en puerto 5433 (para no chocar con
 # el PostgreSQL que ya tienes instalado en Windows en 5432).
@@ -14,7 +14,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hadad-postgres
+    container_name: cartera-postgres
     restart: unless-stopped
 
     environment:
@@ -32,7 +32,7 @@ services:
 
     volumes:
       # Persistencia de datos: aunque borres el container, los datos quedan
-      - hadad_data:/var/lib/postgresql/data
+      - cartera_data:/var/lib/postgresql/data
 
       # Auto-ejecutar el DDL en la primera creación de la DB
       # PostgreSQL corre todos los .sql de esta carpeta alfabéticamente
@@ -45,5 +45,5 @@ services:
       retries: 5
 
 volumes:
-  hadad_data:
-    name: hadad_v2_data
+  cartera_data:
+    name: cartera_data

@@ -4,7 +4,7 @@ import axios from 'axios'
 // responde 401 (token vencido o inválido), se limpia la sesión y se vuelve
 // al login.
 
-export const TOKEN_KEY = 'hadad_token'
+export const TOKEN_KEY = 'cartera_token'
 
 // MODO DEMO (npm run build:demo): sin servidor, los datos viven en el
 // navegador. Sirve para publicar solo el frontend (ej. Vercel).

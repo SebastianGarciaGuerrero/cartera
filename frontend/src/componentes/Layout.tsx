@@ -1,12 +1,25 @@
 import { NavLink, Outlet, Navigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../auth'
 import { MARCA } from '../marca'
+import { api } from '../api/client'
+import type { Empresa } from '../api/tipos'
 
 // Estructura general: barra lateral de navegación + contenido.
 // Si no hay sesión, redirige al login (esto protege todas las rutas hijas).
 
 export default function Layout() {
   const { usuario, cargando, logout } = useAuth()
+
+  // Nombre de la empresa que usa el sistema (Configuración → Mi empresa).
+  // Si aún no está cargado, la barra lateral muestra el eslogan del producto.
+  const { data: empresa } = useQuery({
+    queryKey: ['empresa'],
+    queryFn: async () => (await api.get<Empresa>('/empresa')).data,
+    enabled: Boolean(usuario),
+    staleTime: 5 * 60 * 1000,
+  })
+  const nombreEmpresa = empresa?.nombre_fantasia || empresa?.razon_social
 
   if (cargando) return <div className="pantalla-carga">Cargando…</div>
   if (!usuario) return <Navigate to="/login" replace />
@@ -18,7 +31,7 @@ export default function Layout() {
           <img className="marca-logo-img" src="/logo.svg" alt={MARCA.nombre} />
           <div>
             <div className="marca-nombre">{MARCA.nombre}</div>
-            <div className="marca-sub">{MARCA.eslogan}</div>
+            <div className="marca-sub">{nombreEmpresa ?? MARCA.eslogan}</div>
           </div>
         </div>
 
@@ -42,6 +55,7 @@ export default function Layout() {
             <>
               <div className="menu-grupo">Administración</div>
               <NavLink to="/usuarios">Usuarios</NavLink>
+              <NavLink to="/mi-empresa">Mi empresa</NavLink>
             </>
           )}
         </nav>

@@ -7,7 +7,7 @@ Un acuerdo formaliza cómo el deudor pagará una cobranza (pie + N cuotas).
 - Las cuotas se generan AUTOMÁTICAMENTE al crear el acuerdo.
 - Los montos y las cuotas son inmutables: una renegociación cambia el estado
   del acuerdo a 'renegociado' y crea uno nuevo. Lo único que se edita del
-  acuerdo es su estado y la firma de la clínica.
+  acuerdo es su estado y la firma del cliente.
 """
 
 from sqlalchemy import (
@@ -40,18 +40,18 @@ class AcuerdoPago(Base):
     dia_pago = Column(Integer)  # día del mes en que se paga (1-31)
     fecha_primera_cuota = Column(Date, nullable=False)
 
-    # Desglose (para el cuadro de rendición a la clínica)
-    capital_clinica = Column(Numeric(15, 2), server_default=text("0"))
-    honorarios_hadad = Column(Numeric(15, 2), server_default=text("0"))
-    interes_clinica = Column(Numeric(15, 2), server_default=text("0"))
+    # Desglose (para el cuadro de rendición al cliente)
+    capital = Column(Numeric(15, 2), server_default=text("0"))
+    honorarios = Column(Numeric(15, 2), server_default=text("0"))
+    intereses = Column(Numeric(15, 2), server_default=text("0"))
     gastos_judiciales = Column(Numeric(15, 2), server_default=text("0"))
 
     # Estado y tipo
     estado = Column(String(20), nullable=False, server_default=text("'vigente'"))
     tipo_pago = Column(String(20), server_default=text("'extrajudicial'"))
 
-    # Firma de la clínica (Redsalud debe aprobar el acuerdo)
-    firma_clinica = Column(String(30), server_default=text("'sin_firmar'"))
+    # Firma del cliente (el mandante debe aprobar el acuerdo)
+    firma_cliente = Column(String(30), server_default=text("'sin_firmar'"))
     fecha_firma = Column(Date)
 
     usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)

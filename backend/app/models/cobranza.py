@@ -3,13 +3,13 @@ Modelo SQLAlchemy para la tabla 'cobranzas'.
 
 *** El núcleo del sistema. Una cobranza = una deuda concreta. ***
 
-Conecta cliente (la clínica) + filial (sucursal) + deudor (quien firmó el
+Conecta cliente (el mandante) + filial (sucursal) + deudor (quien firmó el
 pagaré) + opcionalmente paciente (quien recibió la atención).
 
 IDENTIFICADORES:
-  numero     → N° Hadad. ÚNICO GLOBAL. Lo genera PostgreSQL (IDENTITY),
+  numero     → N° de cobranza. ÚNICO GLOBAL. Lo genera PostgreSQL (IDENTITY),
                NUNCA se inserta a mano ni cambia.
-  id_clinica → ID del sistema HIS de la clínica. ÚNICO POR CLIENTE.
+  id_externo → ID de la cobranza en el sistema del cliente. ÚNICO POR CLIENTE.
 
 Un mismo deudor puede tener N cobranzas (deudas distintas).
 """
@@ -45,16 +45,16 @@ class Cobranza(Base):
     paciente_id = Column(UUID(as_uuid=True), ForeignKey("pacientes.id"))
 
     # --- Identificadores externos ---
-    id_clinica = Column(String(50))
+    id_externo = Column(String(50))
     numero_liquidacion = Column(String(50))
 
     # --- Montos (NUMERIC, nunca FLOAT para dinero) ---
     monto_original = Column(Numeric(15, 2), nullable=False)
     monto_actual = Column(Numeric(15, 2), nullable=False)
-    capital_hadad = Column(Numeric(15, 2))
-    intereses_hadad = Column(Numeric(15, 2), server_default=text("0"))
-    honorarios_hadad = Column(Numeric(15, 2), server_default=text("0"))
-    gastos_hadad = Column(Numeric(15, 2), server_default=text("0"))
+    capital = Column(Numeric(15, 2))
+    intereses = Column(Numeric(15, 2), server_default=text("0"))
+    honorarios = Column(Numeric(15, 2), server_default=text("0"))
+    gastos = Column(Numeric(15, 2), server_default=text("0"))
 
     # --- Fechas de la atención médica ---
     fecha_atencion = Column(Date)
@@ -62,7 +62,7 @@ class Cobranza(Base):
     prevision = Column(String(80))
 
     # --- Fechas operacionales ---
-    fecha_ingreso_hadad = Column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    fecha_ingreso = Column(Date, nullable=False, server_default=text("CURRENT_DATE"))
     fecha_traspaso = Column(Date)
 
     # --- Documento que identifica la deuda (pagaré, factura, letra...) ---
@@ -86,9 +86,9 @@ class Cobranza(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
     updated_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
 
-    # Restricción clave: id_clinica único por cliente.
+    # Restricción clave: id_externo único por cliente.
     __table_args__ = (
-        UniqueConstraint("cliente_id", "id_clinica", name="uq_cobranza_clinica"),
+        UniqueConstraint("cliente_id", "id_externo", name="uq_cobranza_id_externo"),
     )
 
     # Relaciones para navegar y armar la ficha de detalle.
