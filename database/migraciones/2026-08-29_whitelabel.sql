@@ -25,40 +25,77 @@ DROP VIEW IF EXISTS vista_rendicion;
 DROP VIEW IF EXISTS vista_acuerdos_estado;
 
 -- ------------------------------------------------------------
--- 2) COBRANZAS
+-- 2) Renombre de columnas
+--
+-- Va dentro de un DO para que sea idempotente: cada rename se
+-- aplica solo si la columna vieja todavía existe. Así la
+-- migración se puede volver a correr sin reventar, y tampoco
+-- falla si alguien ya renombró una parte a mano.
 -- ------------------------------------------------------------
-ALTER TABLE cobranzas RENAME COLUMN id_clinica          TO id_externo;
-ALTER TABLE cobranzas RENAME COLUMN capital_hadad       TO capital;
-ALTER TABLE cobranzas RENAME COLUMN intereses_hadad     TO intereses;
-ALTER TABLE cobranzas RENAME COLUMN honorarios_hadad    TO honorarios;
-ALTER TABLE cobranzas RENAME COLUMN gastos_hadad        TO gastos;
-ALTER TABLE cobranzas RENAME COLUMN fecha_ingreso_hadad TO fecha_ingreso;
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT * FROM (VALUES
+            ('cobranzas',     'id_clinica',          'id_externo'),
+            ('cobranzas',     'capital_hadad',       'capital'),
+            ('cobranzas',     'intereses_hadad',     'intereses'),
+            ('cobranzas',     'honorarios_hadad',    'honorarios'),
+            ('cobranzas',     'gastos_hadad',        'gastos'),
+            ('cobranzas',     'fecha_ingreso_hadad', 'fecha_ingreso'),
+            ('pagos',         'capital_clinica',     'capital'),
+            ('pagos',         'honorarios_hadad',    'honorarios'),
+            ('pagos',         'interes_clinica',     'intereses'),
+            ('acuerdos_pago', 'capital_clinica',     'capital'),
+            ('acuerdos_pago', 'honorarios_hadad',    'honorarios'),
+            ('acuerdos_pago', 'interes_clinica',     'intereses'),
+            ('acuerdos_pago', 'firma_clinica',       'firma_cliente')
+        ) AS t(tabla, viejo, nuevo)
+    LOOP
+        IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = r.tabla
+              AND column_name = r.viejo
+        ) THEN
+            EXECUTE format('ALTER TABLE %I RENAME COLUMN %I TO %I',
+                           r.tabla, r.viejo, r.nuevo);
+            RAISE NOTICE 'renombrada %.% -> %', r.tabla, r.viejo, r.nuevo;
+        END IF;
+    END LOOP;
+END $$;
 
-ALTER TABLE cobranzas RENAME CONSTRAINT uq_cobranza_clinica TO uq_cobranza_id_externo;
-ALTER INDEX idx_cobranzas_id_clinica RENAME TO idx_cobranzas_id_externo;
+-- ------------------------------------------------------------
+-- 3) Nombres de la restricción única y del índice
+--
+-- Son cosméticos (funcionan igual con el nombre viejo), así que
+-- también van condicionados: si tu base los nombró distinto, la
+-- migración sigue de largo en vez de abortar.
+-- ------------------------------------------------------------
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_cobranza_clinica') THEN
+        ALTER TABLE cobranzas
+            RENAME CONSTRAINT uq_cobranza_clinica TO uq_cobranza_id_externo;
+    END IF;
+
+    -- El CHECK de la firma lo nombró PostgreSQL solo a partir del
+    -- nombre de la columna vieja; sigue validando bien tras el rename.
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'acuerdos_pago_firma_clinica_check') THEN
+        ALTER TABLE acuerdos_pago
+            RENAME CONSTRAINT acuerdos_pago_firma_clinica_check
+                           TO acuerdos_pago_firma_cliente_check;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'idx_cobranzas_id_clinica') THEN
+        ALTER INDEX idx_cobranzas_id_clinica RENAME TO idx_cobranzas_id_externo;
+    END IF;
+END $$;
 
 -- ------------------------------------------------------------
--- 3) PAGOS
--- ------------------------------------------------------------
-ALTER TABLE pagos RENAME COLUMN capital_clinica  TO capital;
-ALTER TABLE pagos RENAME COLUMN honorarios_hadad TO honorarios;
-ALTER TABLE pagos RENAME COLUMN interes_clinica  TO intereses;
+-- 4) EMPRESA (nueva tabla, fila única)
 
--- ------------------------------------------------------------
--- 4) ACUERDOS DE PAGO
--- ------------------------------------------------------------
-ALTER TABLE acuerdos_pago RENAME COLUMN capital_clinica  TO capital;
-ALTER TABLE acuerdos_pago RENAME COLUMN honorarios_hadad TO honorarios;
-ALTER TABLE acuerdos_pago RENAME COLUMN interes_clinica  TO intereses;
-ALTER TABLE acuerdos_pago RENAME COLUMN firma_clinica    TO firma_cliente;
-
--- El CHECK viejo sigue apuntando bien a la columna renombrada,
--- solo se le cambia el nombre para que no diga 'clinica'.
-ALTER TABLE acuerdos_pago
-    RENAME CONSTRAINT acuerdos_pago_firma_clinica_check TO acuerdos_pago_firma_cliente_check;
-
--- ------------------------------------------------------------
--- 5) EMPRESA (nueva tabla, fila única)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS empresa (
     id                 SMALLINT     PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -94,7 +131,7 @@ INSERT INTO empresa (
 ON CONFLICT (id) DO NOTHING;
 
 -- ------------------------------------------------------------
--- 6) Vistas, con los nombres de salida nuevos
+-- 5) Vistas, con los nombres de salida nuevos
 -- ------------------------------------------------------------
 CREATE VIEW vista_recupero AS
 SELECT
