@@ -1,50 +1,43 @@
 """
-Configuración de la conexión a PostgreSQL usando SQLAlchemy.
-Maneja sesiones, conexiones y la base declarativa para modelos.
+Conexión a PostgreSQL con SQLAlchemy: engine, sesiones y base declarativa.
+
+El aislamiento entre organizaciones (tenants) vive en app/tenancy.py y se
+engancha a estas sesiones con eventos: cada sesión sabe a qué organización
+pertenece la petición y todo lo que consulta o inserta queda limitado a ella.
 """
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy.orm import sessionmaker, declarative_base
+
 from app.config import settings
 
 
-# El "engine" es el objeto que mantiene el pool de conexiones a la DB.
-# Lo creamos una sola vez al iniciar la app.
 engine = create_engine(
     settings.database_url,
-    # pool_pre_ping verifica que la conexión esté viva antes de usarla.
-    # Evita errores cuando la DB se reinicia o pasa mucho tiempo sin uso.
+    # pool_pre_ping verifica que la conexión esté viva antes de usarla
+    # (evita errores cuando la DB se reinicia o el pooler corta conexiones).
     pool_pre_ping=True,
-    # echo=True imprime cada query SQL en la consola (útil para aprender)
-    echo=settings.debug
+    pool_size=settings.pool_size,
+    max_overflow=settings.pool_max_overflow,
+    # Recicla conexiones antes de que un pooler externo (Supabase, Neon) las
+    # cierre por inactividad.
+    pool_recycle=300,
+    echo=settings.sql_echo,
 )
 
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# SessionLocal es la "fábrica" de sesiones.
-# Cada petición HTTP creará su propia sesión y la cerrará al terminar.
-SessionLocal = sessionmaker(
-    autocommit=False,   # Los cambios no se guardan hasta hacer session.commit()
-    autoflush=False,
-    bind=engine
-)
-
-
-# Base es la clase padre de la que heredarán todos los modelos (tablas).
-# Cuando definamos un modelo en models/cliente.py, heredará de Base.
 Base = declarative_base()
 
 
 def get_db():
     """
-    Dependencia de FastAPI: provee una sesión de base de datos por petición.
-    
-    Uso en un endpoint:
-        @app.get("/clientes")
-        def listar_clientes(db: Session = Depends(get_db)):
-            return db.query(Cliente).all()
-    
-    Yield + try/finally asegura que la sesión SIEMPRE se cierra,
-    incluso si la query falla. Esto evita fugas de conexiones.
+    Dependencia de FastAPI: una sesión de base de datos por petición.
+
+    La sesión nace SIN organización: hasta que la autenticación
+    (app/security.py) fije una, las consultas a tablas de negocio no
+    devuelven nada (falla cerrado). Los endpoints públicos que necesiten
+    leer sin organización (login) lo declaran con tenancy.modo_sistema().
     """
     db = SessionLocal()
     try:

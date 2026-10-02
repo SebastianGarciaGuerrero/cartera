@@ -25,6 +25,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
+from app.campos import ErrorCampo, validar_datos_extra
 from app.database import get_db
 from app.security import usuario_autorizado
 from app.models.deudor import Deudor, ContactoDeudor
@@ -52,8 +53,8 @@ router = APIRouter(
 
 @router.get("/", response_model=List[DeudorResponse])
 def listar_deudores(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
     """
@@ -68,8 +69,8 @@ def listar_deudores(
 
 @router.get("/buscar", response_model=List[DeudorResponse])
 def buscar_deudores(
-    q: str = Query(..., min_length=1, description="RUT o parte del nombre"),
-    limit: int = 50,
+    q: str = Query(..., min_length=1, max_length=100, description="RUT o parte del nombre"),
+    limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
     """
@@ -79,9 +80,10 @@ def buscar_deudores(
     - **q**: texto a buscar. Ej: "garcia" o "12345678".
     """
     patron = f"%{q}%"
+    patron_rut = f"%{q.replace('.', '')}%"  # "12.345" encuentra "12345678-5"
     deudores = (
         db.query(Deudor)
-        .filter(or_(Deudor.rut.ilike(patron), Deudor.nombre.ilike(patron)))
+        .filter(or_(Deudor.rut.ilike(patron_rut), Deudor.nombre.ilike(patron)))
         .limit(limit)
         .all()
     )
@@ -94,7 +96,7 @@ def obtener_deudor(deudor_id: UUID, db: Session = Depends(get_db)):
     Obtiene la ficha completa de un deudor por su UUID,
     incluyendo su lista de contactos.
     """
-    deudor = db.query(Deudor).filter(Deudor.id == deudor_id).first()
+    deudor = db.get(Deudor, deudor_id)
 
     if not deudor:
         raise HTTPException(
@@ -115,6 +117,10 @@ def crear_deudor(deudor_data: DeudorCreate, db: Session = Depends(get_db)):
     # Separamos los contactos del resto de los datos del deudor.
     datos = deudor_data.model_dump()
     contactos = datos.pop("contactos", [])
+    try:
+        datos["datos_extra"] = validar_datos_extra(db, "deudor", datos.get("datos_extra"))
+    except ErrorCampo as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     nuevo_deudor = Deudor(**datos)
     nuevo_deudor.contactos = [ContactoDeudor(**c) for c in contactos]
@@ -140,7 +146,7 @@ def actualizar_deudor(
     db: Session = Depends(get_db)
 ):
     """Actualiza los datos de un deudor existente."""
-    deudor = db.query(Deudor).filter(Deudor.id == deudor_id).first()
+    deudor = db.get(Deudor, deudor_id)
 
     if not deudor:
         raise HTTPException(
@@ -150,6 +156,13 @@ def actualizar_deudor(
 
     # exclude_unset=True hace que solo actualice los campos que el usuario envió
     datos_actualizados = deudor_data.model_dump(exclude_unset=True)
+    if "datos_extra" in datos_actualizados:
+        try:
+            datos_actualizados["datos_extra"] = validar_datos_extra(
+                db, "deudor", datos_actualizados["datos_extra"], actuales=deudor.datos_extra
+            )
+        except ErrorCampo as e:
+            raise HTTPException(status_code=422, detail=str(e))
 
     for campo, valor in datos_actualizados.items():
         setattr(deudor, campo, valor)
@@ -174,7 +187,7 @@ def agregar_contacto(
     db: Session = Depends(get_db)
 ):
     """Agrega un contacto (teléfono, email, etc.) a un deudor existente."""
-    deudor = db.query(Deudor).filter(Deudor.id == deudor_id).first()
+    deudor = db.get(Deudor, deudor_id)
 
     if not deudor:
         raise HTTPException(

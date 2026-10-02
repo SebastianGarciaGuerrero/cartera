@@ -31,7 +31,7 @@ from app.security import get_current_user, usuario_autorizado
 from app.models.pago import Pago
 from app.models.cobranza import Cobranza
 from app.models.acuerdo import Cuota, AcuerdoPago
-from app.models.gestion import Gestion, TipoGestion
+from app.models.gestion import Gestion, tipo_de_sistema
 from app.models.usuario import Usuario
 from app.schemas.pago import PagoCreate, PagoResponse
 
@@ -41,9 +41,9 @@ def _clp(valor) -> str:
     return "$" + f"{int(valor):,}".replace(",", ".")
 
 
-def _gestion_automatica(db: Session, cobranza_id, usuario_id, nombre_tipo: str, descripcion: str):
-    """Registra una gestión automática (ej. Abono, Pagado) en el historial."""
-    tipo = db.query(TipoGestion).filter(TipoGestion.nombre == nombre_tipo).first()
+def _gestion_automatica(db: Session, cobranza_id, usuario_id, codigo_tipo: str, descripcion: str):
+    """Registra una gestión automática (ej. abono, pagado) en el historial."""
+    tipo = tipo_de_sistema(db, codigo_tipo)
     db.add(Gestion(
         cobranza_id=cobranza_id,
         usuario_id=usuario_id,
@@ -186,13 +186,13 @@ def registrar_pago(
     )
     detalle = f" Desglose: {' · '.join(desglose)}." if desglose else ""
     _gestion_automatica(
-        db, cobranza.id, usuario.id, "Abono",
+        db, cobranza.id, usuario.id, "abono",
         f"{encabezado}.{detalle} "
         f"Saldo capital restante: {_clp(cobranza.monto_actual)}."
     )
     if cobranza.estado == "pagada":
         _gestion_automatica(
-            db, cobranza.id, usuario.id, "Pagado",
+            db, cobranza.id, usuario.id, "pagado",
             "CUENTA SALDADA. La cobranza queda en estado pagada."
         )
 

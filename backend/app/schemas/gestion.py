@@ -15,7 +15,10 @@ class TipoGestionResponse(BaseModel):
     """Un tipo del catálogo (para poblar selects y mostrar el nombre)."""
     id: int
     nombre: str
+    codigo: Optional[str] = None     # solo los tipos de sistema
+    categoria: str = "otro"          # contacto / pago / negativo / judicial / otro
     activo: bool
+    propio: bool = False             # creado por la organización (editable)
 
     model_config = ConfigDict(from_attributes=True)
 

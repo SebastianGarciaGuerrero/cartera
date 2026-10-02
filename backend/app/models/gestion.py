@@ -15,26 +15,38 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.tenancy import TenantMixin, TenantGlobalMixin
 
 
-class TipoGestion(Base):
+class TipoGestion(TenantGlobalMixin, Base):
     """
     Catálogo de tipos para clasificar y filtrar gestiones.
     Ej: 'Llamada telefónica', 'Email enviado', 'Acuerdo de pago'.
-    Usa id SERIAL (entero), no UUID, por ser catálogo chico.
+
+    Mixto: los tipos de SISTEMA (organizacion_id NULL) los ven todas las
+    organizaciones y tienen un `codigo` estable que usa el código (ej. las
+    gestiones automáticas de abono buscan codigo='abono', no el nombre).
+    Cada organización puede crear tipos propios (sin código).
     """
 
     __tablename__ = "tipos_gestion"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    nombre = Column(String(100), nullable=False, unique=True)
+    nombre = Column(String(100), nullable=False)
+    codigo = Column(String(40))
+    # contacto / pago / negativo / judicial / otro (colores de la agenda)
+    categoria = Column(String(20), nullable=False, server_default=text("'otro'"))
     activo = Column(Boolean, server_default=text("true"))
+
+    @property
+    def propio(self) -> bool:
+        return self.organizacion_id is not None
 
     def __repr__(self):
         return f"<TipoGestion(id={self.id}, nombre='{self.nombre}')>"
 
 
-class Gestion(Base):
+class Gestion(TenantMixin, Base):
     """
     Cada acción realizada con el deudor sobre una cobranza concreta.
     INMUTABLE por diseño: sin updated_at.
@@ -53,8 +65,7 @@ class Gestion(Base):
         ForeignKey("cobranzas.id", ondelete="RESTRICT"),
         nullable=False
     )
-    # usuario_id es obligatorio. Mientras no exista auth JWT, el cliente lo
-    # envía explícitamente; luego saldrá del token del usuario autenticado.
+    # Quién la registró: sale del token, nunca del payload.
     usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)
 
     fecha_gestion = Column(TIMESTAMP(timezone=True), nullable=False, server_default=text("NOW()"))
@@ -80,3 +91,12 @@ class Gestion(Base):
 
     def __repr__(self):
         return f"<Gestion(cobranza_id={self.cobranza_id}, fecha={self.fecha_gestion})>"
+
+
+def tipo_de_sistema(db, codigo: str):
+    """Tipo de gestión de sistema por su código estable (ej. 'abono')."""
+    return (
+        db.query(TipoGestion)
+        .filter(TipoGestion.codigo == codigo, TipoGestion.organizacion_id.is_(None))
+        .first()
+    )

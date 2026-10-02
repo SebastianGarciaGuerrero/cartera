@@ -13,7 +13,7 @@
 -- nombres nuevos.
 -- ============================================================
 
-BEGIN;
+-- (la transacción la abre Alembic)
 
 -- ------------------------------------------------------------
 -- 1) Las vistas se recrean al final. Hay que soltarlas primero
@@ -226,7 +226,7 @@ GROUP BY
     ap.dia_pago, ap.fecha_acuerdo, ap.fecha_termino,
     ap.firma_cliente, ap.estado;
 
-COMMIT;
+-- (el COMMIT lo hace Alembic)
 
 -- Comprobación rápida después de correrla:
 --   \d cobranzas

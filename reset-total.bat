@@ -6,7 +6,7 @@ echo   ATENCION: RESET TOTAL
 echo ========================================
 echo.
 echo Esto BORRARA TODOS LOS DATOS de Cartera
-echo y volvera a ejecutar el DDL desde cero.
+echo y volvera a crear el esquema desde cero.
 echo.
 echo Usar solo si quieres empezar limpio.
 echo.
@@ -33,5 +33,18 @@ echo Esperando 15 segundos a que se inicialice...
 timeout /t 15 /nobreak >nul
 
 echo.
+echo Aplicando migraciones de la base de datos...
+pushd backend
+.venv\Scripts\alembic.exe upgrade head
+if errorlevel 1 (
+    echo [ERROR] Fallaron las migraciones. Revisa backend\.env ^(DATABASE_URL^).
+    popd
+    pause
+    exit /b 1
+)
+popd
+
+echo.
 echo [OK] Reset completado. Base de datos limpia y recreada.
+echo Crea tu organizacion con: python -m app.cli crear-organizacion ...
 pause

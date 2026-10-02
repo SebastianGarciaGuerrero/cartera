@@ -2,7 +2,7 @@
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 
-# Base de datos (PostgreSQL + ORM)
+# Base de datos (PostgreSQL + ORM + migraciones)
 sqlalchemy==2.0.35
 psycopg2-binary==2.9.10
 alembic==1.13.3
@@ -12,9 +12,13 @@ pydantic[email]==2.9.2
 pydantic-settings==2.5.2
 python-dotenv==1.0.1
 
-# Seguridad (autenticación JWT y contraseñas)
-python-jose[cryptography]==3.3.0
+# Seguridad: JWT, contraseñas Argon2id (+ bcrypt para hashes heredados),
+# 2FA TOTP con QR, cifrado de secretos
+PyJWT[crypto]==2.10.1
+argon2-cffi==23.1.0
 bcrypt==5.0.0
+pyotp==2.9.0
+segno==1.6.6
 python-multipart==0.0.12
 
 # Excel (imports/exports)

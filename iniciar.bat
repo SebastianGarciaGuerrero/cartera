@@ -50,6 +50,18 @@ echo Esperando 15 segundos a que PostgreSQL se inicialice...
 timeout /t 15 /nobreak >nul
 
 echo.
+echo Aplicando migraciones de la base de datos...
+pushd backend
+.venv\Scripts\alembic.exe upgrade head
+if errorlevel 1 (
+    echo [ERROR] Fallaron las migraciones. Revisa backend\.env ^(DATABASE_URL^).
+    popd
+    pause
+    exit /b 1
+)
+popd
+
+echo.
 echo ========================================
 echo   Estado del container
 echo ========================================

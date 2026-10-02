@@ -17,9 +17,10 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.tenancy import TenantMixin
 
 
-class AcuerdoPago(Base):
+class AcuerdoPago(TenantMixin, Base):
     __tablename__ = "acuerdos_pago"
 
     id = Column(
@@ -73,7 +74,7 @@ class AcuerdoPago(Base):
         return f"<AcuerdoPago(cobranza_id={self.cobranza_id}, estado='{self.estado}')>"
 
 
-class Cuota(Base):
+class Cuota(TenantMixin, Base):
     __tablename__ = "cuotas"
 
     id = Column(

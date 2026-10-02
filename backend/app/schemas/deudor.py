@@ -8,6 +8,8 @@ from datetime import date, datetime
 from typing import Optional, Literal, List
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.rut import Rut
+
 
 # ============================================================
 # Contactos del deudor (teléfonos, emails, WhatsApp, etc.)
@@ -61,7 +63,9 @@ class DeudorBase(BaseModel):
     contacto_alt_relacion: Optional[str] = Field(None, max_length=80)
     contacto_alt_telefono: Optional[str] = Field(None, max_length=50)
 
-    en_dicom: bool = False
+    en_boletin_comercial: bool = False  # DICOM u otro boletín comercial
+    # Campos personalizados de la organización (clave → valor).
+    datos_extra: dict = Field(default_factory=dict)
     observaciones: Optional[str] = None
 
 
@@ -72,6 +76,7 @@ class DeudorCreate(DeudorBase):
     Opcionalmente puede traer una lista de contactos que se crean
     en la misma transacción que el deudor.
     """
+    rut: Rut = Field(..., examples=["12.345.678-5"])  # se valida y normaliza
     contactos: List[ContactoCreate] = Field(default_factory=list)
 
 
@@ -102,7 +107,8 @@ class DeudorUpdate(BaseModel):
     contacto_alt_relacion: Optional[str] = None
     contacto_alt_telefono: Optional[str] = None
 
-    en_dicom: Optional[bool] = None
+    en_boletin_comercial: Optional[bool] = None
+    datos_extra: Optional[dict] = None
     observaciones: Optional[str] = None
     # NOTA: el RUT no se puede cambiar. Es identificador.
 

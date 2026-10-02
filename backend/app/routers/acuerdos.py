@@ -28,7 +28,7 @@ from app.database import get_db
 from app.security import get_current_user, usuario_autorizado
 from app.models.acuerdo import AcuerdoPago, Cuota
 from app.models.cobranza import Cobranza
-from app.models.gestion import Gestion, TipoGestion
+from app.models.gestion import Gestion, tipo_de_sistema
 from app.models.usuario import Usuario
 from app.schemas.acuerdo import (
     AcuerdoCreate,
@@ -190,9 +190,7 @@ def crear_acuerdo(
         f". Primera cuota vence el {nuevo_acuerdo.fecha_primera_cuota.strftime('%d-%m-%Y')}"
         f", última el {nuevo_acuerdo.fecha_termino.strftime('%d-%m-%Y')}."
     )
-    tipo_acuerdo = db.query(TipoGestion).filter(
-        TipoGestion.nombre == "Acuerdo de pago"
-    ).first()
+    tipo_acuerdo = tipo_de_sistema(db, "acuerdo")
     db.add(Gestion(
         cobranza_id=cobranza.id,
         usuario_id=usuario.id,

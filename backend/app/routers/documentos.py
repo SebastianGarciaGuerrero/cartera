@@ -25,18 +25,19 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
 from app.database import get_db
-from app.security import get_current_user
+from app.security import usuario_autorizado
 from app.models.cobranza import Cobranza
 from app.models.gestion import Gestion, TipoGestion
 from app.models.acuerdo import AcuerdoPago
 from app.models.pago import Pago
 from app.models.empresa import Empresa
+from app.rut import rut_con_puntos
 
 
 router = APIRouter(
     prefix="/api/documentos",
     tags=["Documentos Word"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(usuario_autorizado)],
 )
 
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -135,14 +136,14 @@ def _pie_firma(doc: Document, emp: Empresa):
 
 def _empresa(db: Session) -> Empresa:
     """
-    Datos de la empresa que emite el documento (fila única id=1).
-    Si la fila no existe, mejor un error explícito que un documento con el
+    Datos de la organización que emite el documento.
+    Si no están cargados, mejor un error explícito que un documento con el
     membrete en blanco.
     """
-    emp = db.query(Empresa).filter(Empresa.id == 1).first()
+    emp = db.query(Empresa).first()
     if emp is None:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Faltan los datos de la empresa. Cárgalos en "
                    "Configuración → Mi empresa antes de emitir documentos.",
         )
@@ -256,17 +257,11 @@ def informe_gestiones(cobranza_id: UUID, db: Session = Depends(get_db)):
 # ------------------------------------------------------------
 
 ABREV_DOCUMENTO = {
-    "pagare": "PA", "factura": "FA", "letra": "LE", "cheque": "CH", "otro": "OT",
+    "pagare": "PA", "factura": "FA", "letra": "LE", "cheque": "CH",
+    "contrato": "CO", "boleta": "BO", "credito": "CR", "otro": "OT",
 }
 
-def _rut_con_puntos(rut) -> str:
-    """'5743070-2' → '5.743.070-2' (formato de la carta)."""
-    if not rut:
-        return "—"
-    cuerpo, _, dv = str(rut).partition("-")
-    cuerpo = cuerpo.replace(".", "")
-    con_puntos = f"{int(cuerpo):,}".replace(",", ".") if cuerpo.isdigit() else cuerpo
-    return f"{con_puntos}-{dv}" if dv else con_puntos
+_rut_con_puntos = rut_con_puntos
 
 
 def _miles(valor) -> str:
@@ -297,7 +292,6 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     formato de carta formal que se le envía al deudor.
     """
     from docx.shared import Cm as _Cm
-    from app.models.paciente import Paciente
 
     emp = _empresa(db)
     cob = _cargar_cobranza(db, cobranza_id)
@@ -305,9 +299,6 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
 
     deudor = cob.deudor
     cliente = cob.cliente
-    paciente = None
-    if cob.paciente_id:
-        paciente = db.query(Paciente).filter(Paciente.id == cob.paciente_id).first()
 
     # Celular del deudor (primer contacto activo tipo celular/teléfono).
     celular = ""
@@ -342,8 +333,9 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     nombre_deudor = (deudor.nombre.upper() if deudor else "—") + id_texto
     _linea(doc, f"         {nombre_deudor:<52}N° COB.: {cob.numero}")
     _linea(doc, f"         R.U.T.: {_rut_con_puntos(deudor.rut if deudor else '')}")
-    if paciente is not None:
-        _linea(doc, f"         PACIENTE {paciente.nombre.upper()}")
+    for vinculo in cob.terceros:
+        rol = vinculo.rol.replace("_", " ").upper()
+        _linea(doc, f"         {rol} {vinculo.nombre.upper()}")
     if celular:
         _linea(doc, f"{'':>59}N° CEL.: {celular}")
     if deudor is not None and deudor.direccion:
@@ -368,10 +360,10 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
 
     # Detalle del documento (columnas monoespaciadas como la carta).
     _linea(doc, f"         {'FECHA VCTO':<19}{'TIP.DOC':<17}{'NRO.DOC':<17}{'MONTO':<15}C.P.")
-    fecha_vcto = (cob.fecha_vencimiento_pagare.strftime("%d-%m-%Y")
-                  if cob.fecha_vencimiento_pagare else "—")
+    fecha_vcto = (cob.fecha_vencimiento_documento.strftime("%d-%m-%Y")
+                  if cob.fecha_vencimiento_documento else "—")
     tip = ABREV_DOCUMENTO.get(cob.tipo_documento or "pagare", "OT")
-    nro = cob.numero_pagare or (cob.id_externo or "—")
+    nro = cob.numero_documento or (cob.id_externo or "—")
     _linea(doc, f"         {fecha_vcto:<19}{tip:<17}{nro:<17}{_miles(nominal):<15}0")
     _linea(doc, "")
 

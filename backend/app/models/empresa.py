@@ -1,21 +1,24 @@
 """
-Modelo SQLAlchemy para 'empresa': los datos de la empresa que USA el sistema.
+Modelo SQLAlchemy para 'empresa': los datos institucionales de cada
+organización (membrete de los Word, firma, dirección, fonos, formas de pago).
 
-Tabla de una sola fila (id = 1). Es la pieza que hace al sistema white-label:
-el membrete, la firma y el pie de página de los documentos Word salen de acá,
-igual que el nombre que se muestra en la barra lateral. Cada instalación edita
-esta fila desde Configuración → Mi empresa, sin tocar código.
+Una fila por organización (organizacion_id es la clave primaria). Cada
+estudio la edita desde Configuración → Mi empresa, sin tocar código.
 """
 
-from sqlalchemy import Column, SmallInteger, String, Text, TIMESTAMP, text
+from sqlalchemy import Column, String, Text, TIMESTAMP, ForeignKey, text
+from sqlalchemy.dialects.postgresql import UUID
+
 from app.database import Base
+from app.tenancy import TenantMixin
 
 
-class Empresa(Base):
+class Empresa(TenantMixin, Base):
     __tablename__ = "empresa"
 
-    # Siempre 1: la tabla tiene un CHECK (id = 1) que garantiza la fila única.
-    id = Column(SmallInteger, primary_key=True, server_default=text("1"))
+    organizacion_id = Column(
+        UUID(as_uuid=True), ForeignKey("organizaciones.id"), primary_key=True
+    )
 
     # Identidad legal
     razon_social = Column(String(200), nullable=False)

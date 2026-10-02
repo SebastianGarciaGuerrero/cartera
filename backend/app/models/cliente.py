@@ -8,9 +8,10 @@ from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.tenancy import TenantMixin
 
 
-class Cliente(Base):
+class Cliente(TenantMixin, Base):
     """
     Mapea la tabla 'clientes' de PostgreSQL a una clase Python.
     Cada instancia de Cliente representa una fila de la tabla.
@@ -27,7 +28,7 @@ class Cliente(Base):
         server_default=text("gen_random_uuid()")
     )
     
-    rut = Column(String(12), nullable=False, unique=True)
+    rut = Column(String(12), nullable=False)  # único por organización
     razon_social = Column(String(200), nullable=False)
     nombre_fantasia = Column(String(200))
     direccion = Column(Text)

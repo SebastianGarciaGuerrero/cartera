@@ -8,9 +8,10 @@ from sqlalchemy import Column, Integer, String, Boolean, TIMESTAMP, ForeignKey, 
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.tenancy import TenantMixin
 
 
-class Filial(Base):
+class Filial(TenantMixin, Base):
     __tablename__ = "filiales"
     
     # ID entero autoincremental (más liviano que UUID para tablas chicas)

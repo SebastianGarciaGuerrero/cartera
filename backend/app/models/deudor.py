@@ -1,17 +1,18 @@
 """
 Modelo SQLAlchemy para la tabla 'deudores'.
 Representa a la persona o empresa que firmó el pagaré: a quien se le cobra.
-El paciente (quien recibió la atención) puede ser otra persona, ver tabla 'pacientes'.
+Otras personas ligadas a la deuda (aval, codeudor, paciente...) están en 'terceros'.
 Los teléfonos/emails/WhatsApp del deudor viven en 'contactos_deudor', no aquí.
 """
 
 from sqlalchemy import Column, String, Boolean, Text, Date, TIMESTAMP, ForeignKey, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.tenancy import TenantMixin
 
 
-class Deudor(Base):
+class Deudor(TenantMixin, Base):
     """
     Mapea la tabla 'deudores' de PostgreSQL a una clase Python.
     El RUT es la llave maestra: agrupa todas las cobranzas de una misma persona.
@@ -26,7 +27,7 @@ class Deudor(Base):
     )
 
     # Identificación
-    rut = Column(String(12), nullable=False, unique=True)
+    rut = Column(String(12), nullable=False)  # único por organización
     tipo = Column(String(10), nullable=False, server_default=text("'natural'"))
     nombre = Column(String(200), nullable=False)
     fecha_nacimiento = Column(Date)
@@ -52,7 +53,9 @@ class Deudor(Base):
     contacto_alt_telefono = Column(String(50))
 
     # Estado
-    en_dicom = Column(Boolean, server_default=text("false"))
+    en_boletin_comercial = Column(Boolean, server_default=text("false"))  # DICOM u otro boletín
+    # Valores de los campos personalizados que defina la organización.
+    datos_extra = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     observaciones = Column(Text)
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
@@ -72,7 +75,7 @@ class Deudor(Base):
         return f"<Deudor(rut={self.rut}, nombre='{self.nombre}')>"
 
 
-class ContactoDeudor(Base):
+class ContactoDeudor(TenantMixin, Base):
     """
     Mapea la tabla 'contactos_deudor': teléfonos, celulares, emails y
     WhatsApp de un deudor. Un deudor puede tener N contactos (sin límite).

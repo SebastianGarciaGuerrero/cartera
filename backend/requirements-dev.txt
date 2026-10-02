@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Tests contra PostgreSQL real
+pytest==8.3.4
+httpx==0.28.1
+# Postgres portátil para correr los tests sin Docker (si no hay TEST_DATABASE_URL)
+pgserver==0.1.4

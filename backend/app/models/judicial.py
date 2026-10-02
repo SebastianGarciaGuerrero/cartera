@@ -13,9 +13,10 @@ from sqlalchemy import Column, String, Text, Date, TIMESTAMP, ForeignKey, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.tenancy import TenantMixin
 
 
-class GestionJudicial(Base):
+class GestionJudicial(TenantMixin, Base):
     __tablename__ = "gestiones_judiciales"
 
     id = Column(

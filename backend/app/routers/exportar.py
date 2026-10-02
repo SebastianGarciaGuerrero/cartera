@@ -26,7 +26,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 from app.database import get_db
-from app.security import get_current_user
+from app.security import get_current_user, usuario_autorizado
 from app.models.gestion import Gestion, TipoGestion
 from app.models.cobranza import Cobranza
 from app.models.deudor import Deudor
@@ -35,11 +35,11 @@ from app.models.filial import Filial
 from app.models.usuario import Usuario
 
 
-# dependencies=[...] exige token válido en TODOS los endpoints del router.
+# dependencies=[...] exige usuario interno del estudio en TODOS los endpoints.
 router = APIRouter(
     prefix="/api/exportar",
     tags=["Exportar"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(usuario_autorizado)],
 )
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -92,7 +92,7 @@ def _responder_xlsx(wb: Workbook, nombre_archivo: str) -> StreamingResponse:
 
 def _validar_cliente(db: Session, cliente_id: UUID) -> Cliente:
     """Devuelve el cliente o lanza 404."""
-    cliente = db.query(Cliente).filter(Cliente.id == cliente_id).first()
+    cliente = db.get(Cliente, cliente_id)
     if not cliente:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -133,7 +133,7 @@ def exportar_gestiones(
         query = query.filter(Cobranza.cliente_id == cliente_id)
         nombre_filtro = (cliente.nombre_fantasia or cliente.razon_social)
     if filial_id is not None:
-        filial = db.query(Filial).filter(Filial.id == filial_id).first()
+        filial = db.get(Filial, filial_id)
         if not filial:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -176,6 +176,7 @@ def exportar_recupero(
     mes: Optional[int] = Query(None, ge=1, le=12, description="Mes 1-12 (default: actual)"),
     cliente_id: Optional[UUID] = Query(None, description="Filtrar por cliente"),
     db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """
     Descarga el RECUPERO del mes: el detalle de cada pago recibido, con su
@@ -186,18 +187,18 @@ def exportar_recupero(
     anio = anio or ahora.year
     mes = mes or ahora.month
 
+    # Filtro explícito por organización además de la RLS (doble capa).
     sql = """
         SELECT * FROM vista_recupero
-        WHERE mes = make_date(:anio, :mes, 1)
+        WHERE organizacion_id = :org AND mes = make_date(:anio, :mes, 1)
     """
-    params = {"anio": anio, "mes": mes}
+    params = {"anio": anio, "mes": mes, "org": usuario.organizacion_id}
 
     nombre_filtro = "todos"
     if cliente_id is not None:
         cliente = _validar_cliente(db, cliente_id)
-        # La vista expone la razón social, no el id.
-        sql += " AND cliente = :cliente"
-        params["cliente"] = cliente.razon_social
+        sql += " AND cliente_id = :cliente_id"
+        params["cliente_id"] = cliente.id
         nombre_filtro = cliente.nombre_fantasia or cliente.razon_social
 
     sql += " ORDER BY fecha_pago, numero_cobranza"
@@ -251,6 +252,7 @@ def exportar_rendicion(
     mes: Optional[int] = Query(None, ge=1, le=12, description="Mes 1-12 (default: actual)"),
     cliente_id: Optional[UUID] = Query(None, description="Filtrar por cliente"),
     db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """
     Descarga el CUADRO DE RENDICIÓN del mes: resumen por cliente/filial de
@@ -264,15 +266,15 @@ def exportar_rendicion(
 
     sql = """
         SELECT * FROM vista_rendicion
-        WHERE mes = make_date(:anio, :mes, 1)
+        WHERE organizacion_id = :org AND mes = make_date(:anio, :mes, 1)
     """
-    params = {"anio": anio, "mes": mes}
+    params = {"anio": anio, "mes": mes, "org": usuario.organizacion_id}
 
     nombre_filtro = "todos"
     if cliente_id is not None:
         cliente = _validar_cliente(db, cliente_id)
-        sql += " AND cliente = :cliente"
-        params["cliente"] = cliente.razon_social
+        sql += " AND cliente_id = :cliente_id"
+        params["cliente_id"] = cliente.id
         nombre_filtro = cliente.nombre_fantasia or cliente.razon_social
 
     sql += " ORDER BY cliente, filial"

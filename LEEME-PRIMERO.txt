@@ -8,7 +8,15 @@ PASOS RAPIDOS:
    (icono de ballena verde en la barra de tareas)
 
 2. Doble click en: iniciar.bat
-   (la primera vez tarda 2-3 minutos descargando PostgreSQL)
+   (la primera vez tarda 2-3 minutos descargando PostgreSQL;
+    al final aplica las migraciones de la base)
+
+   La primera vez, crea tu organizacion y su administrador:
+     cd backend
+     .venv\Scripts\activate
+     python -m app.cli crear-organizacion --nombre "Mi Estudio" --slug mi-estudio ^
+         --admin-nombre "Tu Nombre" --admin-email tu@correo.cl --plan premium
+   Te imprime un enlace para elegir la contrasena.
 
 3. Instala DBeaver desde:
    https://dbeaver.io/download/

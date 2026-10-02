@@ -14,6 +14,8 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
+from app.rut import Rut
+
 
 class ClienteBase(BaseModel):
     """
@@ -34,8 +36,9 @@ class ClienteCreate(ClienteBase):
     """
     Datos necesarios para crear un cliente nuevo.
     POST /api/clientes recibe un JSON con esta estructura.
+    El RUT se valida (dígito verificador) y se guarda normalizado.
     """
-    pass  # Mismos campos que ClienteBase
+    rut: Rut = Field(..., examples=["96.570.220-7"])
 
 
 class ClienteUpdate(BaseModel):

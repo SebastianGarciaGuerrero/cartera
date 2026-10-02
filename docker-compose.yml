@@ -34,9 +34,8 @@ services:
       # Persistencia de datos: aunque borres el container, los datos quedan
       - cartera_data:/var/lib/postgresql/data
 
-      # Auto-ejecutar el DDL en la primera creación de la DB
-      # PostgreSQL corre todos los .sql de esta carpeta alfabéticamente
-      - ./database/init:/docker-entrypoint-initdb.d:ro
+    # El esquema NO se crea acá: lo crean las migraciones de Alembic
+    # (iniciar.bat las corre, o: cd backend && alembic upgrade head).
 
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]

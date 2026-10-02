@@ -27,17 +27,32 @@ from sqlalchemy import event, insert, inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
+from app.models.organizacion import Organizacion
+from app.tenancy import CLAVE_ORGANIZACION
 
 
 # Clave bajo la que security.py guarda el contexto en session.info.
 CLAVE_CONTEXTO = "auditoria"
 
-# Tablas que NO se auditan: la propia auditoría (evita recursión) y los
-# catálogos chicos (roles, tipos_gestion) que solo cambian en mantenciones.
-TABLAS_EXCLUIDAS = {"audit_log", "roles", "tipos_gestion"}
+# Tablas que NO se auditan: la propia auditoría (evita recursión), las
+# bitácoras de seguridad (ya son un registro en sí) y los catálogos de
+# sistema que solo cambian en mantenciones.
+TABLAS_EXCLUIDAS = {
+    "audit_log", "roles", "eventos_acceso", "sesiones", "tokens_un_uso",
+}
 
 # Campos cuyo VALOR nunca debe quedar en el log.
-CAMPOS_ENMASCARADOS = {"password_hash"}
+CAMPOS_ENMASCARADOS = {
+    "password_hash", "mfa_secreto_cifrado", "mfa_codigos_recuperacion",
+    "refresh_hash", "refresh_anterior_hash", "token_hash",
+}
+
+# Campos que cambian solos con el uso (login, contadores): un UPDATE que
+# solo toca estos no se registra, para no llenar el log de ruido.
+CAMPOS_RUIDO = {
+    "ultimo_acceso", "intentos_fallidos", "bloqueado_hasta", "mfa_ultimo_paso",
+    "updated_at", "numero_cobranza_siguiente",
+}
 
 
 def _valor(v):
@@ -86,9 +101,16 @@ def _cambios(obj) -> tuple:
     return antes, despues
 
 
+def _organizacion(obj, session):
+    if isinstance(obj, Organizacion):
+        return obj.id
+    return getattr(obj, "organizacion_id", None) or session.info.get(CLAVE_ORGANIZACION)
+
+
 def _entrada(obj, accion: str, ctx: Optional[dict],
-             antes: Optional[dict], despues: Optional[dict]) -> dict:
+             antes: Optional[dict], despues: Optional[dict], session) -> dict:
     return {
+        "organizacion_id": _organizacion(obj, session),
         "usuario_id": ctx.get("usuario_id") if ctx else None,
         "accion": accion,
         "tabla": obj.__table__.name,
@@ -108,7 +130,7 @@ def registrar_auditoria(session, flush_context):
     for obj in session.new:
         if obj.__table__.name in TABLAS_EXCLUIDAS:
             continue
-        entradas.append(_entrada(obj, "INSERT", ctx, None, _serializar(obj)))
+        entradas.append(_entrada(obj, "INSERT", ctx, None, _serializar(obj), session))
 
     for obj in session.dirty:
         if obj.__table__.name in TABLAS_EXCLUIDAS:
@@ -116,13 +138,13 @@ def registrar_auditoria(session, flush_context):
         if not session.is_modified(obj, include_collections=False):
             continue
         antes, despues = _cambios(obj)
-        if antes or despues:
-            entradas.append(_entrada(obj, "UPDATE", ctx, antes, despues))
+        if set(despues) - CAMPOS_RUIDO:
+            entradas.append(_entrada(obj, "UPDATE", ctx, antes, despues, session))
 
     for obj in session.deleted:
         if obj.__table__.name in TABLAS_EXCLUIDAS:
             continue
-        entradas.append(_entrada(obj, "DELETE", ctx, _serializar(obj), None))
+        entradas.append(_entrada(obj, "DELETE", ctx, _serializar(obj), None, session))
 
     if entradas:
         # Insert directo con Core (no ORM): no re-dispara este listener.

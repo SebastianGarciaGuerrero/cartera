@@ -12,13 +12,14 @@ Si una gestión quedó mal, se registra una gestión correctiva nueva.
 """
 
 from uuid import UUID
-from typing import List, Optional
+from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.security import get_current_user, usuario_autorizado
+from app.security import get_current_user, require_admin, usuario_autorizado
 from app.models.gestion import Gestion, TipoGestion
 from app.models.cobranza import Cobranza
 from app.models.usuario import Usuario
@@ -44,18 +45,60 @@ def listar_tipos_gestion(
     solo_activos: bool = True,
     db: Session = Depends(get_db)
 ):
-    """Lista los tipos de gestión del catálogo (para poblar un select)."""
+    """
+    Tipos de gestión: los de sistema más los propios de la organización
+    (el filtro lo pone app/tenancy.py).
+    """
     query = db.query(TipoGestion)
     if solo_activos:
         query = query.filter(TipoGestion.activo.is_(True))
     return query.order_by(TipoGestion.nombre).all()
 
 
+class TipoGestionEntrada(BaseModel):
+    nombre: str = Field(..., min_length=2, max_length=100)
+    categoria: Literal["contacto", "pago", "negativo", "judicial", "otro"] = "otro"
+    activo: bool = True
+
+
+@router.post("/tipos", response_model=TipoGestionResponse, status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(require_admin)])
+def crear_tipo_gestion(datos: TipoGestionEntrada, db: Session = Depends(get_db)):
+    """Tipo de gestión propio del estudio (ej. 'Visita notario')."""
+    tipo = TipoGestion(**datos.model_dump())
+    try:
+        db.add(tipo)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Ya existe un tipo con ese nombre.")
+    db.refresh(tipo)
+    return tipo
+
+
+@router.put("/tipos/{tipo_id}", response_model=TipoGestionResponse,
+            dependencies=[Depends(require_admin)])
+def editar_tipo_gestion(tipo_id: int, datos: TipoGestionEntrada, db: Session = Depends(get_db)):
+    """Solo los tipos propios se editan; los de sistema son fijos."""
+    tipo = db.get(TipoGestion, tipo_id)
+    if tipo is None or not tipo.propio:
+        raise HTTPException(status_code=404, detail="Tipo no encontrado o es de sistema.")
+    for k, v in datos.model_dump().items():
+        setattr(tipo, k, v)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Ya existe un tipo con ese nombre.")
+    db.refresh(tipo)
+    return tipo
+
+
 @router.get("/", response_model=List[GestionResponse])
 def listar_gestiones(
     cobranza_id: Optional[UUID] = None,
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
     """
@@ -76,7 +119,7 @@ def listar_gestiones(
 @router.get("/{gestion_id}", response_model=GestionDetalle)
 def obtener_gestion(gestion_id: UUID, db: Session = Depends(get_db)):
     """Obtiene una gestión por su UUID, con el tipo anidado."""
-    gestion = db.query(Gestion).filter(Gestion.id == gestion_id).first()
+    gestion = db.get(Gestion, gestion_id)
 
     if not gestion:
         raise HTTPException(
@@ -99,12 +142,14 @@ def crear_gestion(
     puede atribuirle una gestión a otra persona.
     """
     # Validar que la cobranza referenciada exista (404 explícito).
-    cobranza = db.query(Cobranza).filter(Cobranza.id == gestion_data.cobranza_id).first()
+    cobranza = db.get(Cobranza, gestion_data.cobranza_id)
     if not cobranza:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Cobranza con id {gestion_data.cobranza_id} no encontrada"
         )
+    if gestion_data.tipo_id is not None and db.get(TipoGestion, gestion_data.tipo_id) is None:
+        raise HTTPException(status_code=404, detail="El tipo de gestión no existe")
 
     # exclude_unset para que, si no envían fecha_gestion, PostgreSQL ponga NOW().
     nueva_gestion = Gestion(

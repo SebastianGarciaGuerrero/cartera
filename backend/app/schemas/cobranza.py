@@ -2,7 +2,8 @@
 Schemas Pydantic para la entidad Cobranza (el núcleo del sistema).
 
 Reglas reflejadas aquí:
-- 'numero' (N° de cobranza) lo genera PostgreSQL: nunca se recibe en Create/Update.
+- 'numero' (N° de cobranza) lo asigna PostgreSQL (correlativo por organización):
+  nunca se recibe en Create/Update.
 - 'cliente_id' y 'deudor_id' se fijan al crear y NO se pueden cambiar después
   (no aparecen en CobranzaUpdate).
 - 'monto_actual' arranca igual a 'monto_original' (lo hace el router) y luego
@@ -12,12 +13,22 @@ Reglas reflejadas aquí:
 from uuid import UUID
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Optional, Literal
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 from app.schemas.cliente import ClienteResponse
 from app.schemas.filial import FilialResponse
 from app.schemas.deudor import DeudorResponse
+
+
+class TerceroEnCobranza(BaseModel):
+    """Aval, codeudor, paciente... ligado a la cobranza."""
+    tercero_id: UUID
+    rol: str
+    nombre: str
+    rut: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Estados y tipo como Literal de Pydantic: validan la entrada en la API.
@@ -29,18 +40,19 @@ EstadoCobranza = Literal[
     "activa", "acuerdo_pago", "judicial", "pagada", "archivada", "castigo"
 ]
 TipoCobranza = Literal["extrajudicial", "judicial"]
-TipoDocumento = Literal["pagare", "factura", "letra", "cheque", "otro"]
+TipoDocumento = Literal[
+    "pagare", "factura", "letra", "cheque", "contrato", "boleta", "credito", "otro"
+]
 
 
 class CobranzaBase(BaseModel):
     """Campos editables que comparten Create y Update."""
-    # Vínculos editables (la filial y el paciente sí se pueden corregir)
+    # Vínculo editable (la filial sí se puede corregir)
     filial_id: Optional[int] = None
-    paciente_id: Optional[UUID] = None
 
     # Identificadores externos
     id_externo: Optional[str] = Field(None, max_length=50)
-    numero_liquidacion: Optional[str] = Field(None, max_length=50)
+    numero_operacion: Optional[str] = Field(None, max_length=50)
 
     # Montos
     monto_original: Decimal = Field(..., ge=0, max_digits=15, decimal_places=2)
@@ -49,20 +61,16 @@ class CobranzaBase(BaseModel):
     honorarios: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
     gastos: Optional[Decimal] = Field(Decimal("0"), max_digits=15, decimal_places=2)
 
-    # Fechas de la atención médica
-    fecha_atencion: Optional[date] = None
-    fecha_alta: Optional[date] = None
-    prevision: Optional[str] = Field(None, max_length=80)
-
-    # Fechas operacionales
+    # Fechas
+    fecha_origen: Optional[date] = None  # operación que originó la deuda
     fecha_ingreso: Optional[date] = None
     fecha_traspaso: Optional[date] = None
 
     # Documento que identifica la deuda (pagaré, factura, letra...)
     tipo_documento: TipoDocumento = "pagare"
-    numero_pagare: Optional[str] = Field(None, max_length=50)  # N° del documento
-    fecha_ejecucion_pagare: Optional[date] = None
-    fecha_vencimiento_pagare: Optional[date] = None
+    numero_documento: Optional[str] = Field(None, max_length=50)
+    fecha_emision_documento: Optional[date] = None
+    fecha_vencimiento_documento: Optional[date] = None
     comprobante_envio: Optional[str] = Field(None, max_length=200)
     autorizacion_firma: bool = False
     fecha_envio_documentos: Optional[date] = None
@@ -75,6 +83,9 @@ class CobranzaBase(BaseModel):
     # Ejecutivo responsable
     ejecutivo_id: Optional[UUID] = None
     observaciones: Optional[str] = None
+
+    # Campos personalizados de la organización (clave → valor)
+    datos_extra: dict = Field(default_factory=dict)
 
 
 class CobranzaCreate(CobranzaBase):
@@ -95,9 +106,8 @@ class CobranzaUpdate(BaseModel):
     El cambio de 'estado' (a pagada, archivada, castigo, etc.) se hace aquí.
     """
     filial_id: Optional[int] = None
-    paciente_id: Optional[UUID] = None
     id_externo: Optional[str] = None
-    numero_liquidacion: Optional[str] = None
+    numero_operacion: Optional[str] = None
 
     monto_original: Optional[Decimal] = Field(None, ge=0, max_digits=15, decimal_places=2)
     monto_actual: Optional[Decimal] = Field(None, ge=0, max_digits=15, decimal_places=2)
@@ -106,16 +116,14 @@ class CobranzaUpdate(BaseModel):
     honorarios: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
     gastos: Optional[Decimal] = Field(None, max_digits=15, decimal_places=2)
 
-    fecha_atencion: Optional[date] = None
-    fecha_alta: Optional[date] = None
-    prevision: Optional[str] = None
+    fecha_origen: Optional[date] = None
     fecha_ingreso: Optional[date] = None
     fecha_traspaso: Optional[date] = None
 
     tipo_documento: Optional[TipoDocumento] = None
-    numero_pagare: Optional[str] = None
-    fecha_ejecucion_pagare: Optional[date] = None
-    fecha_vencimiento_pagare: Optional[date] = None
+    numero_documento: Optional[str] = None
+    fecha_emision_documento: Optional[date] = None
+    fecha_vencimiento_documento: Optional[date] = None
     comprobante_envio: Optional[str] = None
     autorizacion_firma: Optional[bool] = None
     fecha_envio_documentos: Optional[date] = None
@@ -125,6 +133,7 @@ class CobranzaUpdate(BaseModel):
     etapa_cobranza: Optional[str] = None
     ejecutivo_id: Optional[UUID] = None
     observaciones: Optional[str] = None
+    datos_extra: Optional[dict] = None
 
 
 class CobranzaResponse(CobranzaBase):
@@ -144,8 +153,8 @@ class CobranzaDetalle(CobranzaResponse):
     """
     Ficha completa de la cobranza con las entidades relacionadas anidadas.
     Se usa en GET /api/cobranzas/{id}.
-    (paciente se agregará cuando exista el módulo de pacientes.)
     """
     cliente: Optional[ClienteResponse] = None
     filial: Optional[FilialResponse] = None
     deudor: Optional[DeudorResponse] = None
+    terceros: List[TerceroEnCobranza] = Field(default_factory=list)

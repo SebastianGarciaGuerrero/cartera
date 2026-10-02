@@ -1,5 +1,5 @@
 -- ============================================================
--- CARTERA — DDL Definitivo PostgreSQL 16
+-- CARTERA — Esquema base (migración 0001 de Alembic)
 -- Versión: 1.0.0 | Fecha: 2026-06
 -- ============================================================
 -- CONVENCIONES:
@@ -11,7 +11,7 @@
 --   Gestiones    → INMUTABLES, sin updated_at
 -- ============================================================
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- gen_random_uuid()
+-- gen_random_uuid() es nativo desde PostgreSQL 13: no requiere pgcrypto.
 
 -- ============================================================
 -- [0] EMPRESA
