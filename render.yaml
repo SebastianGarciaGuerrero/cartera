@@ -13,5 +13,7 @@ services:
         generateValue: true  # Render genera una clave segura sola
       - key: DEBUG
         value: "false"
+      - key: URL_PUBLICA
+        sync: false          # la URL pública que asigne Render
       - key: ENVIRONMENT
         value: "demo"

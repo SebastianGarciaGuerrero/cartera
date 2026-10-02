@@ -73,7 +73,7 @@ export default function Deudores() {
                     <td className="mono">{d.rut}</td>
                     <td>
                       {d.nombre}
-                      {d.en_dicom && <span className="etiqueta etiqueta-castigo">DICOM</span>}
+                      {d.en_boletin_comercial && <span className="etiqueta etiqueta-castigo">DICOM</span>}
                     </td>
                     <td>{d.comuna ?? '—'}</td>
                     <td>
@@ -102,7 +102,7 @@ export default function Deudores() {
               <dt>Tipo</dt><dd>{detalle.tipo === 'natural' ? 'Persona natural' : 'Persona jurídica'}</dd>
               <dt>Comuna</dt><dd>{detalle.comuna ?? '—'}</dd>
               <dt>Ciudad</dt><dd>{detalle.ciudad ?? '—'}</dd>
-              <dt>DICOM</dt><dd>{detalle.en_dicom ? 'Sí' : 'No'}</dd>
+              <dt>DICOM</dt><dd>{detalle.en_boletin_comercial ? 'Sí' : 'No'}</dd>
             </dl>
 
             <h2>Contactos</h2>

@@ -103,6 +103,8 @@ body {
 }
 
 .usuario-nombre { font-weight: 600; font-size: 14px; }
+a.usuario-nombre, a.usuario-nombre.active { display: block; color: inherit; background: none; text-decoration: none; padding: 0; }
+a.usuario-nombre:hover { text-decoration: underline; }
 .usuario-email { font-size: 12px; color: #93a6b8; word-break: break-all; }
 
 /* ---------- Cabecera de página ---------- */
@@ -639,3 +641,6 @@ label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-w
   .ficha-grilla { grid-template-columns: 1fr; }
   .contenido { padding: 20px; }
 }
+
+/* Rol de un tercero (aval, codeudor...) en la ficha */
+.capitalizar { text-transform: capitalize; }

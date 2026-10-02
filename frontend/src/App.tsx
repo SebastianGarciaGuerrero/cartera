@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ProveedorAuth } from './auth'
 import Layout from './componentes/Layout'
 import Login from './paginas/Login'
+import { Recuperar, Restablecer } from './paginas/Recuperar'
 import Cobranzas from './paginas/Cobranzas'
 import CobranzaDetalle from './paginas/CobranzaDetalle'
 import Deudores from './paginas/Deudores'
@@ -12,6 +13,8 @@ import NuevaCobranzaPagina from './paginas/NuevaCobranzaPagina'
 import Abonos from './paginas/Abonos'
 import CargaMasiva from './paginas/CargaMasiva'
 import MiEmpresa from './paginas/MiEmpresa'
+import MiCuenta from './paginas/MiCuenta'
+import Configuracion from './paginas/Configuracion'
 
 export default function App() {
   return (
@@ -19,6 +22,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/recuperar" element={<Recuperar />} />
+          <Route path="/restablecer" element={<Restablecer />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/cobranzas" replace />} />
             <Route path="/cobranzas" element={<Cobranzas />} />
@@ -31,6 +36,8 @@ export default function App() {
             <Route path="/equipo" element={<Equipo />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/mi-empresa" element={<MiEmpresa />} />
+            <Route path="/configuracion" element={<Configuracion />} />
+            <Route path="/mi-cuenta" element={<MiCuenta />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -10,7 +10,9 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class LoginEntrada(BaseModel):
-    email: EmailStr
+    # Sin validar formato: el login solo compara (y un error de formato
+    # distinto al de "credenciales inválidas" daría pistas).
+    email: str = Field(..., min_length=3, max_length=254)
     password: str = Field(..., min_length=1, max_length=256)
 
 
@@ -31,7 +33,7 @@ class OrganizacionActual(BaseModel):
 class UsuarioActual(BaseModel):
     id: UUID
     nombre: str
-    email: EmailStr
+    email: str
     rol_id: int
     rol: str
     cliente_id: Optional[UUID] = None
@@ -60,7 +62,7 @@ class CambiarPassword(BaseModel):
 
 
 class RecuperarEntrada(BaseModel):
-    email: EmailStr
+    email: str = Field(..., min_length=3, max_length=254)
 
 
 class RestablecerEntrada(BaseModel):

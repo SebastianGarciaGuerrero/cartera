@@ -7,6 +7,25 @@
       "runtimeArgs": ["run", "dev:demo"],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "backend-local",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--port", "8000"],
+      "cwd": "backend",
+      "port": 8000,
+      "env": {
+        "DATABASE_URL": "postgresql://postgres@127.0.0.1:31670/cartera_dev",
+        "URL_PUBLICA": "http://localhost:5174",
+        "ENVIRONMENT": "development"
+      }
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5174"],
+      "cwd": "frontend",
+      "port": 5174
     }
   ]
 }

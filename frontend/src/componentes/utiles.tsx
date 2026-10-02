@@ -1,4 +1,4 @@
-import type { EstadoCobranza } from '../api/tipos'
+import type { EstadoCobranza, TipoDocumento } from '../api/tipos'
 
 // Piezas chicas reutilizables: montos en pesos y etiquetas de estado.
 
@@ -38,4 +38,15 @@ export function fechaHoraLegible(iso: string): string {
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ` +
     `${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+export const NOMBRE_DOCUMENTO: Record<TipoDocumento, string> = {
+  pagare: 'Pagaré',
+  factura: 'Factura',
+  letra: 'Letra',
+  cheque: 'Cheque',
+  contrato: 'Contrato',
+  boleta: 'Boleta',
+  credito: 'Crédito',
+  otro: 'Otro',
 }

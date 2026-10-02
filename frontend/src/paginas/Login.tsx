@@ -1,15 +1,22 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { mensajeDeError, ES_DEMO } from '../api/client'
 import { MARCA } from '../marca'
 
+// Ingreso en dos pasos cuando la cuenta tiene 2FA: primero email y
+// contraseña; si corresponde, después el código de 6 dígitos de la app
+// autenticadora (o un código de recuperación).
+
 export default function Login() {
-  const { login } = useAuth()
+  const { login, completarMfa } = useAuth()
   const navegar = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [mfaToken, setMfaToken] = useState<string | null>(null)
+  const [codigo, setCodigo] = useState('')
+  const [usarRecuperacion, setUsarRecuperacion] = useState(false)
   const [error, setError] = useState('')
   const [enviando, setEnviando] = useState(false)
 
@@ -18,10 +25,17 @@ export default function Login() {
     setError('')
     setEnviando(true)
     try {
-      await login(email, password)
-      navegar('/cobranzas')
+      if (mfaToken) {
+        await completarMfa(mfaToken, codigo.trim())
+        navegar('/cobranzas')
+      } else {
+        const r = await login(email, password)
+        if (r.ok) navegar('/cobranzas')
+        else setMfaToken(r.mfaToken)
+      }
     } catch (err) {
       setError(mensajeDeError(err))
+      if (mfaToken) setCodigo('')
     } finally {
       setEnviando(false)
     }
@@ -36,27 +50,54 @@ export default function Login() {
           <div className="login-subtitulo">{MARCA.eslogan}</div>
         </div>
 
-        <label>
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="tu@empresa.cl"
-            autoFocus
-            required
-          />
-        </label>
+        {!mfaToken ? (
+          <>
+            <label>
+              Email
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@empresa.cl"
+                autoComplete="username"
+                autoFocus
+                required
+              />
+            </label>
 
-        <label>
-          Contraseña
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </label>
+            <label>
+              Contraseña
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </label>
+          </>
+        ) : (
+          <label>
+            {usarRecuperacion ? 'Código de recuperación' : 'Código de verificación'}
+            <input
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              placeholder={usarRecuperacion ? 'xxxxx-xxxxx' : '6 dígitos de tu app autenticadora'}
+              inputMode={usarRecuperacion ? 'text' : 'numeric'}
+              autoComplete="one-time-code"
+              maxLength={usarRecuperacion ? 11 : 6}
+              autoFocus
+              required
+            />
+            <button
+              type="button"
+              className="btn btn-chico btn-secundario"
+              onClick={() => { setUsarRecuperacion(!usarRecuperacion); setCodigo('') }}
+            >
+              {usarRecuperacion ? 'Usar el código de la app' : 'Perdí el teléfono: usar código de recuperación'}
+            </button>
+          </label>
+        )}
 
         {error && <div className="alerta-error">{error}</div>}
 
@@ -70,8 +111,17 @@ export default function Login() {
         )}
 
         <button className="btn btn-primario" disabled={enviando}>
-          {enviando ? 'Ingresando…' : 'Ingresar'}
+          {enviando ? 'Verificando…' : mfaToken ? 'Verificar' : 'Ingresar'}
         </button>
+
+        {mfaToken ? (
+          <button type="button" className="btn btn-secundario"
+            onClick={() => { setMfaToken(null); setCodigo(''); setError('') }}>
+            Volver
+          </button>
+        ) : (
+          !ES_DEMO && <Link to="/recuperar" className="suave">¿Olvidaste tu contraseña?</Link>
+        )}
 
         <div className="pie-firma">
           Creado por{' '}

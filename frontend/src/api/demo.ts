@@ -17,7 +17,8 @@
 import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 
 const CLAVE_DB = 'cartera_demo_db'
-const VERSION_SEMILLA = 6
+const VERSION_SEMILLA = 7
+const CLAVE_SESION = 'cartera_demo_sesion'
 
 // ---------- utilidades ----------
 
@@ -36,12 +37,41 @@ const ROLES = [
   { id: 2, nombre: 'supervisor', descripcion: 'Ve todo, genera informes' },
   { id: 3, nombre: 'operador', descripcion: 'Gestiona sus cobranzas' },
   { id: 4, nombre: 'viewer', descripcion: 'Solo lectura' },
+  { id: 5, nombre: 'abogado', descripcion: 'Causas judiciales, escritos y plazos' },
+  { id: 6, nombre: 'procurador', descripcion: 'Actuaciones, notificaciones y plazos' },
+  { id: 7, nombre: 'mandante', descripcion: 'Portal de clientes: ve solo su cartera' },
 ]
 
-// Quita la contraseña antes de devolver un usuario (nunca se expone).
-function sinPassword<T extends { password?: string }>(u: T) {
+// En la demo la organización tiene el plan más completo.
+const FUNCIONES_DEMO = [
+  'cobranzas', 'deudores', 'gestiones', 'acuerdos', 'pagos', 'informes', 'carga_masiva',
+  'documentos', 'campos_personalizados', 'agenda', 'mensaje_pago', 'judicial',
+  'portal_mandantes', 'recordatorios', 'comunicaciones', 'calculadora_369',
+  'envio_automatico', 'pagos_en_linea', 'api',
+]
+
+// Tipos de gestión de sistema, con el mismo código estable que el backend.
+const TIPOS_SISTEMA: [string, string, string][] = [
+  ['Llamada telefónica', 'llamada', 'contacto'], ['Email enviado', 'email', 'contacto'],
+  ['WhatsApp', 'whatsapp', 'contacto'], ['Carta de cobranza', 'carta', 'contacto'],
+  ['Acuerdo de pago', 'acuerdo', 'pago'], ['Visita en terreno', 'visita', 'contacto'],
+  ['Nota interna', 'nota', 'otro'], ['Gestión automática', 'automatica', 'otro'],
+  ['Cobranza ingresada al sistema', 'ingreso', 'otro'], ['Demanda presentada', 'demanda', 'judicial'],
+  ['Pagaré ejecutado', 'documento_ejecutado', 'judicial'], ['Acuerdo incumplido', 'acuerdo_incumplido', 'negativo'],
+  ['Abono', 'abono', 'pago'], ['Pagado', 'pagado', 'pago'], ['No contesta', 'no_contesta', 'contacto'],
+  ['Promesa de pago', 'promesa_pago', 'pago'], ['Negativa de pago', 'negativa_pago', 'negativo'],
+  ['SMS enviado', 'sms', 'contacto'],
+]
+
+// Quita la contraseña antes de devolver un usuario (nunca se expone) y
+// agrega los campos que entrega el backend real.
+function sinPassword<T extends { password?: string; rol_id: number }>(u: T) {
   const { password: _p, ...seguro } = u
-  return seguro
+  return {
+    ...seguro,
+    rol_nombre: ROLES.find((r) => r.id === u.rol_id)?.nombre ?? null,
+    cliente_id: null, mfa_activo: false, debe_cambiar_password: false, bloqueado: false,
+  }
 }
 
 function sumarMeses(fechaISO: string, meses: number): string {
@@ -100,7 +130,7 @@ function generarCasosSantiago(cantidad: number, numeroInicial: number) {
 
     deudores.push({
       id: idDeudor, rut, tipo: 'natural', nombre: `${nombrePila} ${ap1} ${ap2}`,
-      comuna, ciudad: 'Santiago', en_dicom: i % 3 === 0,
+      comuna, ciudad: 'Santiago', en_boletin_comercial: i % 3 === 0, datos_extra: {},
       observaciones: null as string | null,
       contactos: [
         { id: `ct-s${i + 1}a`, deudor_id: idDeudor, tipo: 'celular', valor: cel, activo: true },
@@ -120,7 +150,10 @@ function generarCasosSantiago(cantidad: number, numeroInicial: number) {
       id_externo: String(360000 + i * 7),
       monto_original: String(monto), monto_actual: pagada ? '0' : String(monto),
       tipo_documento: tipoDoc,
-      numero_pagare: tipoDoc === 'pagare' ? `PG-2026-${String(1000 + i)}` : null,
+      numero_documento: tipoDoc === 'pagare' ? `PG-2026-${String(1000 + i)}` : null,
+      fecha_vencimiento_documento: null as string | null,
+      datos_extra: (i % 2 === 0 ? { prevision: 'FONASA' } : {}) as Record<string, string>,
+      terceros: [] as { tercero_id: string; rol: string; nombre: string; rut: string | null }[],
       estado: pagada ? 'pagada' : 'activa', tipo: 'extrajudicial',
       fecha_ingreso: `2026-${mm}-${dd}`,
       observaciones: null as string | null,
@@ -150,7 +183,7 @@ function semilla() {
   const deudores = [
     {
       id: 'd-1', rut: '12345678-5', tipo: 'natural', nombre: 'Pedro Antonio González Rojas',
-      comuna: 'Valparaíso', ciudad: 'Valparaíso', en_dicom: true,
+      comuna: 'Valparaíso', ciudad: 'Valparaíso', en_boletin_comercial: true, datos_extra: {},
       observaciones: 'Deudor del caso de práctica. Padre de la paciente.',
       contactos: [
         { id: 'ct-1', deudor_id: 'd-1', tipo: 'celular', valor: '+56 9 5678 1234', activo: true },
@@ -159,7 +192,7 @@ function semilla() {
     },
     {
       id: 'd-2', rut: '15987654-3', tipo: 'natural', nombre: 'María Pérez Soto',
-      comuna: 'Viña del Mar', ciudad: 'Viña del Mar', en_dicom: false, observaciones: null,
+      comuna: 'Viña del Mar', ciudad: 'Viña del Mar', en_boletin_comercial: false, datos_extra: {}, observaciones: null,
       contactos: [
         { id: 'ct-3', deudor_id: 'd-2', tipo: 'celular', valor: '+56 9 4433 2211', activo: true },
       ],
@@ -169,7 +202,10 @@ function semilla() {
     {
       id: 'cob-1', numero: 20001, cliente_id: 'cl-1', filial_id: 3 as number | null, deudor_id: 'd-1',
       id_externo: '145678', monto_original: '850000', monto_actual: '705000',
-      tipo_documento: 'pagare', numero_pagare: 'PG-2025-0145',
+      tipo_documento: 'pagare', numero_documento: 'PG-2025-0145',
+      fecha_vencimiento_documento: '2026-05-31' as string | null,
+      datos_extra: { prevision: 'ISAPRE' } as Record<string, string>,
+      terceros: [{ tercero_id: 't-1', rol: 'paciente', nombre: 'Josefa González Pérez', rut: '25123456-K' as string | null }],
       estado: 'acuerdo_pago', tipo: 'extrajudicial',
       fecha_ingreso: '2026-06-02',
       observaciones: 'Caso ingresado vía planilla mensual del cliente. Paciente menor de edad atendida por urgencia.',
@@ -177,24 +213,33 @@ function semilla() {
     {
       id: 'cob-2', numero: 20002, cliente_id: 'cl-1', filial_id: 3, deudor_id: 'd-2',
       id_externo: '198765', monto_original: '420000', monto_actual: '420000',
-      tipo_documento: 'pagare', numero_pagare: null,
+      tipo_documento: 'pagare', numero_documento: null,
+      fecha_vencimiento_documento: null, datos_extra: {}, terceros: [],
       estado: 'activa', tipo: 'extrajudicial',
       fecha_ingreso: '2026-06-08', observaciones: null,
     },
     {
       id: 'cob-3', numero: 20003, cliente_id: 'cl-2', filial_id: 10, deudor_id: 'd-2',
       id_externo: 'SAP-77120', monto_original: '1250000', monto_actual: '1250000',
-      tipo_documento: 'factura', numero_pagare: 'F-00981',
+      tipo_documento: 'factura', numero_documento: 'F-00981',
+      fecha_vencimiento_documento: '2026-04-30', datos_extra: {}, terceros: [],
       estado: 'activa', tipo: 'extrajudicial',
       fecha_ingreso: '2026-06-08', observaciones: null,
     },
   ]
-  const tiposGestion = [
-    'Llamada telefónica', 'Email enviado', 'WhatsApp', 'Carta de cobranza',
-    'Acuerdo de pago', 'Visita en terreno', 'Nota interna', 'Gestión automática',
-    'Cobranza ingresada al sistema', 'Demanda presentada', 'Pagaré ejecutado',
-    'Acuerdo incumplido', 'Abono', 'Pagado',
-  ].map((nombre, i) => ({ id: i + 1, nombre, activo: true }))
+  const tiposGestion = TIPOS_SISTEMA.map(([nombre, codigo, categoria], i) => ({
+    id: i + 1, nombre, codigo: codigo as string | null, categoria, activo: true, propio: false,
+  }))
+
+  // Campo personalizado de ejemplo: la previsión solo aplica a la clínica.
+  const campos = [
+    {
+      id: 'campo-1', entidad: 'cobranza', clave: 'prevision', etiqueta: 'Previsión',
+      tipo: 'seleccion', opciones: ['FONASA', 'ISAPRE', 'Particular'], cliente_id: 'cl-1' as string | null,
+      obligatorio: false, orden: 10, activo: true,
+    },
+  ]
+  const etiquetas: Record<string, string> = {}
 
   const gestiones = [
     {
@@ -265,7 +310,7 @@ function semilla() {
     updated_at: ahora(),
   }
 
-  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosSantiago.cobranzas.length }
+  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosSantiago.cobranzas.length }
 }
 
 // ---------- base de datos en localStorage ----------
@@ -319,8 +364,8 @@ function usuarioDelToken(config: InternalAxiosRequestConfig, db: DB) {
   return db.usuarios.find((u) => u.id === id) ?? db.usuarios[0]
 }
 
-function gestionAutomatica(db: DB, cobranza_id: string, usuario_id: string, nombreTipo: string, descripcion: string) {
-  const tipo = db.tiposGestion.find((t) => t.nombre === nombreTipo)
+function gestionAutomatica(db: DB, cobranza_id: string, usuario_id: string, codigoTipo: string, descripcion: string) {
+  const tipo = db.tiposGestion.find((t) => t.codigo === codigoTipo)
   db.gestiones.push({
     id: uid(), cobranza_id, usuario_id, tipo_id: tipo?.id ?? null,
     descripcion, fecha_gestion: ahora(), fecha_proximo_contacto: null,
@@ -339,24 +384,91 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   await new Promise((r) => setTimeout(r, 120))
 
   // ---- auth ----
+  // La "cookie de sesión" de la demo es una marca en sessionStorage.
+  const usuarioActual = (u: DB['usuarios'][number]) => ({
+    id: u.id, nombre: u.nombre, email: u.email, rol_id: u.rol_id,
+    rol: ROLES.find((r) => r.id === u.rol_id)?.nombre ?? 'operador',
+    cliente_id: null, mfa_activo: false, debe_cambiar_password: false,
+    organizacion: {
+      id: 'org-demo', nombre: db.empresa.nombre_fantasia ?? 'Organización demo', plan: 'premium',
+      estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas,
+    },
+  })
+  const respuestaToken = (u: DB['usuarios'][number]) => ({
+    access_token: `demo-token-${u.id}`, token_type: 'bearer', expira_en: 900, usuario: usuarioActual(u),
+  })
   if (metodo === 'POST' && url === '/auth/login') {
-    const { username, password } = cuerpo(config) as { username: string; password: string }
-    const u = db.usuarios.find((x) => x.email === username && x.password === password)
-    if (!u) return error(401, 'Email o contraseña incorrectos')
-    if (!u.activo) return error(403, 'Usuario inactivo')
-    return ok(config, { access_token: `demo-token-${u.id}`, token_type: 'bearer' })
+    const { email, password } = cuerpo(config) as { email: string; password: string }
+    const u = db.usuarios.find((x) => x.email === email && x.password === password)
+    if (!u || !u.activo) return error(401, 'Email o contraseña incorrectos')
+    try { sessionStorage.setItem(CLAVE_SESION, u.id) } catch { /* modo privado */ }
+    return ok(config, respuestaToken(u))
   }
-  if (metodo === 'GET' && url === '/auth/me') {
+  if (metodo === 'POST' && url === '/auth/refresh') {
+    let id: string | null = null
+    try { id = sessionStorage.getItem(CLAVE_SESION) } catch { /* modo privado */ }
+    const u = db.usuarios.find((x) => x.id === id)
+    return u ? ok(config, respuestaToken(u)) : error(401, 'Sin sesión.')
+  }
+  if (metodo === 'POST' && url === '/auth/logout') {
+    try { sessionStorage.removeItem(CLAVE_SESION) } catch { /* modo privado */ }
+    return ok(config, null, 204)
+  }
+  if (metodo === 'GET' && url === '/auth/me') return ok(config, usuarioActual(usuarioDelToken(config, db)))
+  if (metodo === 'PUT' && url === '/auth/cambiar-password') {
     const u = usuarioDelToken(config, db)
-    const { password: _p, ...seguro } = u
-    return ok(config, seguro)
+    const datos = cuerpo(config) as { password_actual: string; password_nueva: string }
+    if (datos.password_actual !== u.password) return error(401, 'La contraseña actual no es correcta')
+    if (datos.password_nueva.length < 12) return error(422, 'La contraseña debe tener al menos 12 caracteres.')
+    u.password = datos.password_nueva
+    guardarDB(db)
+    return ok(config, null, 204)
+  }
+
+  // ---- configuración de la organización ----
+  if (metodo === 'GET' && url === '/organizacion') {
+    return ok(config, { id: 'org-demo', nombre: db.empresa.nombre_fantasia, slug: 'demo', plan: 'premium',
+      estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas })
+  }
+  if (metodo === 'PUT' && url === '/organizacion') {
+    const datos = cuerpo(config) as { nombre?: string; etiquetas?: Record<string, string> }
+    if (datos.etiquetas) db.etiquetas = Object.fromEntries(Object.entries(datos.etiquetas).filter(([, v]) => v))
+    if (datos.nombre) db.empresa.nombre_fantasia = datos.nombre
+    guardarDB(db)
+    return ok(config, { id: 'org-demo', nombre: db.empresa.nombre_fantasia, slug: 'demo', plan: 'premium',
+      estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas })
+  }
+  if (metodo === 'GET' && url === '/campos') {
+    let lista = db.campos
+    if (params.entidad) lista = lista.filter((c) => c.entidad === params.entidad)
+    if (params.cliente_id) lista = lista.filter((c) => !c.cliente_id || c.cliente_id === params.cliente_id)
+    if (!params.incluir_inactivos) lista = lista.filter((c) => c.activo)
+    return ok(config, lista)
+  }
+  if (metodo === 'POST' && url === '/campos') {
+    const datos = cuerpo(config) as Record<string, unknown> & { etiqueta: string }
+    const clave = sinAcentos(datos.etiqueta).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+    if (db.campos.some((c) => c.clave === clave && c.entidad === datos.entidad)) {
+      return error(400, `Ya existe un campo con la clave '${clave}'.`)
+    }
+    const nuevo = { id: uid(), clave, activo: true, opciones: [], cliente_id: null, obligatorio: false, orden: 0, tipo: 'texto', entidad: 'cobranza', ...datos }
+    db.campos.push(nuevo as never)
+    guardarDB(db)
+    return ok(config, nuevo, 201)
+  }
+  if (metodo === 'PUT' && /^\/campos\/[^/]+$/.test(url)) {
+    const c = db.campos.find((x) => x.id === url.split('/')[2])
+    if (!c) return error(404, 'Campo no encontrado')
+    Object.assign(c, cuerpo(config))
+    guardarDB(db)
+    return ok(config, c)
   }
 
   // ---- mi empresa ----
   if (metodo === 'GET' && url === '/empresa') return ok(config, db.empresa)
   if (metodo === 'PUT' && url === '/empresa') {
     const u = usuarioDelToken(config, db)
-    if (u.rol_id !== 1) return error(403, 'Solo un administrador puede editar los datos de la empresa')
+    if (u.rol_id !== 1) return error(403, 'Se requiere rol de administrador para esta operación')
     db.empresa = { ...db.empresa, ...(cuerpo(config) as Record<string, unknown>), updated_at: ahora() } as typeof db.empresa
     guardarDB(db)
     return ok(config, db.empresa)
@@ -368,7 +480,23 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const lista = db.filiales.filter((f) => !params.cliente_id || f.cliente_id === params.cliente_id)
     return ok(config, lista)
   }
-  if (metodo === 'GET' && url === '/gestiones/tipos') return ok(config, db.tiposGestion)
+  if (metodo === 'GET' && url === '/gestiones/tipos') {
+    return ok(config, params.solo_activos === 'false' ? db.tiposGestion : db.tiposGestion.filter((t) => t.activo))
+  }
+  if (metodo === 'POST' && url === '/gestiones/tipos') {
+    const datos = cuerpo(config) as { nombre: string; categoria: string }
+    const nuevo = { id: db.tiposGestion.length + 100, nombre: datos.nombre, codigo: null, categoria: datos.categoria, activo: true, propio: true }
+    db.tiposGestion.push(nuevo)
+    guardarDB(db)
+    return ok(config, nuevo, 201)
+  }
+  if (metodo === 'PUT' && /^\/gestiones\/tipos\/\d+$/.test(url)) {
+    const tipo = db.tiposGestion.find((x) => x.id === Number(url.split('/')[3]))
+    if (!tipo || !tipo.propio) return error(404, 'Tipo no encontrado o es de sistema.')
+    Object.assign(tipo, cuerpo(config))
+    guardarDB(db)
+    return ok(config, tipo)
+  }
 
   // ---- usuarios (solo admin) ----
   if (metodo === 'GET' && url === '/usuarios/roles') return ok(config, ROLES)
@@ -376,17 +504,22 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     return ok(config, db.usuarios.map(sinPassword).sort((a, b) => a.nombre.localeCompare(b.nombre)))
   }
   if (metodo === 'POST' && url === '/usuarios/') {
-    const datos = cuerpo(config) as { nombre: string; email: string; password: string; rol_id: number }
+    const datos = cuerpo(config) as { nombre: string; email: string; password: string | null; rol_id: number }
     if (db.usuarios.some((u) => u.email === datos.email)) {
-      return error(400, 'Email ya registrado')
+      return error(400, 'Ese email ya está registrado.')
     }
     const nuevo = {
       id: uid(), nombre: datos.nombre, email: datos.email,
-      password: datos.password, rol_id: Number(datos.rol_id), activo: true,
+      password: datos.password ?? 'demo1234', rol_id: Number(datos.rol_id), activo: true,
     }
     db.usuarios.push(nuevo)
     guardarDB(db)
-    return ok(config, sinPassword(nuevo), 201)
+    // En la demo no se envían correos: el usuario nuevo entra con demo1234.
+    return ok(config, sinPassword(nuevo), 201, { 'x-invitacion-enviada': '0' })
+  }
+  if (metodo === 'POST' && /^\/usuarios\/[^/]+\/(invitar|desbloquear|reiniciar-2fa)$/.test(url)) {
+    if (url.endsWith('/invitar')) return error(503, 'La demo no envía correos. Los usuarios creados acá entran con la clave demo1234.')
+    return ok(config, null, 204)
   }
   if (metodo === 'PUT' && /^\/usuarios\/[^/]+\/password$/.test(url)) {
     const id = url.split('/')[2]
@@ -437,7 +570,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const nuevo = {
       id, rut: datos.rut, tipo: (datos.tipo as string) ?? 'natural',
       nombre: datos.nombre as string, comuna: (datos.comuna as string) ?? null,
-      ciudad: (datos.ciudad as string) ?? null, en_dicom: false,
+      ciudad: (datos.ciudad as string) ?? null, en_boletin_comercial: false, datos_extra: {},
       observaciones: (datos.observaciones as string) ?? null,
       contactos: (datos.contactos ?? []).map((c) => ({ id: uid(), deudor_id: id, tipo: c.tipo, valor: c.valor, activo: true })),
     }
@@ -486,7 +619,10 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       deudor_id: datos.deudor_id as string, id_externo: (datos.id_externo as string) ?? null,
       monto_original: String(datos.monto_original), monto_actual: String(datos.monto_original),
       tipo_documento: (datos.tipo_documento as string) ?? 'pagare',
-      numero_pagare: (datos.numero_pagare as string) ?? null,
+      numero_documento: (datos.numero_documento as string) ?? null,
+      fecha_vencimiento_documento: (datos.fecha_vencimiento_documento as string) ?? null,
+      datos_extra: (datos.datos_extra as unknown as Record<string, string>) ?? {},
+      terceros: [],
       estado: 'activa', tipo: 'extrajudicial',
       fecha_ingreso: hoy(), observaciones: (datos.observaciones as string) ?? null,
     }
@@ -557,7 +693,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     }
     db.acuerdos.push(nuevo as never)
     cob.estado = 'acuerdo_pago'
-    gestionAutomatica(db, cob.id, u.id, 'Acuerdo de pago',
+    gestionAutomatica(db, cob.id, u.id, 'acuerdo',
       `ACUERDO DE PAGO: ${clp(total)} en ${n} cuota(s) de ${clp(base)}. ` +
       `Primera cuota vence el ${cuotasNuevas[0].fecha_vencimiento}, última el ${nuevo.fecha_termino}.`)
     guardarDB(db)
@@ -620,10 +756,10 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       ? `Pago de cuota ${numeroCuota} por un total de ${clp(monto)}`
       : `Se realizó un abono por un total de ${clp(monto)}`
     const detalle = desglose.length ? ` Desglose: ${desglose.join(' · ')}.` : ''
-    gestionAutomatica(db, cob.id, u.id, 'Abono',
+    gestionAutomatica(db, cob.id, u.id, 'abono',
       `${encabezado}.${detalle} Saldo capital restante: ${clp(Number(cob.monto_actual))}.`)
     if (cob.estado === 'pagada') {
-      gestionAutomatica(db, cob.id, u.id, 'Pagado', 'CUENTA SALDADA. La cobranza queda en estado pagada.')
+      gestionAutomatica(db, cob.id, u.id, 'pagado', 'CUENTA SALDADA. La cobranza queda en estado pagada.')
     }
     guardarDB(db)
     return ok(config, nuevo, 201)

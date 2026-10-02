@@ -3,24 +3,22 @@ import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
-import type { Cliente, Filial, Deudor, Cobranza } from '../api/tipos'
+import type { Cliente, Filial, Deudor, Cobranza, DatosExtra } from '../api/tipos'
+import { useAuth } from '../auth'
+import { FormularioCamposExtra, useCampos } from './CamposExtra'
+import { NOMBRE_DOCUMENTO } from './utiles'
 
 // Alta de cobranza: cliente + filial + deudor (buscándolo por RUT/nombre)
 // + monto + documento que identifica la deuda (pagaré, factura...).
 // El N° de cobranza lo asigna PostgreSQL; el saldo parte igual a la deuda.
 // Con enPagina=true el formulario vive en su propia página (siempre abierto).
 
-const TIPOS_DOCUMENTO = [
-  ['pagare', 'Pagaré'],
-  ['factura', 'Factura'],
-  ['letra', 'Letra'],
-  ['cheque', 'Cheque'],
-  ['otro', 'Otro'],
-] as const
+const TIPOS_DOCUMENTO = Object.entries(NOMBRE_DOCUMENTO)
 
 export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean }) {
   const qc = useQueryClient()
   const navegar = useNavigate()
+  const { etiqueta } = useAuth()
   const [abierto, setAbierto] = useState(enPagina)
 
   const [clienteId, setClienteId] = useState('')
@@ -29,7 +27,8 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
   const [monto, setMonto] = useState('')
   const [tipoDocumento, setTipoDocumento] = useState('pagare')
   const [numeroDocumento, setNumeroDocumento] = useState('')
-  const [prevision, setPrevision] = useState('')
+  const [vencimiento, setVencimiento] = useState('')
+  const [datosExtra, setDatosExtra] = useState<DatosExtra>({})
   const [observaciones, setObservaciones] = useState('')
   const [error, setError] = useState('')
 
@@ -41,6 +40,8 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
     queryKey: ['clientes'],
     queryFn: async () => (await api.get<Cliente[]>('/clientes/')).data,
   })
+
+  const { data: campos } = useCampos('cobranza', clienteId || null)
 
   const { data: filiales } = useQuery({
     queryKey: ['filiales', clienteId],
@@ -67,8 +68,11 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
         id_externo: idExterno || null,
         monto_original: monto,
         tipo_documento: tipoDocumento,
-        numero_pagare: numeroDocumento || null,
-        prevision: prevision || null,
+        numero_documento: numeroDocumento || null,
+        fecha_vencimiento_documento: vencimiento || null,
+        datos_extra: Object.fromEntries(
+          Object.entries(datosExtra).filter(([, v]) => v !== '' && v !== undefined),
+        ),
         observaciones: observaciones || null,
       })
       return data
@@ -104,7 +108,7 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
 
       <div className="fila">
         <label>
-          Cliente *
+          {etiqueta('cliente', 'Cliente')} *
           <select value={clienteId} required
             onChange={(e) => { setClienteId(e.target.value); setFilialId('') }}>
             <option value="">Seleccionar…</option>
@@ -114,7 +118,7 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
           </select>
         </label>
         <label>
-          Filial
+          {etiqueta('filial', 'Filial')}
           <select value={filialId} onChange={(e) => setFilialId(e.target.value)}
             disabled={!clienteId}>
             <option value="">—</option>
@@ -167,14 +171,9 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
             onChange={(e) => setMonto(e.target.value)} required />
         </label>
         <label>
-          ID cliente
+          {etiqueta('id_externo', 'ID cliente')}
           <input value={idExterno} onChange={(e) => setIdExterno(e.target.value)}
             placeholder="N° interno del cliente (SAP, HIS…)" />
-        </label>
-        <label>
-          Previsión
-          <input value={prevision} onChange={(e) => setPrevision(e.target.value)}
-            placeholder="FONASA / ISAPRE…" />
         </label>
       </div>
 
@@ -192,7 +191,13 @@ export default function NuevaCobranza({ enPagina = false }: { enPagina?: boolean
           <input value={numeroDocumento} onChange={(e) => setNumeroDocumento(e.target.value)}
             placeholder="N° de pagaré, factura…" />
         </label>
+        <label>
+          Vencimiento del documento
+          <input type="date" value={vencimiento} onChange={(e) => setVencimiento(e.target.value)} />
+        </label>
       </div>
+
+      <FormularioCamposExtra campos={campos} valores={datosExtra} onChange={setDatosExtra} />
 
       <label>
         Observaciones

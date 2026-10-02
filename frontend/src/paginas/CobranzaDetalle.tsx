@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError, descargarArchivo } from '../api/client'
 import type { CobranzaDetalle as Ficha, Gestion, TipoGestion } from '../api/tipos'
 import { EtiquetaEstado, Plata, fechaLegible, fechaHoraLegible } from '../componentes/utiles'
 import Finanzas from '../componentes/Finanzas'
+import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
+import { useAuth } from '../auth'
+import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
 
 // La pantalla más usada del sistema: la ficha de una cobranza con su
 // historial de gestiones y el formulario para registrar la siguiente.
@@ -12,6 +15,7 @@ import Finanzas from '../componentes/Finanzas'
 export default function CobranzaDetalle() {
   const { id } = useParams()
   const cliente = useQueryClient()
+  const { etiqueta } = useAuth()
 
   const { data: cob, isLoading } = useQuery({
     queryKey: ['cobranza', id],
@@ -51,6 +55,8 @@ export default function CobranzaDetalle() {
     onError: (err) => setError(mensajeDeError(err)),
   })
 
+  const { data: campos } = useCampos('cobranza', cob?.cliente_id)
+
   if (isLoading || !cob) return <div className="pantalla-carga">Cargando ficha…</div>
 
   const nombreTipo = (tipo_id: number | null) =>
@@ -58,7 +64,7 @@ export default function CobranzaDetalle() {
 
   // Gestiones que deben saltar a la vista al recorrer el historial.
   const esDestacada = (tipo_id: number | null) =>
-    ['Acuerdo de pago', 'Pagado', 'Abono'].includes(nombreTipo(tipo_id))
+    ['acuerdo', 'pagado', 'abono'].includes(tipos?.find((t) => t.id === tipo_id)?.codigo ?? '')
 
   return (
     <>
@@ -83,20 +89,32 @@ export default function CobranzaDetalle() {
             <dd>
               <strong>{cob.deudor?.nombre ?? '—'}</strong>
               <span className="mono suave"> {cob.deudor?.rut}</span>
-              {cob.deudor?.en_dicom && <span className="etiqueta etiqueta-castigo">DICOM</span>}
+              {cob.deudor?.en_boletin_comercial && <span className="etiqueta etiqueta-castigo">DICOM</span>}
             </dd>
-            <dt>Cliente</dt>
+            {cob.terceros.map((t) => (
+              <Fragment key={`${t.tercero_id}-${t.rol}`}>
+                <dt className="capitalizar">{t.rol.replace('_', ' ')}</dt>
+                <dd>{t.nombre}{t.rut && <span className="mono suave"> {t.rut}</span>}</dd>
+              </Fragment>
+            ))}
+            <dt>{etiqueta('cliente', 'Cliente')}</dt>
             <dd>
               {cob.cliente?.nombre_fantasia ?? cob.cliente?.razon_social ?? '—'}
               {cob.filial && <span className="suave"> · {cob.filial.nombre}</span>}
             </dd>
-            <dt>ID cliente</dt>
+            <dt>{etiqueta('id_externo', 'ID cliente')}</dt>
             <dd className="mono">{cob.id_externo ?? '—'}</dd>
             <dt>Documento</dt>
             <dd>
-              {cob.tipo_documento === 'pagare' ? 'Pagaré' : cob.tipo_documento}
-              {cob.numero_pagare && <span className="mono suave"> N° {cob.numero_pagare}</span>}
+              {NOMBRE_DOCUMENTO[cob.tipo_documento] ?? cob.tipo_documento}
+              {cob.numero_documento && <span className="mono suave"> N° {cob.numero_documento}</span>}
             </dd>
+            {cob.fecha_vencimiento_documento && (
+              <>
+                <dt>Vencimiento</dt>
+                <dd>{fechaLegible(cob.fecha_vencimiento_documento)}</dd>
+              </>
+            )}
             <dt>Deuda original</dt>
             <dd><Plata valor={cob.monto_original} /></dd>
             <dt>Saldo actual</dt>
@@ -105,6 +123,7 @@ export default function CobranzaDetalle() {
             <dd>{fechaLegible(cob.fecha_ingreso)}</dd>
             <dt>Tipo</dt>
             <dd>{cob.tipo}</dd>
+            <VistaCamposExtra campos={campos} valores={cob.datos_extra} />
           </dl>
           {cob.observaciones && (
             <p className="observaciones">{cob.observaciones}</p>

@@ -1,15 +1,68 @@
 // Tipos TypeScript que reflejan los schemas Pydantic del backend.
 // Si el backend cambia un schema, actualizar aquí.
 
+// Usuario del equipo (pantalla de administración).
 export interface Usuario {
   id: string
   nombre: string
   email: string
   rol_id: number
+  rol_nombre: string | null
+  cliente_id: string | null
   activo: boolean
+  mfa_activo: boolean
+  debe_cambiar_password: boolean
+  bloqueado: boolean
   ultimo_acceso?: string | null
   created_at?: string
 }
+
+// El usuario con sesión iniciada, con su organización y plan.
+export interface UsuarioActual {
+  id: string
+  nombre: string
+  email: string
+  rol_id: number
+  rol: string
+  cliente_id: string | null
+  mfa_activo: boolean
+  debe_cambiar_password: boolean
+  organizacion: {
+    id: string
+    nombre: string
+    plan: 'base' | 'profesional' | 'premium'
+    estado: string
+    funciones: string[]
+    etiquetas: Record<string, string>
+  }
+}
+
+export interface SesionActiva {
+  id: string
+  creada_at: string
+  ultimo_uso_at: string
+  ip: string | null
+  user_agent: string | null
+  actual: boolean
+}
+
+export type TipoCampo = 'texto' | 'numero' | 'monto' | 'fecha' | 'seleccion' | 'si_no'
+
+// Campo que la organización agregó a sus cobranzas o deudores.
+export interface CampoPersonalizado {
+  id: string
+  entidad: 'cobranza' | 'deudor'
+  clave: string
+  etiqueta: string
+  tipo: TipoCampo
+  opciones: string[]
+  cliente_id: string | null
+  obligatorio: boolean
+  orden: number
+  activo: boolean
+}
+
+export type DatosExtra = Record<string, string | boolean>
 
 export interface Rol {
   id: number
@@ -38,8 +91,9 @@ export interface Deudor {
   nombre: string
   comuna: string | null
   ciudad: string | null
-  en_dicom: boolean
+  en_boletin_comercial: boolean
   observaciones: string | null
+  datos_extra: DatosExtra
 }
 
 export interface Contacto {
@@ -57,7 +111,8 @@ export interface DeudorDetalle extends Deudor {
 export type EstadoCobranza =
   | 'activa' | 'acuerdo_pago' | 'judicial' | 'pagada' | 'archivada' | 'castigo'
 
-export type TipoDocumento = 'pagare' | 'factura' | 'letra' | 'cheque' | 'otro'
+export type TipoDocumento =
+  | 'pagare' | 'factura' | 'letra' | 'cheque' | 'contrato' | 'boleta' | 'credito' | 'otro'
 
 export interface Cobranza {
   id: string
@@ -69,23 +124,38 @@ export interface Cobranza {
   monto_original: string
   monto_actual: string
   tipo_documento: TipoDocumento
-  numero_pagare: string | null
+  numero_documento: string | null
+  fecha_vencimiento_documento: string | null
+  fecha_origen: string | null
+  numero_operacion: string | null
   estado: EstadoCobranza
   tipo: 'extrajudicial' | 'judicial'
   fecha_ingreso: string | null
   observaciones: string | null
+  datos_extra: DatosExtra
+}
+
+export interface TerceroEnCobranza {
+  tercero_id: string
+  rol: string
+  nombre: string
+  rut: string | null
 }
 
 export interface CobranzaDetalle extends Cobranza {
   cliente: Cliente | null
   filial: Filial | null
   deudor: Deudor | null
+  terceros: TerceroEnCobranza[]
 }
 
 export interface TipoGestion {
   id: number
   nombre: string
+  codigo: string | null
+  categoria: 'contacto' | 'pago' | 'negativo' | 'judicial' | 'otro'
   activo: boolean
+  propio: boolean
 }
 
 export interface Gestion {
@@ -160,7 +230,7 @@ export interface ReporteUsuario {
   monto_pagos: string
 }
 
-// Datos de la empresa que usa el sistema (tabla `empresa`, fila única).
+// Datos institucionales de la organización (tabla `empresa`).
 // De acá salen el membrete y el pie de los documentos Word.
 export interface Empresa {
   razon_social: string

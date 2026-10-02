@@ -44,7 +44,7 @@ class UsuarioResponse(BaseModel):
     """Datos seguros de un usuario para devolver por la API."""
     id: UUID
     nombre: str
-    email: EmailStr
+    email: str
     rol_id: int
     rol_nombre: Optional[str] = None
     cliente_id: Optional[UUID] = None

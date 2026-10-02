@@ -1,124 +1,95 @@
 # Cómo publicar Cartera
 
-Arquitectura: **una sola URL** — el backend FastAPI sirve también el frontend
-compilado (por eso no usamos Vercel: acá hay Python + PostgreSQL, no solo
-archivos estáticos).
+Arquitectura: **una sola URL**. El backend FastAPI sirve también el frontend
+compilado (imagen Docker única). Al arrancar, la imagen aplica las
+migraciones pendientes (`alembic upgrade head`).
 
-## ⭐ Opción rápida: DEMO solo-frontend en Vercel (sin backend)
+## Opción rápida: demo solo-frontend en Vercel (sin backend)
 
-Para **mostrar** el sistema (interfaz + flujo completo con datos simulados
-que viven en el navegador de quien mira). No necesita base de datos ni
-servidor: gratis para siempre en Vercel y el código queda privado.
+Para **mostrar** el sistema con datos simulados que viven en el navegador de
+quien mira. Gratis y sin base de datos.
 
 1. En https://vercel.com → **Add New → Project** → importar el repo `cartera`.
-2. En la configuración del proyecto:
-   - **Root Directory**: `frontend`
-   - Framework: Vite (lo detecta solo; el `frontend/vercel.json` ya trae el
-     build command `npm run build:demo` y las rewrites del SPA)
-3. Deploy → sale una URL tipo `https://cartera.vercel.app`.
-4. Se entra con `admin@demo.cl` / `demo1234` (la pantalla de login lo indica).
+2. **Root Directory**: `frontend` (el `frontend/vercel.json` ya trae
+   `npm run build:demo` y las rewrites del SPA).
+3. Deploy. Se entra con `admin@demo.cl` / `demo1234`.
 
-Qué funciona en la demo: login, cobranzas, deudores, ficha completa,
-registrar gestiones, acuerdos con cuotas, abonos con desglose y cascada,
-reportes de equipo. Los datos se guardan en el navegador de cada visitante.
-Qué NO funciona: descargas Excel/Word y carga masiva (muestran un aviso;
-requieren el servidor).
+No funcionan en la demo: descargas Excel/Word, carga masiva ni correos.
 
 ---
 
-## Versión completa (con servidor y base de datos real)
+## Versión completa (servidor + base de datos real)
 
-La base de datos va SIEMPRE en **Neon** (Paso 1 y 2). Para la aplicación hay
-tres opciones — elige la primera que tengas disponible:
+### Paso 1: base de datos en Supabase
 
-| Opción | Costo | Nota |
-|---|---|---|
-| A. Hugging Face Spaces | Gratis para siempre, sin tarjeta | El código del Space queda visible públicamente |
-| B. Railway | Crédito de prueba (~US$5, dura ~1 mes) | Solo si nunca la usaste |
-| C. Render | Plan free | Solo si tu cuenta lo permite |
+1. En el proyecto de Supabase: **Connect** (arriba) → pestaña **Connection
+   string** → **Session pooler**. Copiar la URL:
+   ```
+   postgresql://postgres.<ref>:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
+   ```
+   y reemplazar `[YOUR-PASSWORD]` por la contraseña de la base (Project
+   Settings → Database → *Reset database password* si no la tienes).
+   ⚠️ No usar la "Direct connection" (`db.<ref>.supabase.co`): es solo IPv6 y
+   falla desde Windows y desde la mayoría de los hostings.
+2. La URL pública (`https://<ref>.supabase.co`) y la *publishable key* **no
+   se usan**: la app habla directo con PostgreSQL. Las migraciones dejan a los
+   roles `anon`/`authenticated` (los de esa API pública) sin ningún permiso y
+   todas las tablas con RLS, así que esa clave no expone datos.
+3. Ponerla en `backend/.env` como `DATABASE_URL=...` (ese archivo no se sube
+   a Git).
 
-## Paso 1 — Base de datos en Neon (5 min)
+### Paso 2: crear el esquema y la primera organización
 
-1. Crear cuenta en https://neon.tech (con Google o GitHub).
-2. Crear un proyecto (nombre: `cartera`, región: São Paulo o US East).
-3. Copiar la **connection string** que te muestra (algo como
-   `postgresql://usuario:clave@ep-xxxx.aws.neon.tech/neondb?sslmode=require`).
-
-## Paso 2 — Cargar el esquema y los datos de práctica (2 min)
-
-Desde tu PC, en la carpeta `backend` con el venv activo:
+Desde tu PC, en `backend` con el venv activo:
 
 ```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-python scripts/init_db_produccion.py "postgresql://...la URL de Neon..."
+alembic upgrade head
+python -m app.cli crear-organizacion --nombre "Mi Estudio" --slug mi-estudio --admin-nombre "Tu Nombre" --admin-email tu@correo.cl --plan premium
 ```
 
-Eso crea las 17 tablas, las vistas, un cliente de ejemplo y el usuario
-administrador:
+El segundo comando imprime un enlace para que el administrador elija su
+contraseña. Después, en la app: **Administración → Mi empresa** (membrete de
+los documentos) y **Configuración** (campos y nombres propios).
 
-| Email | Contraseña | Rol |
-|---|---|---|
-| admin@cartera.cl | cartera2026 | admin |
+Otros comandos de plataforma: `listar-organizaciones`, `cambiar-plan`,
+`cambiar-estado` (suspender), `enlace-acceso` (`python -m app.cli -h`).
 
-Cambiar esa contraseña en el primer ingreso, y llenar
-**Administración → Mi empresa** (razón social, membrete, fonos): de ahí salen
-los datos de todos los documentos Word. Para crear más cuentas de entrada,
-editar la lista `USUARIOS_EXTRA` de `scripts/init_db_produccion.py` antes de
-correrlo, o crearlas después desde Administración → Usuarios.
+### Paso 3: la aplicación
 
-## Paso 3, opción A — Hugging Face Spaces (gratis, sin tarjeta)
+Cualquier hosting que corra el `Dockerfile` sirve (Railway, Render, Fly.io,
+Hugging Face Spaces, un VPS). Variables de entorno **obligatorias**:
 
-1. Crear cuenta en https://huggingface.co (gratis, sin tarjeta).
-2. Arriba a la derecha: **New → Space**. Nombre: `cartera-demo`,
-   License: ninguna, SDK: **Docker** (plantilla Blank), visibilidad
-   **Public** (un Space privado no lo puede abrir quien no tenga cuenta).
-3. En el Space: **Settings → Variables and secrets** → agregar dos *Secrets*:
-   - `DATABASE_URL` = la URL de Neon del Paso 1
-   - `SECRET_KEY` = cualquier texto largo aleatorio (ej. 40 letras al azar)
-4. Desde tu PC, en la carpeta del proyecto, subir el código al Space:
-   ```powershell
-   git remote add hf https://huggingface.co/spaces/TU_USUARIO/cartera-demo
-   git push hf main
-   ```
-   (te pedirá usuario y un token de HF: se crea en Settings → Access Tokens,
-   tipo Write). El README del repo ya trae los metadatos que el Space necesita.
-5. El Space compila la imagen (unos minutos) y queda en
-   `https://TU_USUARIO-cartera-demo.hf.space` — esa es la URL que compartes.
-6. Para actualizar la demo: `git push hf main` después de cada cambio.
+| Variable | Valor |
+|---|---|
+| `DATABASE_URL` | la del Session pooler de Supabase |
+| `SECRET_KEY` | aleatoria, 48+ caracteres: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `ENVIRONMENT` | `production` |
+| `URL_PUBLICA` | la URL donde queda publicada (ej. `https://app.tudominio.cl`) |
+| `HOSTS_PERMITIDOS` | el dominio, sin https (ej. `app.tudominio.cl`) |
 
-> ⚠️ El código del Space público es visible para cualquiera. No hay
-> credenciales en el código (van en Secrets), y los datos son de práctica,
-> así que para una demo está bien. Para producción real: VPS propio con HTTPS.
+Recomendadas: `CLAVE_CIFRADO` (cifra las semillas 2FA; ver `backend/.env.example`)
+y el correo `SMTP_*` (sin eso no salen las invitaciones ni la recuperación de
+contraseña). Con Google Workspace: `SMTP_HOST=smtp.gmail.com`,
+`SMTP_PUERTO=587`, la casilla como usuario y una **contraseña de aplicación**.
 
-## Paso 3, opción B — Railway (si nunca la usaste)
+La app **no arranca** en producción si `SECRET_KEY` falta o es débil: así
+no queda expuesta por un descuido.
 
-1. Crear cuenta en https://railway.app (entrar con GitHub). El plan de prueba
-   regala ~US$5 de crédito.
-2. **New Project → Deploy from GitHub repo** → elegir `cartera`.
-   Railway detecta el `Dockerfile` solo.
-3. En el servicio → **Variables**: agregar `DATABASE_URL` (la URL de Neon)
-   y `SECRET_KEY` (texto largo aleatorio).
-4. **Settings → Networking → Generate Domain** para obtener la URL pública.
-5. Cada `git push` a `main` redespliega solo.
+### Antes de cargar datos reales de deudores
 
-## Paso 3, opción C — Render
-
-1. https://render.com → **New → Blueprint** → repo `cartera` (lee el
-   `render.yaml` del repo). Pegar `DATABASE_URL` cuando lo pida. Deploy.
-2. El plan free "duerme" tras ~15 min sin visitas (despierta en ~1 min).
+- Plan de Supabase con **backups diarios** (el gratuito no tiene restauración
+  y pausa el proyecto tras una semana sin uso).
+- Dominio propio con HTTPS.
+- 2FA activado en las cuentas de administrador.
+- Revisar con un abogado los textos legales (Ley 21.719: aviso de privacidad
+  y contrato de encargo de tratamiento con cada estudio).
 
 ## Si algo falla
 
-- **La página carga pero el login falla** → revisa que `DATABASE_URL` esté
-  bien pegada en Render (Environment) y que el Paso 2 se haya ejecutado.
-- **"Application failed to respond"** → mira los Logs del servicio en Render.
-- La API interactiva queda en `https://tu-url.onrender.com/docs`.
-
-## Importante
-
-- Los datos de la demo son de práctica (ficticios). **No cargar datos
-  reales de deudores en la demo pública** — eso queda para el despliegue
-  definitivo (VPS con HTTPS propio).
-- Las contraseñas de demo son débiles a propósito; en producción real se
-  cambian.
+- **"SECRET_KEY insegura"** al arrancar: falta la variable o es corta.
+- **El login falla con "Sesión vencida" al recargar**: el sitio debe servirse
+  por HTTPS (la cookie de sesión es `Secure`).
+- **Error de conexión a la base**: revisa que la URL sea la del *pooler* y
+  que la contraseña no tenga caracteres sin codificar (`@`, `#`, `/` → usar
+  `%40`, `%23`, `%2F`).
+- `GET /api/health/db` dice si la app llega a la base.

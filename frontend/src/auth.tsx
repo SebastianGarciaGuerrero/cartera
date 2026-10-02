@@ -1,16 +1,26 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { api, TOKEN_KEY } from './api/client'
-import type { Usuario } from './api/tipos'
+import { api, fijarToken, refrescarSesion, registrarSesionPerdida } from './api/client'
+import type { RespuestaToken } from './api/client'
+import type { UsuarioActual } from './api/tipos'
 
-// Sesión de la app: guarda el token y los datos del usuario logueado.
-// Al recargar la página, si hay token guardado se re-valida contra /auth/me.
+// Sesión de la app. Al cargar la página se pide un access token con la
+// cookie de sesión (si existe); el token queda solo en memoria.
+
+export type ResultadoLogin = { ok: true } | { ok: false; mfaToken: string }
 
 interface Sesion {
-  usuario: Usuario | null
+  usuario: UsuarioActual | null
   cargando: boolean
-  login: (email: string, password: string) => Promise<void>
-  logout: () => void
+  login: (email: string, password: string) => Promise<ResultadoLogin>
+  completarMfa: (mfaToken: string, codigo: string) => Promise<void>
+  logout: () => Promise<void>
+  recargar: () => Promise<void>
+  esAdmin: boolean
+  /** ¿El plan de la organización incluye esta función? */
+  tiene: (funcion: string) => boolean
+  /** Cómo llama esta organización a las cosas (Cliente/Mandante...). */
+  etiqueta: (clave: string, porDefecto: string) => string
 }
 
 const ContextoAuth = createContext<Sesion>(null!)
@@ -20,37 +30,60 @@ export function useAuth() {
 }
 
 export function ProveedorAuth({ children }: { children: ReactNode }) {
-  const [usuario, setUsuario] = useState<Usuario | null>(null)
+  const [usuario, setUsuario] = useState<UsuarioActual | null>(null)
   const [cargando, setCargando] = useState(true)
 
+  const aplicar = useCallback((r: RespuestaToken) => {
+    fijarToken(r.access_token)
+    setUsuario(r.usuario)
+  }, [])
+
   useEffect(() => {
-    // Si hay un token guardado, preguntar al backend quién soy.
-    if (!localStorage.getItem(TOKEN_KEY)) {
-      setCargando(false)
-      return
-    }
-    api.get<Usuario>('/auth/me')
-      .then((res) => setUsuario(res.data))
-      .catch(() => localStorage.removeItem(TOKEN_KEY))
+    registrarSesionPerdida(() => {
+      fijarToken(null)
+      setUsuario(null)
+    })
+    refrescarSesion()
+      .then((r) => { if (r) setUsuario(r.usuario) })
       .finally(() => setCargando(false))
   }, [])
 
-  async function login(email: string, password: string) {
-    // El backend espera form-data OAuth2 (username + password).
-    const form = new URLSearchParams({ username: email, password })
-    const { data } = await api.post('/auth/login', form)
-    localStorage.setItem(TOKEN_KEY, data.access_token)
-    const yo = await api.get<Usuario>('/auth/me')
-    setUsuario(yo.data)
+  async function login(email: string, password: string): Promise<ResultadoLogin> {
+    const { data } = await api.post('/auth/login', { email, password })
+    if (data.requiere_mfa) return { ok: false, mfaToken: data.mfa_token }
+    aplicar(data as RespuestaToken)
+    return { ok: true }
   }
 
-  function logout() {
-    localStorage.removeItem(TOKEN_KEY)
-    setUsuario(null)
+  async function completarMfa(mfaToken: string, codigo: string) {
+    const { data } = await api.post<RespuestaToken>('/auth/login/mfa', { mfa_token: mfaToken, codigo })
+    aplicar(data)
   }
+
+  async function logout() {
+    try {
+      await api.post('/auth/logout')
+    } finally {
+      fijarToken(null)
+      setUsuario(null)
+    }
+  }
+
+  async function recargar() {
+    const { data } = await api.get<UsuarioActual>('/auth/me')
+    setUsuario(data)
+  }
+
+  const funciones = new Set(usuario?.organizacion.funciones ?? [])
+  const etiquetas = usuario?.organizacion.etiquetas ?? {}
 
   return (
-    <ContextoAuth.Provider value={{ usuario, cargando, login, logout }}>
+    <ContextoAuth.Provider value={{
+      usuario, cargando, login, completarMfa, logout, recargar,
+      esAdmin: usuario?.rol === 'admin',
+      tiene: (f) => funciones.has(f),
+      etiqueta: (clave, porDefecto) => etiquetas[clave] || porDefecto,
+    }}>
       {children}
     </ContextoAuth.Provider>
   )

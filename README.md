@@ -10,104 +10,111 @@ pinned: false
 
 # Cartera
 
-Plataforma de gestión de cobranza extrajudicial y judicial. Reemplaza las
-planillas Excel de gestión, recupero mensual y rendición al cliente por un
-sistema con base de datos, historial inmutable y documentos automáticos.
+Plataforma SaaS de gestión de cobranza extrajudicial y judicial para
+estudios jurídicos y empresas de cobranza. Reemplaza las planillas Excel de
+gestión, recupero mensual y rendición al cliente por un sistema con base de
+datos, historial inmutable y documentos automáticos.
 
 Qué hace:
 
-- **Cobranzas** — ficha por deuda con historial de gestiones, acuerdos de
-  pago con cuotas generadas automáticamente y registro de abonos con desglose.
-- **Deudores** — ficha con contactos y todas sus deudas agrupadas.
-- **Informes** — Excel de gestiones, recupero y rendición; Word de informe de
+- **Cobranzas**: ficha por deuda con historial de gestiones, acuerdos de
+  pago con cuotas generadas solas y registro de abonos con desglose.
+- **Deudores y terceros**: ficha con contactos, avales, codeudores y todas sus
+  deudas agrupadas.
+- **Informes**: Excel de gestiones, recupero y rendición; Word de informe de
   gestiones y estado de cuenta.
-- **Carga masiva** — alta de cobranzas y de gestiones desde una plantilla Excel.
-- **Administración** — usuarios con roles, auditoría de cambios y datos de la
-  empresa.
+- **Carga masiva**: alta de cobranzas y de gestiones desde Excel (las columnas
+  se reconocen por título e incluyen los campos personalizados).
+- **Cada estudio lo adapta solo**: campos personalizados (por estudio o por
+  mandante), nombres en pantalla ("Mandante" en vez de "Cliente") y tipos de
+  gestión propios, sin tocar código.
+- **Administración**: usuarios con roles, invitación por correo, 2FA,
+  auditoría de cambios y bitácora de accesos.
 
-## White-label
+## Multi-organización (SaaS)
 
-El sistema no está atado a ninguna empresa. Hay dos lugares donde vive la
-identidad, y ninguno exige tocar la lógica:
+Cada estudio es una **organización**. Todos sus datos llevan
+`organizacion_id` y el aislamiento entre estudios tiene dos capas
+independientes:
 
-| Qué | Dónde | Quién lo cambia |
-|---|---|---|
-| Nombre del producto (login, pestaña) | `frontend/src/marca.ts` | quien instala |
-| Razón social, membrete de los Word, dirección, fonos, formas de pago | tabla `empresa` → pantalla **Mi empresa** | el admin, desde la UI |
+1. **ORM** (`backend/app/tenancy.py`): toda consulta se filtra sola por la
+   organización de la sesión y todo registro nuevo la recibe.
+2. **PostgreSQL** (Row Level Security): en cada petición la app baja al rol
+   `cartera_app`, que solo ve las filas de su organización, no puede borrar
+   nada y no puede editar gestiones ni pagos. Las FK compuestas impiden
+   enlazar registros de dos organizaciones distintas.
 
-Los documentos Word toman el membrete, la firma y el pie de página de la tabla
-`empresa`: cambiar de empresa es llenar un formulario, no editar código.
+Planes (`backend/app/planes.py`): **base**, **profesional** y **premium**,
+cada uno con sus funciones habilitadas.
+
+## Seguridad
+
+- Contraseñas con Argon2id; política de largo mínimo y contraseñas comunes.
+- Access token de 15 minutos solo en memoria del navegador + sesión en cookie
+  httpOnly/Secure/SameSite=Strict que se rota en cada uso (si un token robado
+  se reutiliza, se cierra la sesión).
+- Sesiones revocables al instante (logout, cambio de contraseña, desactivar
+  usuario), bloqueo tras intentos fallidos, límite por IP.
+- 2FA con app autenticadora + códigos de recuperación; semilla cifrada.
+- Recuperación de contraseña e invitaciones por enlace de un solo uso.
+- Bitácora de accesos y auditoría de cambios (Ley 21.719).
+- Cabeceras de seguridad (CSP, HSTS, frame-ancestors), sin `/docs` en producción.
 
 ## Stack
 
-- **Backend:** Python 3.11 + FastAPI + SQLAlchemy
+- **Backend:** Python 3.11 + FastAPI + SQLAlchemy + Alembic
 - **Frontend:** React 19 + TypeScript + Vite + TanStack Query
-- **Base de datos:** PostgreSQL 16
-- **Contenedores:** Docker + Docker Compose
+- **Base de datos:** PostgreSQL 16 (local en Docker, o Supabase / Neon)
 
-## Estructura del proyecto
+## Estructura
 
 ```
-├── .env                  ← Variables de entorno (NO subir a Git)
-├── .env.example          ← Plantilla pública
-├── docker-compose.yml    ← PostgreSQL para desarrollo local
-├── database/
-│   ├── init/             ← Se ejecuta al crear la base
-│   │   ├── 001_schema.sql       ← DDL completo (17 tablas, 4 vistas)
-│   │   └── 002_verificacion.sql ← Admin inicial y datos de ejemplo
-│   └── migraciones/      ← Cambios sobre bases que ya existen
-├── backend/              ← API FastAPI
-└── frontend/             ← SPA React
+├── docker-compose.yml       ← PostgreSQL para desarrollo local
+├── backend/
+│   ├── app/                 ← API FastAPI (models, schemas, routers)
+│   ├── migraciones/         ← Alembic: el esquema versionado (0001, 0002...)
+│   └── tests/               ← pytest contra PostgreSQL real
+└── frontend/                ← SPA React
 ```
 
-## Setup inicial
+## Desarrollo local
 
-### Requisitos
-- Docker Desktop instalado y corriendo
-- Python 3.11 y Node 20
+Requisitos: Docker Desktop, Python 3.11 y Node 22.
 
-### Levantar la base de datos
 ```bash
-docker compose up -d
-```
-
-### Backend
-```bash
+docker compose up -d                       # PostgreSQL en el puerto 5433
 cd backend
 .venv\Scripts\activate
-uvicorn app.main:app --reload
+pip install -r requirements-dev.txt
+alembic upgrade head                       # crea / actualiza el esquema
+python -m app.cli crear-organizacion --nombre "Mi Estudio" --slug mi-estudio --admin-nombre "Tu Nombre" --admin-email tu@correo.cl --plan premium
+uvicorn app.main:app --reload              # API en http://localhost:8000
 ```
 
-API en `http://localhost:8000`, docs interactivas en `/docs`.
+El comando `crear-organizacion` imprime un enlace para elegir la contraseña del
+administrador. En otra terminal:
 
-### Frontend
 ```bash
-npm run dev --prefix frontend
+npm run dev --prefix frontend              # http://localhost:5173
 ```
 
-Sitio en `http://localhost:5173` (el proxy de Vite manda `/api` al backend).
+### Tests
 
-### Primer ingreso
-`admin@cartera.cl` / `cartera2026`. Cambiar la contraseña y llenar
-**Administración → Mi empresa** antes de emitir documentos.
-
-### Detener / reset
 ```bash
-docker compose down       # detiene, conserva datos
-docker compose down -v    # borra el volumen y todos los datos
+cd backend
+pytest
 ```
 
-## Conexión desde DBeaver
+Usan un PostgreSQL real: el de `TEST_DATABASE_URL` si está definida, o uno
+portátil que se levanta solo (`pgserver`, sin Docker).
 
-| Campo | Valor |
-|---|---|
-| Host | localhost |
-| Port | 5433 |
-| Database | cartera |
-| Username | cartera_admin |
-| Password | desarrollo_local_2026 |
+### Migraciones
+
+Todo cambio de esquema es una migración nueva en `backend/migraciones/versions/`
+(`alembic revision -m "descripcion"`). Si crea una tabla de negocio, debe
+llevar `organizacion_id` y llamar a `proteger_tabla_tenant()`; el test
+`test_todas_las_tablas_con_organizacion_tienen_rls` falla si se olvida.
 
 ## Publicar
 
-Ver `DEPLOY.md`: demo estática sin servidor (Vercel) o instalación completa
-con base de datos (Render + Neon).
+Ver `DEPLOY.md`.

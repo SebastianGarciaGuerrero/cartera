@@ -20,6 +20,7 @@ import argparse
 import sys
 from datetime import date, datetime, timedelta, timezone
 
+from email_validator import EmailNotValidError, validate_email
 from sqlalchemy import func
 
 import app.models  # noqa: F401  (registra todos los modelos)
@@ -46,6 +47,10 @@ def _enlace(db, usuario: Usuario) -> str:
 
 
 def crear_organizacion(args) -> None:
+    try:
+        validate_email(args.admin_email, check_deliverability=False)
+    except EmailNotValidError as e:
+        sys.exit(f"Email inválido: {e}")
     with sesion_sistema() as db:
         if db.query(Organizacion).filter(Organizacion.slug == args.slug).first():
             sys.exit(f"Ya existe una organización con slug '{args.slug}'.")
@@ -114,6 +119,11 @@ def enlace_acceso(args) -> None:
 
 
 def main(argv=None) -> None:
+    # Consolas de Windows con codificación antigua: que una tilde no corte el
+    # comando a la mitad (el resto del texto se imprime igual).
+    for flujo in (sys.stdout, sys.stderr):
+        if hasattr(flujo, "reconfigure"):
+            flujo.reconfigure(errors="replace")
     p = argparse.ArgumentParser(prog="python -m app.cli", description="Administración de la plataforma")
     sub = p.add_subparsers(dest="comando", required=True)
 

@@ -1,0 +1,16 @@
+# Revisa una vez por semana si hay versiones nuevas (sobre todo parches de
+# seguridad) de las dependencias y abre un pull request con el cambio.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
