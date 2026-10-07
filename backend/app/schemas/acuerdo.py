@@ -31,6 +31,12 @@ class CuotaResponse(BaseModel):
     fecha_vencimiento: date
     monto_pagado: Decimal
     estado: EstadoCuota
+    # Desglose (solo en acuerdos creados con la calculadora)
+    capital: Optional[Decimal] = None
+    intereses: Optional[Decimal] = None
+    honorarios: Optional[Decimal] = None
+    gastos_judiciales: Optional[Decimal] = None
+    comision: Optional[Decimal] = None
 
     model_config = ConfigDict(from_attributes=True)
 

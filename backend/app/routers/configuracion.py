@@ -15,6 +15,7 @@ en vez de "ID cliente". La interfaz usa estas etiquetas.
 
 import re
 import unicodedata
+from decimal import Decimal
 from typing import List, Literal, Optional
 from uuid import UUID
 
@@ -23,7 +24,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.calculos import COMISION_FLOW_DEFECTO, PCT_JUDICIAL_DEFECTO
 from app.campos import campos_aplicables
+from app.routers.mensajes import PLANTILLA_DEFECTO
 from app.database import get_db
 from app.models.campo_personalizado import CampoPersonalizado
 from app.models.cliente import Cliente
@@ -50,6 +53,12 @@ ETIQUETAS_DEFECTO = {
 }
 
 
+class ParametrosCobro(BaseModel):
+    """Porcentajes que usa la calculadora (los tramos 3-6-9 son los de la ley)."""
+    pct_judicial: Decimal = Field(PCT_JUDICIAL_DEFECTO, ge=0, le=30)
+    comision_pct: Decimal = Field(COMISION_FLOW_DEFECTO, ge=0, le=10)
+
+
 class OrganizacionVista(BaseModel):
     id: UUID
     nombre: str
@@ -58,19 +67,27 @@ class OrganizacionVista(BaseModel):
     estado: str
     funciones: List[str]
     etiquetas: dict
+    plantilla_mensaje_pago: str
+    cobro: ParametrosCobro
 
 
 class OrganizacionCambios(BaseModel):
     nombre: Optional[str] = Field(None, min_length=2, max_length=200)
     etiquetas: Optional[dict] = None
+    # Vacío = volver a la plantilla por defecto.
+    plantilla_mensaje_pago: Optional[str] = Field(None, max_length=3000)
+    cobro: Optional[ParametrosCobro] = None
 
 
 def _vista(org: Organizacion) -> OrganizacionVista:
+    conf = org.configuracion or {}
     etiquetas = dict(ETIQUETAS_DEFECTO)
-    etiquetas.update((org.configuracion or {}).get("etiquetas") or {})
+    etiquetas.update(conf.get("etiquetas") or {})
     return OrganizacionVista(
         id=org.id, nombre=org.nombre, slug=org.slug, plan=org.plan, estado=org.estado,
         funciones=sorted(funciones_de(org)), etiquetas=etiquetas,
+        plantilla_mensaje_pago=conf.get("plantilla_mensaje_pago") or PLANTILLA_DEFECTO,
+        cobro=ParametrosCobro(**(conf.get("cobro") or {})),
     )
 
 
@@ -101,6 +118,17 @@ def actualizar_organizacion(
         configuracion = dict(org.configuracion or {})
         configuracion["etiquetas"] = limpias
         org.configuracion = configuracion  # reasignar: JSONB no detecta mutaciones
+    if cambios.plantilla_mensaje_pago is not None or cambios.cobro is not None:
+        configuracion = dict(org.configuracion or {})
+        if cambios.plantilla_mensaje_pago is not None:
+            texto = cambios.plantilla_mensaje_pago.strip()
+            if texto and texto != PLANTILLA_DEFECTO:
+                configuracion["plantilla_mensaje_pago"] = texto
+            else:
+                configuracion.pop("plantilla_mensaje_pago", None)
+        if cambios.cobro is not None:
+            configuracion["cobro"] = {k: str(v) for k, v in cambios.cobro.model_dump().items()}
+        org.configuracion = configuracion
     db.commit()
     db.refresh(org)
     return _vista(org)

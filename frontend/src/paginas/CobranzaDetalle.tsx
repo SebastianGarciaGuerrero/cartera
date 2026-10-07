@@ -7,6 +7,9 @@ import { EtiquetaEstado, Plata, fechaLegible, fechaHoraLegible } from '../compon
 import Finanzas from '../componentes/Finanzas'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { useAuth } from '../auth'
+import MensajePago from '../componentes/MensajePago'
+import { NuevoRecordatorio } from './Agenda'
+import { fechaLocal } from '../componentes/utiles'
 import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
 
 // La pantalla más usada del sistema: la ficha de una cobranza con su
@@ -15,7 +18,8 @@ import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
 export default function CobranzaDetalle() {
   const { id } = useParams()
   const cliente = useQueryClient()
-  const { etiqueta } = useAuth()
+  const { etiqueta, tiene } = useAuth()
+  const [mensaje, setMensaje] = useState(false)
 
   const { data: cob, isLoading } = useQuery({
     queryKey: ['cobranza', id],
@@ -131,6 +135,16 @@ export default function CobranzaDetalle() {
 
           <h2 className="separado">Acciones</h2>
           <div className="acciones">
+            {tiene('mensaje_pago') && (
+              <button className="btn btn-primario" onClick={() => setMensaje(true)}>
+                Mensaje de pago
+              </button>
+            )}
+            {tiene('calculadora_369') && (
+              <Link className="btn btn-secundario" to={`/calculadora?cobranza=${cob.id}`}>
+                Calculadora / acuerdo 3-6-9
+              </Link>
+            )}
             <button
               className="btn btn-secundario"
               onClick={() => descargarArchivo(`/documentos/informe-gestiones/${cob.id}`)}
@@ -143,6 +157,9 @@ export default function CobranzaDetalle() {
             >
               Estado de cuenta (Word)
             </button>
+          </div>
+          <div className="separado">
+            <NuevoRecordatorio cobranzaId={cob.id} fecha={fechaLocal()} />
           </div>
         </section>
 
@@ -210,6 +227,7 @@ export default function CobranzaDetalle() {
       </div>
 
       <Finanzas cobranza={cob} />
+      {mensaje && <MensajePago cobranzaId={cob.id} alCerrar={() => setMensaje(false)} />}
     </>
   )
 }

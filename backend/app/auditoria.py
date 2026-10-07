@@ -19,7 +19,7 @@ Este módulo se importa desde main.py para registrar el listener al arrancar.
 """
 
 from uuid import UUID
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Optional
 
@@ -59,7 +59,7 @@ def _valor(v):
     """Convierte un valor a algo serializable en JSON (para JSONB)."""
     if isinstance(v, (UUID,)):
         return str(v)
-    if isinstance(v, (datetime, date)):
+    if isinstance(v, (datetime, date, time)):
         return v.isoformat()
     if isinstance(v, Decimal):
         return str(v)

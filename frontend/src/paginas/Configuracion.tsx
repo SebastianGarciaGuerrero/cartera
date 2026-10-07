@@ -11,7 +11,7 @@ import type { CampoPersonalizado, Cliente, TipoCampo, TipoGestion } from '../api
 //  - Campos personalizados: datos propios en cobranzas y deudores.
 //  - Tipos de gestión propios.
 
-type Pestana = 'campos' | 'etiquetas' | 'tipos'
+type Pestana = 'campos' | 'etiquetas' | 'tipos' | 'cobro'
 
 export default function Configuracion() {
   const [pestana, setPestana] = useState<Pestana>('campos')
@@ -22,7 +22,7 @@ export default function Configuracion() {
       </header>
       <div className="pestanas">
         {([['campos', 'Campos personalizados'], ['etiquetas', 'Nombres en pantalla'],
-           ['tipos', 'Tipos de gestión']] as const).map(([clave, nombre]) => (
+           ['tipos', 'Tipos de gestión'], ['cobro', 'Cobro']] as const).map(([clave, nombre]) => (
           <button key={clave} className={`pestana ${pestana === clave ? 'activa' : ''}`}
             onClick={() => setPestana(clave)}>{nombre}</button>
         ))}
@@ -30,6 +30,7 @@ export default function Configuracion() {
       {pestana === 'campos' && <Campos />}
       {pestana === 'etiquetas' && <Etiquetas />}
       {pestana === 'tipos' && <TiposGestion />}
+      {pestana === 'cobro' && <Cobro />}
     </>
   )
 }
@@ -289,5 +290,71 @@ function TiposGestion() {
         <div className="fila"><button className="btn btn-primario" disabled={crear.isPending}>Agregar</button></div>
       </form>
     </>
+  )
+}
+
+// ------------------------------------------------------------ cobro
+
+interface VistaCobro {
+  plantilla_mensaje_pago: string
+  cobro: { pct_judicial: string; comision_pct: string }
+}
+
+const MARCADORES = ['{deudor}', '{nombre}', '{saldo}', '{numero}', '{id_externo}', '{cliente}',
+  '{empresa}', '{datos_pago}', '{telefono_empresa}', '{email_empresa}']
+
+function Cobro() {
+  const { data } = useQuery({
+    queryKey: ['organizacion'],
+    queryFn: async () => (await api.get<VistaCobro>('/organizacion')).data,
+  })
+  const qc = useQueryClient()
+  const [plantilla, setPlantilla] = useState('')
+  const [pctJudicial, setPctJudicial] = useState('10')
+  const [comision, setComision] = useState('2.2491')
+  const [ok, setOk] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (data) {
+      setPlantilla(data.plantilla_mensaje_pago)
+      setPctJudicial(String(Number(data.cobro.pct_judicial)))
+      setComision(String(Number(data.cobro.comision_pct)))
+    }
+  }, [data])
+
+  const guardar = useMutation({
+    mutationFn: () => api.put('/organizacion', {
+      plantilla_mensaje_pago: plantilla,
+      cobro: { pct_judicial: pctJudicial, comision_pct: comision },
+    }),
+    onSuccess: () => { setOk(true); setError(''); qc.invalidateQueries({ queryKey: ['organizacion'] }) },
+    onError: (err) => { setOk(false); setError(mensajeDeError(err)) },
+  })
+
+  return (
+    <form className="form-finanzas form-alta" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
+      <h3>Mensaje de pago</h3>
+      <p className="nota">
+        Texto que se arma en cada cobranza con el botón "Mensaje de pago". Puedes usar estos
+        marcadores: {MARCADORES.map((m) => <span key={m} className="mono">{m} </span>)}.
+        Los datos de transferencia salen de Mi empresa (o del cliente, si tiene propios).
+      </p>
+      <textarea rows={12} value={plantilla} onChange={(e) => { setOk(false); setPlantilla(e.target.value) }} />
+      <h3>Calculadora</h3>
+      <div className="fila">
+        <label>Honorarios judiciales (%)
+          <input type="number" min="0" max="30" step="0.01" value={pctJudicial}
+            onChange={(e) => { setOk(false); setPctJudicial(e.target.value) }} />
+        </label>
+        <label>Comisión de pago en línea (%)
+          <input type="number" min="0" max="10" step="0.0001" value={comision}
+            onChange={(e) => { setOk(false); setComision(e.target.value) }} />
+        </label>
+      </div>
+      <p className="nota">Los tramos extrajudiciales 3-6-9 son los del art. 37 de la Ley 19.496 y no se cambian.</p>
+      {error && <div className="alerta-error">{error}</div>}
+      {ok && <div className="alerta-exito">Guardado.</div>}
+      <div className="fila"><button className="btn btn-primario" disabled={guardar.isPending}>Guardar</button></div>
+    </form>
   )
 }

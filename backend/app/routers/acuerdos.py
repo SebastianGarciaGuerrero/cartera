@@ -47,6 +47,23 @@ router = APIRouter(
 )
 
 
+def validar_sin_acuerdo_vigente(db: Session, cobranza_id) -> None:
+    """Regla: un solo acuerdo vigente por cobranza (400 si ya hay uno)."""
+    existe_vigente = (
+        db.query(AcuerdoPago)
+        .filter(AcuerdoPago.cobranza_id == cobranza_id, AcuerdoPago.estado == "vigente")
+        .first()
+    )
+    if existe_vigente:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "La cobranza ya tiene un acuerdo vigente. Para renegociar, "
+                "marca el acuerdo actual como 'renegociado' y luego crea el nuevo."
+            )
+        )
+
+
 def _sumar_meses(base: date, meses: int) -> date:
     """
     Suma 'meses' a una fecha, ajustando el día si el mes destino es más corto
@@ -144,22 +161,7 @@ def crear_acuerdo(
         )
 
     # 2. Regla: un solo acuerdo vigente por cobranza.
-    existe_vigente = (
-        db.query(AcuerdoPago)
-        .filter(
-            AcuerdoPago.cobranza_id == acuerdo_data.cobranza_id,
-            AcuerdoPago.estado == "vigente",
-        )
-        .first()
-    )
-    if existe_vigente:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                "La cobranza ya tiene un acuerdo vigente. Para renegociar, "
-                "marca el acuerdo actual como 'renegociado' y luego crea el nuevo."
-            )
-        )
+    validar_sin_acuerdo_vigente(db, acuerdo_data.cobranza_id)
 
     # 3. Crear el acuerdo (estado 'vigente' por defecto).
     nuevo_acuerdo = AcuerdoPago(

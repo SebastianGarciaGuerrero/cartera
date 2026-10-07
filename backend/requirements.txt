@@ -11,6 +11,8 @@ alembic==1.13.3
 pydantic[email]==2.9.2
 pydantic-settings==2.5.2
 python-dotenv==1.0.1
+# Zona horaria de Chile (Windows no trae la base de zonas horarias)
+tzdata==2025.2
 
 # Seguridad: JWT, contraseñas Argon2id (+ bcrypt para hashes heredados),
 # 2FA TOTP con QR, cifrado de secretos

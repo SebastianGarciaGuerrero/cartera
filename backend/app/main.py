@@ -45,6 +45,9 @@ from app.routers import documentos
 from app.routers import importar
 from app.routers import reportes
 from app.routers import auditoria as auditoria_router
+from app.routers import agenda
+from app.routers import calculadora
+from app.routers import mensajes
 
 
 logging.basicConfig(
@@ -148,6 +151,9 @@ app.include_router(documentos.router)
 app.include_router(importar.router)
 app.include_router(reportes.router)
 app.include_router(auditoria_router.router)
+app.include_router(agenda.router)
+app.include_router(calculadora.router)
+app.include_router(mensajes.router)
 
 
 @app.get("/api/health")

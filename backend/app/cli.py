@@ -14,6 +14,12 @@ Desde la carpeta backend, con el venv activo:
   python -m app.cli cambiar-estado --slug perez --estado suspendida
   python -m app.cli enlace-acceso --email ana@perez.cl
       Nuevo enlace para elegir contraseña (si se le perdió la invitación).
+
+  python -m app.cli enviar-agenda [--simular]
+      Correo de la mañana a cada persona con su agenda del día (contactos,
+      promesas, cuotas y recordatorios, más lo atrasado). Solo para las
+      organizaciones con la función "recordatorios". Programarlo una vez al
+      día (ej. 7:30) en el hosting (cron) o con el Programador de tareas.
 """
 
 import argparse
@@ -108,6 +114,62 @@ def cambiar(args, campo: str, valor: str) -> None:
         print(f"{org.slug}: {campo} = {valor}")
 
 
+def enviar_agenda(args) -> None:
+    from app.agenda import items_agenda
+    from app.correo import ErrorCorreo, enviar_correo
+    from app.database import SessionLocal
+    from app.indicadores import hoy_chile
+    from app.planes import funciones_de
+    from app.security import ROLES_INTERNOS
+    from app.tenancy import activar_organizacion
+
+    hoy = hoy_chile()
+    with sesion_sistema() as db:
+        orgs = [(o.id, o.nombre) for o in db.query(Organizacion).all()
+                if o.habilitada and "recordatorios" in funciones_de(o)]
+    enviados = 0
+    for org_id, org_nombre in orgs:
+        with sesion_sistema() as db:
+            personas = [
+                (u.id, u.nombre, u.email) for u in
+                db.query(Usuario).filter(Usuario.organizacion_id == org_id, Usuario.activo.is_(True)).all()
+                if u.rol_nombre in ROLES_INTERNOS
+            ]
+        for usuario_id, nombre, email in personas:
+            db = SessionLocal()
+            try:
+                activar_organizacion(db, org_id)
+                items = items_agenda(db, org_id, hoy - timedelta(days=60), hoy, usuario_id, hoy)
+            finally:
+                db.close()
+            if not items:
+                continue
+            atrasados = [i for i in items if i.atrasado]
+            de_hoy = [i for i in items if not i.atrasado]
+            lineas = [f"Hola {nombre.split()[0]}, esta es tu agenda de hoy en {org_nombre}:", ""]
+            for titulo, grupo in (("HOY", de_hoy), ("ATRASADO", atrasados)):
+                if grupo:
+                    lineas.append(f"{titulo} ({len(grupo)})")
+                    for i in grupo:
+                        cuando = "" if not i.atrasado else f" [{i.fecha.strftime('%d-%m')}]"
+                        numero = f" (N° {i.numero_cobranza})" if i.numero_cobranza else ""
+                        lineas.append(f"  - {i.titulo}{numero}{cuando}")
+                    lineas.append("")
+            lineas.append(f"Ver en Cartera: {settings.url_publica.rstrip('/')}/agenda")
+            asunto = f"Tu agenda de hoy: {len(de_hoy)} pendiente(s)" + (
+                f", {len(atrasados)} atrasado(s)" if atrasados else "")
+            if args.simular:
+                print(f"--- {email}: {asunto}")
+                print("\n".join(lineas))
+                continue
+            try:
+                enviar_correo(email, asunto, "\n".join(lineas))
+                enviados += 1
+            except ErrorCorreo as e:
+                print(f"No se pudo enviar a {email}: {e}")
+    print(f"Agendas enviadas: {enviados}")
+
+
 def enlace_acceso(args) -> None:
     with sesion_sistema() as db:
         usuario = db.query(Usuario).filter(func.lower(Usuario.email) == args.email.lower()).first()
@@ -149,6 +211,10 @@ def main(argv=None) -> None:
     c.add_argument("--slug", required=True)
     c.add_argument("--estado", required=True, choices=["prueba", "activa", "suspendida", "cancelada"])
     c.set_defaults(func=lambda a: cambiar(a, "estado", a.estado))
+
+    c = sub.add_parser("enviar-agenda")
+    c.add_argument("--simular", action="store_true", help="muestra los correos sin enviarlos")
+    c.set_defaults(func=enviar_agenda)
 
     c = sub.add_parser("enlace-acceso")
     c.add_argument("--email", required=True)

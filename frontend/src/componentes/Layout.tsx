@@ -1,4 +1,7 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../api/client'
+import type { ItemAgenda } from '../api/tipos'
 import { useAuth } from '../auth'
 import { MARCA } from '../marca'
 
@@ -7,8 +10,16 @@ import { MARCA } from '../marca'
 // Si la contraseña es temporal, obliga a pasar por Mi cuenta.
 
 export default function Layout() {
-  const { usuario, cargando, logout, esAdmin, etiqueta } = useAuth()
+  const { usuario, cargando, logout, esAdmin, etiqueta, tiene } = useAuth()
   const ubicacion = useLocation()
+
+  // Contador de la agenda: lo de hoy más lo atrasado.
+  const { data: agendaHoy } = useQuery({
+    queryKey: ['agenda-hoy', 'yo'],
+    enabled: Boolean(usuario) && usuario?.rol !== 'mandante',
+    queryFn: async () => (await api.get<ItemAgenda[]>('/agenda/hoy')).data,
+    refetchInterval: 5 * 60 * 1000,
+  })
 
   if (cargando) return <div className="pantalla-carga">Cargando…</div>
   if (!usuario) return <Navigate to="/login" replace />
@@ -29,8 +40,14 @@ export default function Layout() {
 
         <nav className="menu">
           <div className="menu-grupo">Gestión</div>
+          <NavLink to="/agenda">
+            Agenda
+            {agendaHoy && agendaHoy.length > 0 && <span className="menu-contador">{agendaHoy.length}</span>}
+          </NavLink>
           <NavLink to="/cobranzas" end>{etiqueta('cobranzas', 'Cobranzas')}</NavLink>
           <NavLink to="/deudores">{etiqueta('deudores', 'Deudores')}</NavLink>
+          <NavLink to="/clientes">{etiqueta('clientes', 'Clientes')}</NavLink>
+          {tiene('calculadora_369') && <NavLink to="/calculadora">Calculadora 3-6-9</NavLink>}
 
           <div className="menu-grupo">Ingresos</div>
           <NavLink to="/cobranzas/nueva">Ingreso de {etiqueta('cobranza', 'cobranza').toLowerCase()}</NavLink>

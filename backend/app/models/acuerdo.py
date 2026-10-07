@@ -92,6 +92,13 @@ class Cuota(TenantMixin, Base):
     fecha_vencimiento = Column(Date, nullable=False)
     monto_pagado = Column(Numeric(15, 2), nullable=False, server_default=text("0"))
     estado = Column(String(20), nullable=False, server_default=text("'pendiente'"))
+    # Desglose de la cuota (lo llena el acuerdo asistido de la calculadora):
+    # al pagarla, el abono se reparte solo para la rendición.
+    capital = Column(Numeric(15, 2))
+    intereses = Column(Numeric(15, 2))
+    honorarios = Column(Numeric(15, 2))
+    gastos_judiciales = Column(Numeric(15, 2))
+    comision = Column(Numeric(15, 2))
 
     __table_args__ = (
         UniqueConstraint("acuerdo_id", "numero_cuota", name="uq_cuota_acuerdo_numero"),

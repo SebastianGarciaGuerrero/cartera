@@ -146,6 +146,7 @@ export default function Abonos() {
             ) : (
               <FormPago
                 cobranzaId={cob.id}
+                modalidad={cob.tipo}
                 cuota={null}
                 alTerminar={alRegistrar}
                 alCancelar={() => { setSeleccionada(null); setBusqueda('') }}

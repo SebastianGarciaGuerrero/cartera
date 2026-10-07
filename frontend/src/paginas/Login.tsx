@@ -27,10 +27,10 @@ export default function Login() {
     try {
       if (mfaToken) {
         await completarMfa(mfaToken, codigo.trim())
-        navegar('/cobranzas')
+        navegar('/')
       } else {
         const r = await login(email, password)
-        if (r.ok) navegar('/cobranzas')
+        if (r.ok) navegar('/')
         else setMfaToken(r.mfaToken)
       }
     } catch (err) {

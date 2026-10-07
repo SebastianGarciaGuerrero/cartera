@@ -53,6 +53,12 @@ FastAPI con capas por dominio: `backend/app/{models,schemas,routers}/<entidad>.p
 - Dependencias de autorización: `usuario_autorizado` (usuarios internos; `viewer` solo lectura; `mandante` excluido), `require_admin`, `requiere_roles(...)`, `requiere_funcion("judicial")` (plan).
 - Frontend: el access token vive solo en memoria (`api/client.ts`); al cargar se pide con `/auth/refresh`. Nunca guardar tokens en localStorage.
 
+### Agenda y calculadora (Fase 2)
+
+- `app/agenda.py` arma la agenda desde los datos: última gestión con `fecha_proximo_contacto` (promesa si el tipo es `promesa_pago`), cuotas abiertas de acuerdos vigentes y `recordatorios`. Fechas de negocio en hora de Chile (`app/indicadores.hoy_chile()`); en el frontend usar `fechaLocal()`/`fechaLegible()` de `componentes/utiles.tsx`, nunca `toISOString()` para fechas.
+- `app/calculos.py`: honorarios 3-6-9 / judicial, abono → capital, plan de cuotas. Decimal y redondeo tipo `Math.round` (verificado contra la calculadora `cobra369`). El servidor es la única fuente de verdad; `frontend/src/api/demoCalculos.ts` es solo para la demo.
+- UF: `app/indicadores.py` (mindicador.cl → boostr.cl) con caché en la tabla `indicadores`.
+
 ### Personalización por organización
 
 - Campos personalizados (`campos_personalizados`, `app/campos.py`): valores en `datos_extra` JSONB de cobranzas/deudores, validados contra la definición. Pueden limitarse a un mandante (`cliente_id`).

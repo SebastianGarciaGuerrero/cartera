@@ -15,10 +15,13 @@
  */
 
 import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
+import * as calc from './demoCalculos'
 
 const CLAVE_DB = 'cartera_demo_db'
-const VERSION_SEMILLA = 7
+const VERSION_SEMILLA = 8
+const UF_DEMO = '39841.72'
 const CLAVE_SESION = 'cartera_demo_sesion'
+const PLANTILLA_DEMO = 'Estimado(a) {deudor}:\n\nLe escribimos de {empresa} por la deuda N° {numero} con {cliente}, cuyo saldo a la fecha es de {saldo}.\n\nPuede pagar por transferencia a:\n{datos_pago}\n\nUna vez realizado el pago, envíenos el comprobante por este medio para registrarlo y dar por cerrada su cobranza.\n\nAtentamente,\n{empresa}'
 
 // ---------- utilidades ----------
 
@@ -310,7 +313,21 @@ function semilla() {
     updated_at: ahora(),
   }
 
-  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosSantiago.cobranzas.length }
+  // Agenda de ejemplo: un recordatorio para hoy y compromisos en las gestiones.
+  const recordatorios = [
+    { id: 'rec-1', usuario_id: 'u-admin', cobranza_id: 'cob-2' as string | null, fecha: hoy(), hora: '10:30' as string | null,
+      titulo: 'Llamar a María Pérez para confirmar la transferencia', nota: null as string | null,
+      estado: 'pendiente', creado_por: 'u-admin', created_at: ahora() },
+  ]
+  gestiones.push({
+    id: 'g-4', cobranza_id: 'cob-3', usuario_id: 'u-admin', tipo_id: 16,
+    descripcion: 'Se compromete a pagar la mitad esta semana.',
+    fecha_gestion: ahora(), fecha_proximo_contacto: sumarMeses(hoy(), 0) as never,
+  })
+  const plantilla = ''
+  const cobro = { pct_judicial: '10', comision_pct: '2.2491' }
+
+  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, recordatorios, plantilla, cobro, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosSantiago.cobranzas.length }
 }
 
 // ---------- base de datos en localStorage ----------
@@ -426,17 +443,182 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   }
 
   // ---- configuración de la organización ----
-  if (metodo === 'GET' && url === '/organizacion') {
-    return ok(config, { id: 'org-demo', nombre: db.empresa.nombre_fantasia, slug: 'demo', plan: 'premium',
-      estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas })
-  }
+  const vistaOrg = () => ({ id: 'org-demo', nombre: db.empresa.nombre_fantasia, slug: 'demo', plan: 'premium',
+    estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas,
+    plantilla_mensaje_pago: db.plantilla || PLANTILLA_DEMO, cobro: db.cobro })
+  if (metodo === 'GET' && url === '/organizacion') return ok(config, vistaOrg())
   if (metodo === 'PUT' && url === '/organizacion') {
-    const datos = cuerpo(config) as { nombre?: string; etiquetas?: Record<string, string> }
+    const datos = cuerpo(config) as { nombre?: string; etiquetas?: Record<string, string>;
+      plantilla_mensaje_pago?: string; cobro?: { pct_judicial: string; comision_pct: string } }
     if (datos.etiquetas) db.etiquetas = Object.fromEntries(Object.entries(datos.etiquetas).filter(([, v]) => v))
     if (datos.nombre) db.empresa.nombre_fantasia = datos.nombre
+    if (datos.plantilla_mensaje_pago !== undefined) db.plantilla = datos.plantilla_mensaje_pago
+    if (datos.cobro) db.cobro = datos.cobro
     guardarDB(db)
-    return ok(config, { id: 'org-demo', nombre: db.empresa.nombre_fantasia, slug: 'demo', plan: 'premium',
-      estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas })
+    return ok(config, vistaOrg())
+  }
+
+  // ---- agenda, recordatorios, UF, calculadora, mensaje de pago ----
+  if (metodo === 'GET' && (url === '/agenda' || url === '/agenda/hoy')) {
+    const hoyIso = hoy()
+    const desde = url === '/agenda/hoy' ? new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10) : (params.desde ?? hoyIso.slice(0, 8) + '01')
+    const hasta = url === '/agenda/hoy' ? hoyIso : (params.hasta ?? sumarMeses(hoyIso, 1))
+    const items: Record<string, unknown>[] = []
+    const enRango = (f: string) => f >= desde && f <= hasta
+    for (const c of db.cobranzas) {
+      if (!['activa', 'acuerdo_pago', 'judicial'].includes(c.estado)) continue
+      const ultima = db.gestiones.filter((g) => g.cobranza_id === c.id)
+        .sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion))[0]
+      const f = ultima?.fecha_proximo_contacto as string | null | undefined
+      if (!f || !enRango(f)) continue
+      const d = db.deudores.find((x) => x.id === c.deudor_id)
+      const promesa = db.tiposGestion.find((t) => t.id === ultima.tipo_id)?.codigo === 'promesa_pago'
+      items.push({ tipo: promesa ? 'promesa' : 'contacto', fecha: f, hora: null,
+        titulo: promesa ? `Promesa de pago: ${d?.nombre}` : `Contactar a ${d?.nombre}`,
+        detalle: ultima.descripcion, atrasado: f < hoyIso, cobranza_id: c.id, numero_cobranza: c.numero,
+        deudor: d?.nombre, monto: Number(c.monto_actual), responsable_id: ultima.usuario_id,
+        recordatorio_id: null, cuota_id: null })
+    }
+    for (const a of db.acuerdos.filter((x) => x.estado === 'vigente')) {
+      const c = db.cobranzas.find((x) => x.id === a.cobranza_id)
+      const d = db.deudores.find((x) => x.id === c?.deudor_id)
+      for (const cu of a.cuotas) {
+        if (cu.estado === 'pagada' || !enRango(cu.fecha_vencimiento)) continue
+        const saldo = Number(cu.monto) - Number(cu.monto_pagado)
+        items.push({ tipo: 'cuota', fecha: cu.fecha_vencimiento, hora: null,
+          titulo: `Cuota ${cu.numero_cuota}/${a.numero_cuotas}: ${d?.nombre}`, detalle: `Por pagar ${clp(saldo)}`,
+          atrasado: cu.fecha_vencimiento < hoyIso, cobranza_id: c?.id, numero_cobranza: c?.numero, deudor: d?.nombre,
+          monto: saldo, responsable_id: a.usuario_id, recordatorio_id: null, cuota_id: cu.id })
+      }
+    }
+    for (const r of db.recordatorios.filter((x) => x.estado === 'pendiente' && enRango(x.fecha))) {
+      const c = db.cobranzas.find((x) => x.id === r.cobranza_id)
+      items.push({ tipo: 'recordatorio', fecha: r.fecha, hora: r.hora, titulo: r.titulo, detalle: r.nota,
+        atrasado: r.fecha < hoyIso, cobranza_id: r.cobranza_id, numero_cobranza: c?.numero ?? null,
+        deudor: null, monto: null, responsable_id: r.usuario_id, recordatorio_id: r.id, cuota_id: null })
+    }
+    items.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
+    return ok(config, items)
+  }
+  if (metodo === 'GET' && url === '/recordatorios') {
+    return ok(config, db.recordatorios.filter((r) =>
+      (!params.cobranza_id || r.cobranza_id === params.cobranza_id) && r.estado === 'pendiente'))
+  }
+  if (metodo === 'POST' && url === '/recordatorios') {
+    const datos = cuerpo(config) as Record<string, string | null>
+    const u = usuarioDelToken(config, db)
+    const nuevo = { id: uid(), usuario_id: u.id, cobranza_id: datos.cobranza_id ?? null, fecha: String(datos.fecha),
+      hora: datos.hora ?? null, titulo: String(datos.titulo), nota: datos.nota ?? null, estado: 'pendiente',
+      creado_por: u.id, created_at: ahora() }
+    db.recordatorios.push(nuevo)
+    guardarDB(db)
+    return ok(config, nuevo, 201)
+  }
+  if (metodo === 'PUT' && /^\/recordatorios\/[^/]+$/.test(url)) {
+    const r = db.recordatorios.find((x) => x.id === url.split('/')[2])
+    if (!r) return error(404, 'Recordatorio no encontrado')
+    Object.assign(r, cuerpo(config))
+    guardarDB(db)
+    return ok(config, r)
+  }
+  if (metodo === 'GET' && url === '/indicadores/uf') {
+    return ok(config, { fecha: hoy(), valor: UF_DEMO, fuente: 'demo' })
+  }
+  if (metodo === 'POST' && url.startsWith('/calculadora/')) {
+    const d = cuerpo(config) as Record<string, unknown>
+    const pct = Number(db.cobro.pct_judicial)
+    try {
+      if (url === '/calculadora/honorarios') {
+        return ok(config, calc.aTexto(calc.honorarios(Number(d.capital), d.uf ? Number(d.uf) : null, String(d.modalidad), pct)))
+      }
+      if (url === '/calculadora/abono') {
+        const h = calc.aTexto(calc.capitalDesdeAbono(Number(d.abono), d.uf ? Number(d.uf) : null, String(d.modalidad), pct))
+        const abono = Math.round(Number(d.abono))
+        return ok(config, { ...h, total_honorarios: String(abono - Number(h.capital)), total_deuda: String(abono) })
+      }
+      const plan = calc.acuerdo(d)
+      if (url === '/calculadora/acuerdo') return ok(config, plan)
+      if (url === '/calculadora/acuerdo/crear') {
+        const cob = db.cobranzas.find((c) => c.id === d.cobranza_id)
+        if (!cob) return error(404, 'Cobranza no encontrada')
+        if (db.acuerdos.some((a) => a.cobranza_id === cob.id && a.estado === 'vigente')) {
+          return error(400, 'La cobranza ya tiene un acuerdo vigente.')
+        }
+        const u = usuarioDelToken(config, db)
+        const acuerdoId = uid()
+        const nuevo = {
+          id: acuerdoId, cobranza_id: cob.id, estado: 'vigente', fecha_acuerdo: hoy(),
+          fecha_termino: plan.cuotas[plan.cuotas.length - 1].fecha, pie: plan.abono_inicial,
+          monto_total_acordado: plan.gran_total, numero_cuotas: plan.numero_cuotas, dia_pago: null,
+          fecha_primera_cuota: String(d.fecha_primera_cuota), usuario_id: u.id,
+          cuotas: plan.cuotas.map((f) => ({ id: uid(), acuerdo_id: acuerdoId, numero_cuota: f.numero, monto: f.total,
+            fecha_vencimiento: String(f.fecha), monto_pagado: '0', estado: 'pendiente', capital: f.capital,
+            intereses: f.intereses, honorarios: f.honorarios, gastos_judiciales: f.gastos_judiciales, comision: f.comision })),
+        }
+        db.acuerdos.push(nuevo as never)
+        cob.estado = 'acuerdo_pago'
+        gestionAutomatica(db, cob.id, u.id, 'acuerdo', `ACUERDO DE PAGO: ${plan.texto}`)
+        guardarDB(db)
+        return ok(config, nuevo, 201)
+      }
+    } catch (e) {
+      return error(422, (e as Error).message)
+    }
+  }
+  if (metodo === 'GET' && /^\/cobranzas\/[^/]+\/mensaje-pago$/.test(url)) {
+    const c = db.cobranzas.find((x) => x.id === url.split('/')[2])
+    if (!c) return error(404, 'Cobranza no encontrada')
+    const d = db.deudores.find((x) => x.id === c.deudor_id)
+    const cl = db.clientes.find((x) => x.id === c.cliente_id) as { instrucciones_pago?: string | null; nombre_fantasia: string; razon_social: string } | undefined
+    const datosPago = (cl?.instrucciones_pago || db.empresa.instrucciones_pago || '').trim()
+    const valores: Record<string, string> = {
+      deudor: d?.nombre ?? '', nombre: (d?.nombre ?? '').split(' ')[0], saldo: clp(Number(c.monto_actual)),
+      numero: String(c.numero), id_externo: c.id_externo ?? '', cliente: cl?.nombre_fantasia ?? cl?.razon_social ?? '',
+      empresa: db.empresa.nombre_fantasia ?? db.empresa.razon_social, datos_pago: datosPago,
+      telefono_empresa: db.empresa.telefonos ?? '', email_empresa: db.empresa.emails ?? '',
+    }
+    const texto = (db.plantilla || PLANTILLA_DEMO).replace(/\{(\w+)\}/g, (m, k) => valores[k] ?? m)
+    const tel = d?.contactos.find((x) => x.activo && ['whatsapp', 'celular', 'telefono'].includes(x.tipo))?.valor ?? null
+    const email = d?.contactos.find((x) => x.activo && x.tipo === 'email')?.valor ?? null
+    const digitos = (tel ?? '').replace(/\D/g, '')
+    const numero = digitos.length === 9 ? '56' + digitos : digitos
+    const asunto = `Cobranza N° ${c.numero} - ${valores.cliente}`
+    return ok(config, {
+      texto, asunto, telefono: tel, email,
+      whatsapp_url: `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`,
+      mailto_url: `mailto:${email ?? ''}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(texto)}`,
+      falta_datos_pago: !datosPago,
+    })
+  }
+
+  // ---- clientes y filiales (edición) ----
+  if (metodo === 'POST' && url === '/clientes/') {
+    const datos = cuerpo(config) as Record<string, string | null>
+    const nuevo = { id: uid(), activo: true, ...datos }
+    db.clientes.push(nuevo as never)
+    guardarDB(db)
+    return ok(config, nuevo, 201)
+  }
+  if (metodo === 'PUT' && /^\/clientes\/[^/]+$/.test(url)) {
+    const c = db.clientes.find((x) => x.id === url.split('/')[2])
+    if (!c) return error(404, 'Cliente no encontrado')
+    Object.assign(c, cuerpo(config))
+    guardarDB(db)
+    return ok(config, c)
+  }
+  if (metodo === 'POST' && url === '/filiales/') {
+    const datos = cuerpo(config) as { cliente_id: string; nombre: string }
+    const nueva = { id: Math.max(...db.filiales.map((f) => f.id)) + 1, cliente_id: datos.cliente_id, nombre: datos.nombre, activo: true }
+    db.filiales.push(nueva)
+    guardarDB(db)
+    return ok(config, nueva, 201)
+  }
+  if (metodo === 'PUT' && /^\/filiales\/\d+$/.test(url)) {
+    const f = db.filiales.find((x) => x.id === Number(url.split('/')[2]))
+    if (!f) return error(404, 'Filial no encontrada')
+    Object.assign(f, cuerpo(config))
+    guardarDB(db)
+    return ok(config, f)
   }
   if (metodo === 'GET' && url === '/campos') {
     let lista = db.campos
@@ -475,9 +657,12 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   }
 
   // ---- catálogos ----
-  if (metodo === 'GET' && url === '/clientes/') return ok(config, db.clientes)
+  if (metodo === 'GET' && url === '/clientes/') {
+    return ok(config, db.clientes.filter((c) => params.solo_activos === 'false' || (c as { activo?: boolean }).activo !== false))
+  }
   if (metodo === 'GET' && url === '/filiales/') {
-    const lista = db.filiales.filter((f) => !params.cliente_id || f.cliente_id === params.cliente_id)
+    const lista = db.filiales.filter((f) => (!params.cliente_id || f.cliente_id === params.cliente_id)
+      && (params.solo_activas === 'false' || f.activo))
     return ok(config, lista)
   }
   if (metodo === 'GET' && url === '/gestiones/tipos') {

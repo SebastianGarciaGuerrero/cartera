@@ -26,7 +26,13 @@ export function EtiquetaEstado({ estado }: { estado: EstadoCobranza }) {
 
 export function fechaLegible(iso: string | null): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('es-CL', {
+  // Una fecha sola ('2026-10-06') el navegador la lee como medianoche UTC,
+  // que en Chile es el día anterior: se arma como fecha local.
+  const soloFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  const d = soloFecha
+    ? new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]))
+    : new Date(iso)
+  return d.toLocaleDateString('es-CL', {
     day: '2-digit', month: '2-digit', year: 'numeric',
   })
 }
@@ -49,4 +55,9 @@ export const NOMBRE_DOCUMENTO: Record<TipoDocumento, string> = {
   boleta: 'Boleta',
   credito: 'Crédito',
   otro: 'Otro',
+}
+
+/** Fecha de hoy en la zona horaria del equipo (no UTC): AAAA-MM-DD. */
+export function fechaLocal(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

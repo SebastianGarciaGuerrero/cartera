@@ -644,3 +644,39 @@ label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-w
 
 /* Rol de un tercero (aval, codeudor...) en la ficha */
 .capitalizar { text-transform: capitalize; }
+
+/* ---------- Agenda ---------- */
+.agenda-grilla { display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px; align-items: start; margin-top: 20px; }
+.agenda-mes { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.calendario { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.calendario-dia-semana { font-size: 12px; color: var(--texto-suave); text-align: center; padding: 4px 0; }
+.calendario-celda {
+  font: inherit; background: var(--fondo); border: 1px solid transparent; border-radius: 8px;
+  min-height: 64px; padding: 6px; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.calendario-celda:hover { border-color: var(--borde); }
+.calendario-celda.fuera { opacity: 0.45; }
+.calendario-celda.hoy { border-color: var(--acento); }
+.calendario-celda.elegido { background: var(--acento); color: #fff; }
+.calendario-puntos { display: flex; align-items: center; gap: 3px; }
+.calendario-puntos i, .agenda-leyenda i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.calendario-puntos small { margin-left: auto; font-size: 11px; }
+.agenda-leyenda { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 12px; color: var(--texto-suave); }
+.agenda-lista { list-style: none; padding: 0; margin: 0 0 14px; }
+.agenda-lista li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--borde); }
+.agenda-lista li.atrasado strong { color: var(--rojo); }
+.agenda-punto { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; flex: none; }
+.agenda-item { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.agenda-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; }
+.menu-contador {
+  margin-left: 6px; background: var(--rojo); color: #fff; border-radius: 10px;
+  font-size: 11px; padding: 1px 7px; font-weight: 600;
+}
+@media (max-width: 900px) {
+  .agenda-grilla { grid-template-columns: 1fr; }
+}
+
+/* Modal más ancho (mensaje de pago, formulario de cliente) */
+.modal.modal-ancho { width: min(720px, 94vw); }
+.modal textarea { width: 100%; font: inherit; }

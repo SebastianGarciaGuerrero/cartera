@@ -36,6 +36,9 @@ class Cliente(TenantMixin, Base):
     ciudad = Column(String(100))
     telefono = Column(String(50))
     email = Column(String(150))
+    # Datos de transferencia propios (si el deudor le paga directo al
+    # mandante). Si está vacío se usan los del estudio.
+    instrucciones_pago = Column(Text)
     activo = Column(Boolean, server_default=text("true"))
     
     # Timestamps gestionados por PostgreSQL

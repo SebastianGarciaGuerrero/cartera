@@ -6,6 +6,10 @@ import type {
   Cobranza, Acuerdo, AcuerdoDetalle, Cuota, Pago, EstadoCuota,
 } from '../api/tipos'
 import { Plata, fechaLegible } from './utiles'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../auth'
+import { useUF } from './UF'
+import type { Modalidad, ResultadoHonorarios } from '../api/tipos'
 
 // Sección financiera de la ficha de cobranza: acuerdo de pago con sus
 // cuotas, historial de pagos, y registro de pagos (por cuota o directos).
@@ -131,12 +135,16 @@ export default function Finanzas({ cobranza }: { cobranza: Cobranza }) {
           </table>
         </>
       ) : (
-        <FormNuevoAcuerdo cobranza={cobranza} alCrear={refrescarTodo} />
+        <>
+          <LinkCalculadora cobranzaId={cobranzaId} />
+          <FormNuevoAcuerdo cobranza={cobranza} alCrear={refrescarTodo} />
+        </>
       )}
 
       {pagando && (
         <FormPago
           cobranzaId={cobranzaId}
+          modalidad={cobranza.tipo}
           cuota={pagando === 'directo' ? null : pagando}
           alTerminar={() => { setPagando(null); refrescarTodo() }}
           alCancelar={() => setPagando(null)}
@@ -274,18 +282,35 @@ function FormNuevoAcuerdo({ cobranza, alCrear }: { cobranza: Cobranza; alCrear: 
 // Formulario para registrar un pago (de una cuota o directo)
 // ------------------------------------------------------------
 
-export function FormPago({ cobranzaId, cuota, alTerminar, alCancelar }: {
+function LinkCalculadora({ cobranzaId }: { cobranzaId: string }) {
+  const { tiene } = useAuth()
+  if (!tiene('calculadora_369')) return null
+  return (
+    <p className="nota">
+      <Link to={`/calculadora?cobranza=${cobranzaId}`}>Armar el acuerdo con la calculadora 3-6-9</Link>
+      {' '}(interés, pie, honorarios por tramos y texto del acuerdo).
+    </p>
+  )
+}
+
+// Para una cuota calculada con la calculadora, su desglose ya está guardado.
+const entero = (v: string | null | undefined) => (v == null ? '' : String(Math.round(Number(v))))
+
+export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTerminar, alCancelar }: {
   cobranzaId: string
   cuota: Cuota | null
+  modalidad?: Modalidad
   alTerminar: () => void
   alCancelar: () => void
 }) {
   // Desglose del abono. El CAPITAL es la guía: es lo único que descuenta
   // el saldo. Honorarios varían según el abono y la UF del día.
-  const [capital, setCapital] = useState('')
-  const [honorarios, setHonorarios] = useState('')
-  const [interes, setInteres] = useState('')
-  const [gastos, setGastos] = useState('')
+  const conDesglose = cuota != null && cuota.capital != null && Number(cuota.monto_pagado) === 0
+  const [capital, setCapital] = useState(conDesglose ? entero(cuota!.capital) : '')
+  const [honorarios, setHonorarios] = useState(conDesglose ? entero(cuota!.honorarios) : '')
+  const [interes, setInteres] = useState(conDesglose ? entero(cuota!.intereses) : '')
+  const [gastos, setGastos] = useState(conDesglose
+    ? String(Math.round(Number(cuota!.gastos_judiciales ?? 0) + Number(cuota!.comision ?? 0))) : '')
   const [forma, setForma] = useState('transferencia')
   const [comprobante, setComprobante] = useState('')
   const [error, setError] = useState('')
@@ -326,6 +351,14 @@ export function FormPago({ cobranzaId, cuota, alTerminar, alCancelar }: {
           ? `Registrar pago de la cuota ${cuota.numero_cuota}`
           : 'Registrar abono'}
       </h3>
+      {conDesglose && (
+        <p className="nota">Desglose de la cuota según el acuerdo calculado. Ajústalo si el pago fue distinto.</p>
+      )}
+      {!conDesglose && (
+        <DesgloseAutomatico modalidad={modalidad} alCalcular={(c, h) => {
+          setCapital(c); setHonorarios(h); setInteres(''); setGastos('')
+        }} />
+      )}
       <div className="fila">
         <label>
           Capital *
@@ -377,5 +410,37 @@ export function FormPago({ cobranzaId, cuota, alTerminar, alCancelar }: {
         </button>
       </div>
     </form>
+  )
+}
+
+// Pagó un total: la calculadora 3-6-9 lo separa en capital y honorarios.
+function DesgloseAutomatico({ modalidad, alCalcular }: {
+  modalidad: Modalidad
+  alCalcular: (capital: string, honorarios: string) => void
+}) {
+  const { tiene } = useAuth()
+  const { data: uf } = useUF()
+  const [total, setTotal] = useState('')
+  const [error, setError] = useState('')
+  const calcular = useMutation({
+    mutationFn: async () => (await api.post<ResultadoHonorarios>('/calculadora/abono', {
+      abono: total, modalidad, uf: modalidad === 'extrajudicial' ? uf?.valor ?? null : null,
+    })).data,
+    onSuccess: (r) => { setError(''); alCalcular(entero(r.capital), entero(r.total_honorarios)) },
+    onError: (err) => setError(mensajeDeError(err)),
+  })
+  if (!tiene('calculadora_369')) return null
+  return (
+    <div className="fila">
+      <label>
+        Total recibido (para separar con 3-6-9{modalidad === 'judicial' ? ' judicial' : ''})
+        <input type="number" min="1" value={total} onChange={(e) => setTotal(e.target.value)} />
+      </label>
+      <button type="button" className="btn btn-secundario" disabled={!(Number(total) > 0) || calcular.isPending}
+        onClick={() => calcular.mutate()}>
+        Separar capital y honorarios
+      </button>
+      {error && <div className="alerta-error">{error}</div>}
+    </div>
   )
 }

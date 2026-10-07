@@ -22,7 +22,7 @@ class ClienteBase(BaseModel):
     Campos comunes que comparten Create y Update.
     Estos son los datos "editables" por el usuario.
     """
-    rut: str = Field(..., min_length=8, max_length=12, examples=["96570220-7"])
+    rut: str = Field(..., min_length=8, max_length=12, examples=["96570220-2"])
     razon_social: str = Field(..., min_length=1, max_length=200)
     nombre_fantasia: Optional[str] = Field(None, max_length=200)
     direccion: Optional[str] = None
@@ -30,6 +30,8 @@ class ClienteBase(BaseModel):
     ciudad: Optional[str] = Field(None, max_length=100)
     telefono: Optional[str] = Field(None, max_length=50)
     email: Optional[EmailStr] = None  # EmailStr valida formato de email automáticamente
+    # Datos de transferencia propios del mandante (vacío = los del estudio)
+    instrucciones_pago: Optional[str] = Field(None, max_length=2000)
 
 
 class ClienteCreate(ClienteBase):
@@ -38,7 +40,7 @@ class ClienteCreate(ClienteBase):
     POST /api/clientes recibe un JSON con esta estructura.
     El RUT se valida (dígito verificador) y se guarda normalizado.
     """
-    rut: Rut = Field(..., examples=["96.570.220-7"])
+    rut: Rut = Field(..., examples=["96.570.220-2"])
 
 
 class ClienteUpdate(BaseModel):
@@ -54,6 +56,7 @@ class ClienteUpdate(BaseModel):
     ciudad: Optional[str] = None
     telefono: Optional[str] = None
     email: Optional[EmailStr] = None
+    instrucciones_pago: Optional[str] = Field(None, max_length=2000)
     activo: Optional[bool] = None
     # NOTA: el RUT no se puede cambiar. Es identificador.
 

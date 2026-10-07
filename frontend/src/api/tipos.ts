@@ -75,6 +75,7 @@ export interface Cliente {
   rut: string
   razon_social: string
   nombre_fantasia: string | null
+  instrucciones_pago?: string | null
 }
 
 export interface Filial {
@@ -181,6 +182,12 @@ export interface Cuota {
   fecha_vencimiento: string
   monto_pagado: string
   estado: EstadoCuota
+  // Desglose (acuerdos creados con la calculadora)
+  capital?: string | null
+  intereses?: string | null
+  honorarios?: string | null
+  gastos_judiciales?: string | null
+  comision?: string | null
 }
 
 export interface Acuerdo {
@@ -247,4 +254,108 @@ export interface Empresa {
   sitio_web: string | null
   instrucciones_pago: string | null
   updated_at?: string | null
+}
+
+// ---------- Fase 2: agenda, calculadora, mensaje de pago ----------
+
+export type TipoItemAgenda = 'contacto' | 'promesa' | 'cuota' | 'recordatorio'
+
+export interface ItemAgenda {
+  tipo: TipoItemAgenda
+  fecha: string
+  hora: string | null
+  titulo: string
+  detalle: string | null
+  atrasado: boolean
+  cobranza_id: string | null
+  numero_cobranza: number | null
+  deudor: string | null
+  monto: number | null
+  responsable_id: string | null
+  recordatorio_id: string | null
+  cuota_id: string | null
+}
+
+export interface Recordatorio {
+  id: string
+  usuario_id: string
+  cobranza_id: string | null
+  fecha: string
+  hora: string | null
+  titulo: string
+  nota: string | null
+  estado: 'pendiente' | 'hecho' | 'descartado'
+}
+
+export interface ValorUF {
+  fecha: string
+  valor: string
+  fuente: string | null
+}
+
+export type Modalidad = 'extrajudicial' | 'judicial'
+
+export interface TramoHonorarios {
+  desde_uf: string
+  hasta_uf: string | null
+  porcentaje: string
+  monto_base: string
+  honorarios: string
+}
+
+export interface ResultadoHonorarios {
+  modalidad: Modalidad
+  capital: string
+  uf: string | null
+  capital_uf: string | null
+  tramos: TramoHonorarios[]
+  total_honorarios: string
+  total_deuda: string
+}
+
+export interface FilaPlan {
+  numero: number
+  fecha: string | null
+  capital: string
+  intereses: string
+  honorarios: string
+  gastos_judiciales: string
+  comision: string
+  total: string
+}
+
+export interface PlanAcuerdo {
+  modalidad: Modalidad
+  capital: string
+  abono_inicial: string
+  capital_pie: string
+  honorarios_pie: string
+  capital_en_cuotas: string
+  numero_cuotas: number
+  tasa_mensual: string
+  uf: string | null
+  cuota_capital: string
+  interes_mensual: string
+  honorarios_cuota: string
+  gastos_judiciales: string
+  comision_pct: string
+  comision_total: string
+  ajuste: string
+  valor_cuota: string
+  total_intereses: string
+  total_honorarios: string
+  total_en_cuotas: string
+  gran_total: string
+  cuotas: FilaPlan[]
+  texto: string
+}
+
+export interface MensajePago {
+  texto: string
+  asunto: string
+  telefono: string | null
+  email: string | null
+  whatsapp_url: string | null
+  mailto_url: string | null
+  falta_datos_pago: boolean
 }

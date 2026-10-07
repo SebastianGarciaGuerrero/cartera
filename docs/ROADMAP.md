@@ -14,7 +14,13 @@
 - Planes base / profesional / premium con funciones habilitables.
 - CLI de plataforma, 30 tests contra Postgres real, CI con auditoría de dependencias.
 
-## Fase 2: trabajo diario del estudio
+## Fase 2: trabajo diario del estudio ✅
+
+Hecho: agenda con calendario y atrasados, recordatorios, correo diario con la agenda
+(`python -m app.cli enviar-agenda`), calculadora 3-6-9 con acuerdos/avenimientos asistidos
+(cuotas con desglose que se usa al pagar), UF del día con caché, mensaje de pago listo para
+WhatsApp/correo, pantalla de clientes con datos de transferencia propios.
+Pendiente de esta fase: documento Word del acuerdo con el formato del estudio.
 
 | Módulo | Plan | Origen |
 |---|---|---|
