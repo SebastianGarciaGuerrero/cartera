@@ -8,7 +8,8 @@ import { MARCA } from '../marca'
 
 // Estructura general: barra lateral de navegación + contenido.
 // Si no hay sesión, redirige al login (esto protege todas las rutas hijas).
-// Si la contraseña es temporal, obliga a pasar por Mi cuenta.
+// Si la contraseña es temporal, obliga a pasar por Mi cuenta. El rol
+// mandante va a su propio portal (PortalLayout).
 
 export default function Layout() {
   const { usuario, cargando, logout, esAdmin, etiqueta, tiene } = useAuth()
@@ -32,6 +33,8 @@ export default function Layout() {
 
   if (cargando) return <div className="pantalla-carga">Cargando…</div>
   if (!usuario) return <Navigate to="/login" replace />
+  // Los clientes del estudio (rol mandante) usan el portal, no la app interna.
+  if (usuario.rol === 'mandante') return <Navigate to="/portal" replace />
   if (usuario.debe_cambiar_password && ubicacion.pathname !== '/mi-cuenta') {
     return <Navigate to="/mi-cuenta" replace />
   }

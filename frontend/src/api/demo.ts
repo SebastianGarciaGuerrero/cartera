@@ -18,7 +18,7 @@ import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'ax
 import * as calc from './demoCalculos'
 
 const CLAVE_DB = 'cartera_demo_db'
-const VERSION_SEMILLA = 9
+const VERSION_SEMILLA = 10
 const UF_DEMO = '39841.72'
 const CLAVE_SESION = 'cartera_demo_sesion'
 const PLANTILLA_DEMO = 'Estimado(a) {deudor}:\n\nLe escribimos de {empresa} por la deuda N° {numero} con {cliente}, cuyo saldo a la fecha es de {saldo}.\n\nPuede pagar por transferencia a:\n{datos_pago}\n\nUna vez realizado el pago, envíenos el comprobante por este medio para registrarlo y dar por cerrada su cobranza.\n\nAtentamente,\n{empresa}'
@@ -68,12 +68,12 @@ const TIPOS_SISTEMA: [string, string, string][] = [
 
 // Quita la contraseña antes de devolver un usuario (nunca se expone) y
 // agrega los campos que entrega el backend real.
-function sinPassword<T extends { password?: string; rol_id: number }>(u: T) {
+function sinPassword<T extends { password?: string; rol_id: number; cliente_id: string | null }>(u: T) {
   const { password: _p, ...seguro } = u
   return {
     ...seguro,
     rol_nombre: ROLES.find((r) => r.id === u.rol_id)?.nombre ?? null,
-    cliente_id: null, mfa_activo: false, debe_cambiar_password: false, bloqueado: false,
+    mfa_activo: false, debe_cambiar_password: false, bloqueado: false,
   }
 }
 
@@ -170,9 +170,11 @@ function generarCasosDemo(cantidad: number, numeroInicial: number) {
 
 function semilla() {
   const usuarios = [
-    { id: 'u-admin', nombre: 'Administrador', email: 'admin@demo.cl', password: 'demo1234', rol_id: 1, activo: true },
-    { id: 'u-supervisor', nombre: 'Ana Torres', email: 'ana@demo.cl', password: 'demo1234', rol_id: 2, activo: true },
-    { id: 'u-operador', nombre: 'María Soto', email: 'maria@demo.cl', password: 'demo1234', rol_id: 3, activo: true },
+    { id: 'u-admin', nombre: 'Administrador', email: 'admin@demo.cl', password: 'demo1234', rol_id: 1, activo: true, cliente_id: null as string | null },
+    { id: 'u-supervisor', nombre: 'Ana Torres', email: 'ana@demo.cl', password: 'demo1234', rol_id: 2, activo: true, cliente_id: null },
+    { id: 'u-operador', nombre: 'María Soto', email: 'maria@demo.cl', password: 'demo1234', rol_id: 3, activo: true, cliente_id: null },
+    // Usuario del portal de clientes: ve solo la cartera de Clínica Los Andes.
+    { id: 'u-mandante', nombre: 'Paula Rivas', email: 'cliente@demo.cl', password: 'demo1234', rol_id: 7, activo: true, cliente_id: 'cl-1' },
   ]
   const clientes = [
     { id: 'cl-1', rut: '96570220-7', razon_social: 'CLÍNICA LOS ANDES S.A.', nombre_fantasia: 'Clínica Los Andes' },
@@ -272,7 +274,7 @@ function semilla() {
       id: 'ac-1', cobranza_id: 'cob-1', estado: 'vigente', fecha_acuerdo: '2026-06-11',
       fecha_termino: '2026-12-11', pie: '0', monto_total_acordado: '870000',
       numero_cuotas: 6, dia_pago: 11, fecha_primera_cuota: '2026-07-11',
-      usuario_id: 'u-operador', cuotas,
+      usuario_id: 'u-operador', cuotas, firma_cliente: 'sin_firmar', observaciones: null as string | null,
     },
   ]
   const historicos = Array.from({ length: 9 }, (_, i) => {
@@ -417,7 +419,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   const usuarioActual = (u: DB['usuarios'][number]) => ({
     id: u.id, nombre: u.nombre, email: u.email, rol_id: u.rol_id,
     rol: ROLES.find((r) => r.id === u.rol_id)?.nombre ?? 'operador',
-    cliente_id: null, mfa_activo: false, debe_cambiar_password: false,
+    cliente_id: u.cliente_id, mfa_activo: false, debe_cambiar_password: false,
     organizacion: {
       id: 'org-demo', nombre: db.empresa.nombre_fantasia ?? 'Organización demo', plan: 'premium',
       estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas,
@@ -562,7 +564,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
           id: acuerdoId, cobranza_id: cob.id, estado: 'vigente', fecha_acuerdo: hoy(),
           fecha_termino: plan.cuotas[plan.cuotas.length - 1].fecha, pie: plan.abono_inicial,
           monto_total_acordado: plan.gran_total, numero_cuotas: plan.numero_cuotas, dia_pago: null,
-          fecha_primera_cuota: String(d.fecha_primera_cuota), usuario_id: u.id,
+          fecha_primera_cuota: String(d.fecha_primera_cuota), usuario_id: u.id, firma_cliente: 'sin_firmar', observaciones: null,
           cuotas: plan.cuotas.map((f) => ({ id: uid(), acuerdo_id: acuerdoId, numero_cuota: f.numero, monto: f.total,
             fecha_vencimiento: String(f.fecha), monto_pagado: '0', estado: 'pendiente', capital: f.capital,
             intereses: f.intereses, honorarios: f.honorarios, gastos_judiciales: f.gastos_judiciales, comision: f.comision })),
@@ -701,13 +703,15 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     return ok(config, db.usuarios.map(sinPassword).sort((a, b) => a.nombre.localeCompare(b.nombre)))
   }
   if (metodo === 'POST' && url === '/usuarios/') {
-    const datos = cuerpo(config) as { nombre: string; email: string; password: string | null; rol_id: number }
+    const datos = cuerpo(config) as { nombre: string; email: string; password: string | null; rol_id: number;
+      cliente_id?: string | null }
     if (db.usuarios.some((u) => u.email === datos.email)) {
       return error(400, 'Ese email ya está registrado.')
     }
     const nuevo = {
       id: uid(), nombre: datos.nombre, email: datos.email,
       password: datos.password ?? 'demo1234', rol_id: Number(datos.rol_id), activo: true,
+      cliente_id: datos.cliente_id ?? null,
     }
     db.usuarios.push(nuevo)
     guardarDB(db)
@@ -730,7 +734,8 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const id = url.split('/')[2]
     const u = db.usuarios.find((x) => x.id === id)
     if (!u) return error(404, 'Usuario no encontrado')
-    const datos = cuerpo(config) as Partial<{ nombre: string; email: string; rol_id: number; activo: boolean }>
+    const datos = cuerpo(config) as Partial<{ nombre: string; email: string; rol_id: number; activo: boolean;
+      cliente_id: string | null }>
     const yo = usuarioDelToken(config, db)
     if (u.id === yo.id && datos.activo === false) {
       return error(400, 'No puedes desactivar tu propia cuenta.')
@@ -743,6 +748,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       email: datos.email ?? u.email,
       rol_id: datos.rol_id != null ? Number(datos.rol_id) : u.rol_id,
       activo: datos.activo ?? u.activo,
+      cliente_id: datos.cliente_id !== undefined ? datos.cliente_id : u.cliente_id,
     })
     guardarDB(db)
     return ok(config, sinPassword(u))
@@ -917,7 +923,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       pie: String(pie), monto_total_acordado: String(total), numero_cuotas: n,
       dia_pago: (datos.dia_pago as number) ?? null,
       fecha_primera_cuota: String(datos.fecha_primera_cuota),
-      usuario_id: u.id, cuotas: cuotasNuevas,
+      usuario_id: u.id, cuotas: cuotasNuevas, firma_cliente: 'sin_firmar', observaciones: null,
     }
     db.acuerdos.push(nuevo as never)
     cob.estado = 'acuerdo_pago'
@@ -1079,6 +1085,97 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       }
     })
     return ok(config, reporte)
+  }
+
+  // ---- portal de mandantes ----
+  if (url.startsWith('/portal/')) {
+    const u = usuarioDelToken(config, db)
+    if (u.rol_id !== 7 || !u.cliente_id) return error(403, 'Esta sección es para los usuarios del portal de clientes.')
+    const propias = db.cobranzas.filter((c) => c.cliente_id === u.cliente_id)
+    const ids = new Set(propias.map((c) => c.id))
+    const abiertos = ['activa', 'acuerdo_pago', 'judicial']
+    const internos = new Set(db.tiposGestion.filter((t) => t.codigo === 'nota' || t.codigo === 'automatica').map((t) => t.id))
+    const visibles = (cobranzaId: string) => db.gestiones
+      .filter((g) => g.cobranza_id === cobranzaId && !(g.tipo_id !== null && internos.has(g.tipo_id)))
+      .sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion))
+    const vista = (c: DB['cobranzas'][number]) => {
+      const d = db.deudores.find((x) => x.id === c.deudor_id)
+      return { id: c.id, numero: c.numero, id_externo: c.id_externo, deudor: d?.nombre ?? '', rut: d?.rut ?? '',
+        monto_original: c.monto_original, monto_actual: c.monto_actual, estado: c.estado,
+        fecha_ingreso: c.fecha_ingreso, ultima_gestion: visibles(c.id)[0]?.fecha_gestion.slice(0, 10) ?? null }
+    }
+    const pendientes = db.acuerdos.filter((a) => ids.has(a.cobranza_id) && a.estado === 'vigente'
+      && a.firma_cliente !== 'firmado_confirmado')
+
+    if (metodo === 'GET' && url === '/portal/resumen') {
+      const pagos = db.pagos.filter((x) => ids.has(x.cobranza_id))
+      const capital = (lista: typeof pagos) => String(lista.reduce((s, x) => s + Number(x.capital), 0))
+      const abiertas = propias.filter((c) => abiertos.includes(c.estado))
+      const cli = db.clientes.find((c) => c.id === u.cliente_id)
+      const meses = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (11 - i))
+        const mes = d.toISOString().slice(0, 7)
+        return { mes: mes + '-01', capital: capital(pagos.filter((x) => x.fecha_pago.startsWith(mes))) }
+      })
+      return ok(config, {
+        cliente: cli ? cli.nombre_fantasia ?? cli.razon_social : '', estudio: db.empresa.nombre_fantasia,
+        asignado: String(propias.reduce((s, c) => s + Number(c.monto_original), 0)),
+        saldo_abierto: String(abiertas.reduce((s, c) => s + Number(c.monto_actual), 0)),
+        casos_abiertos: abiertas.length, casos_totales: propias.length,
+        recuperado_total: capital(pagos), recuperado_mes: capital(pagos.filter((x) => x.fecha_pago.startsWith(hoy().slice(0, 7)))),
+        acuerdos_vigentes: db.acuerdos.filter((a) => ids.has(a.cobranza_id) && a.estado === 'vigente').length,
+        acuerdos_por_aprobar: pendientes.length, meses,
+      })
+    }
+    if (metodo === 'GET' && url === '/portal/cobranzas') {
+      const q = (params.q ?? '').trim().toLowerCase()
+      const lista = propias
+        .filter((c) => !params.estado || c.estado === params.estado)
+        .map(vista)
+        .filter((c) => !q || c.deudor.toLowerCase().includes(q) || c.rut.includes(q.replace(/\./g, ''))
+          || (c.id_externo ?? '').toLowerCase().includes(q))
+        .sort((a, b) => b.numero - a.numero)
+      const skip = Number(params.skip) || 0
+      const limit = Number(params.limit) || 50
+      return ok(config, lista.slice(skip, skip + limit), 200, { 'x-total-count': String(lista.length) })
+    }
+    if (metodo === 'GET' && /^\/portal\/cobranzas\/[^/]+$/.test(url)) {
+      const c = propias.find((x) => x.id === url.split('/')[3])
+      if (!c) return error(404, 'Cobranza no encontrada')
+      const tipo = (id: number | null) => db.tiposGestion.find((t) => t.id === id)?.nombre ?? null
+      const acuerdo = db.acuerdos.filter((a) => a.cobranza_id === c.id).pop() ?? null
+      return ok(config, {
+        ...vista(c),
+        gestiones: visibles(c.id).map((g) => ({ fecha: g.fecha_gestion.slice(0, 10), tipo: tipo(g.tipo_id), descripcion: g.descripcion })),
+        pagos: db.pagos.filter((x) => x.cobranza_id === c.id)
+          .map((x) => ({ fecha_pago: x.fecha_pago, monto: x.monto, capital: x.capital, forma_pago: x.forma_pago })),
+        acuerdo,
+      })
+    }
+    if (metodo === 'GET' && url === '/portal/acuerdos/pendientes') {
+      return ok(config, pendientes.map((a) => {
+        const c = propias.find((x) => x.id === a.cobranza_id)!
+        return { id: a.id, cobranza_id: c.id, numero_cobranza: c.numero, deudor: vista(c).deudor,
+          fecha_acuerdo: a.fecha_acuerdo, pie: a.pie, monto_total_acordado: a.monto_total_acordado,
+          numero_cuotas: a.numero_cuotas, firma_cliente: a.firma_cliente, observaciones: a.observaciones }
+      }))
+    }
+    const accion = /^\/portal\/acuerdos\/([^/]+)\/(aprobar|observar)$/.exec(url)
+    if (metodo === 'POST' && accion) {
+      const a = db.acuerdos.find((x) => x.id === accion[1] && ids.has(x.cobranza_id))
+      if (!a) return error(404, 'Acuerdo no encontrado')
+      if (accion[2] === 'aprobar') {
+        a.firma_cliente = 'firmado_confirmado'
+        gestionAutomatica(db, a.cobranza_id, u.id, 'acuerdo', `Acuerdo APROBADO por el mandante (${u.nombre}) desde el portal.`)
+      } else {
+        const { motivo } = cuerpo(config) as { motivo: string }
+        if (!motivo || motivo.trim().length < 3) return error(422, 'Indica el motivo.')
+        a.firma_cliente = 'pendiente'
+        gestionAutomatica(db, a.cobranza_id, u.id, 'acuerdo', `El mandante (${u.nombre}) NO aprueba el acuerdo: ${motivo.trim()}`)
+      }
+      guardarDB(db)
+      return ok(config, null, 204)
+    }
   }
 
   // ---- lo que necesita servidor de verdad ----

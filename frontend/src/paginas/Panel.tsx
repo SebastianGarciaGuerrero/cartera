@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../auth'
 import type { Cliente, EstadoCobranza, Usuario } from '../api/tipos'
-import { EtiquetaEstado, Plata, fechaLocal } from '../componentes/utiles'
+import { EtiquetaEstado, MESES_CORTOS, Plata, clp, compacto, fechaLocal } from '../componentes/utiles'
 
 // Panel de indicadores: cuánto se recuperó, cómo está la cartera y dónde
 // hay que poner atención (cuotas atrasadas, casos sin gestión).
@@ -29,7 +29,6 @@ interface DatosPanel {
 }
 
 type Periodo = 'mes' | 'mes_anterior' | 'trimestre' | 'anio'
-const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 function rango(periodo: Periodo): { desde: string; hasta: string } {
   const hoy = new Date()
@@ -42,11 +41,6 @@ function rango(periodo: Periodo): { desde: string; hasta: string } {
   if (periodo === 'anio') return { desde: fechaLocal(new Date(a, 0, 1)), hasta: fechaLocal(hoy) }
   return { desde: fechaLocal(new Date(a, m, 1)), hasta: fechaLocal(hoy) }
 }
-
-const clp = (v: number) => '$' + Math.round(v).toLocaleString('es-CL')
-const compacto = (v: number) =>
-  v >= 1_000_000 ? `$${(v / 1_000_000).toLocaleString('es-CL', { maximumFractionDigits: 1 })} M`
-    : v >= 1000 ? `$${Math.round(v / 1000).toLocaleString('es-CL')} mil` : clp(v)
 
 export default function PanelIndicadores() {
   const { usuario, etiqueta } = useAuth()

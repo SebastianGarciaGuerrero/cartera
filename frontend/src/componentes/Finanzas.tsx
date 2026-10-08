@@ -20,7 +20,7 @@ const FORMAS_PAGO = [
   'flow', 'presencial', 'bonificacion', 'otro',
 ] as const
 
-const NOMBRE_CUOTA: Record<EstadoCuota, string> = {
+export const NOMBRE_CUOTA: Record<EstadoCuota, string> = {
   pendiente: 'Pendiente',
   pagada: 'Pagada',
   vencida: 'Vencida',
@@ -28,7 +28,7 @@ const NOMBRE_CUOTA: Record<EstadoCuota, string> = {
 }
 
 // Reutiliza los colores de las etiquetas de cobranza.
-const CLASE_CUOTA: Record<EstadoCuota, string> = {
+export const CLASE_CUOTA: Record<EstadoCuota, string> = {
   pendiente: 'etiqueta-archivada',
   pagada: 'etiqueta-pagada',
   vencida: 'etiqueta-castigo',
@@ -481,7 +481,7 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
   )
 }
 
-const NOMBRE_FORMA: Record<string, string> = {
+export const NOMBRE_FORMA: Record<string, string> = {
   transferencia: 'Transferencia', cheque: 'Cheque', efectivo: 'Efectivo', deposito: 'Depósito',
   flow: 'Pago en línea', presencial: 'Presencial', bonificacion: 'Bonificación', otro: 'Otro',
 }

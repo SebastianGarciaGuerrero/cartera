@@ -106,7 +106,8 @@ export default function Login() {
             <strong>Versión demo</strong> — los datos son de práctica y se
             guardan solo en este navegador.<br />
             Entra con <span className="mono">admin@demo.cl</span> /{' '}
-            <span className="mono">demo1234</span>
+            <span className="mono">demo1234</span>.<br />
+            Portal de clientes: <span className="mono">cliente@demo.cl</span> (misma clave).
           </div>
         )}
 

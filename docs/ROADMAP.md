@@ -45,9 +45,12 @@ Incluye el Word del acuerdo / avenimiento con el formato para aprobación del ma
 
 ## Fase 4: clientes y comunicaciones
 
-- **Portal de mandantes**: el usuario con rol `mandante` ve su cartera,
-  recupero, rendiciones y descarga sus informes (ya existe el rol y el
-  vínculo `usuarios.cliente_id`).
+- ✅ **Portal de mandantes** (plan profesional): el usuario con rol `mandante`
+  entra a `/portal` y ve solo la cartera de su empresa: resumen con recupero
+  mensual, ficha de cada caso (gestiones sin notas internas, acuerdo, pagos),
+  aprobación u observación de acuerdos (queda como gestión en el caso) y
+  descarga de recupero y rendición del mes. Se crea desde Usuarios con el
+  rol "mandante" y su cliente.
 - **Comunicaciones masivas**: envío de correos con la cuenta Workspace del
   estudio (Gmail API) y SMS (exportación en el formato de carga del portal
   Entel, o su API si el contrato la incluye); cada envío queda como gestión.

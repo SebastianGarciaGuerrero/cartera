@@ -380,3 +380,53 @@ export interface MensajePago {
   mailto_url: string | null
   falta_datos_pago: boolean
 }
+
+// ---------- Portal de mandantes ----------
+
+export interface ResumenPortal {
+  cliente: string
+  estudio: string
+  asignado: string
+  saldo_abierto: string
+  casos_abiertos: number
+  casos_totales: number
+  recuperado_total: string
+  recuperado_mes: string
+  acuerdos_vigentes: number
+  acuerdos_por_aprobar: number
+  meses: { mes: string; capital: string }[]
+}
+
+export interface CobranzaPortal {
+  id: string
+  numero: number
+  id_externo: string | null
+  deudor: string
+  rut: string
+  monto_original: string
+  monto_actual: string
+  estado: EstadoCobranza
+  fecha_ingreso: string | null
+  ultima_gestion: string | null
+}
+
+export interface FichaPortal extends CobranzaPortal {
+  gestiones: { fecha: string; tipo: string | null; descripcion: string }[]
+  pagos: { fecha_pago: string; monto: string; capital: string; forma_pago: FormaPago | null }[]
+  acuerdo: (AcuerdoDetalle & { firma_cliente: FirmaCliente; observaciones: string | null }) | null
+}
+
+export type FirmaCliente = 'sin_firmar' | 'pendiente' | 'firmado_confirmado'
+
+export interface AcuerdoPendiente {
+  id: string
+  cobranza_id: string
+  numero_cobranza: number
+  deudor: string
+  fecha_acuerdo: string
+  pie: string
+  monto_total_acordado: string
+  numero_cuotas: number
+  firma_cliente: FirmaCliente
+  observaciones: string | null
+}

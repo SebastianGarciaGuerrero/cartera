@@ -59,6 +59,11 @@ FastAPI con capas por dominio: `backend/app/{models,schemas,routers}/<entidad>.p
 - `app/calculos.py`: honorarios 3-6-9 / judicial, abono → capital, plan de cuotas. Decimal y redondeo tipo `Math.round` (verificado contra la calculadora `cobra369`). El servidor es la única fuente de verdad; `frontend/src/api/demoCalculos.ts` es solo para la demo.
 - UF: `app/indicadores.py` (mindicador.cl → boostr.cl) con caché en la tabla `indicadores`.
 
+### Portal de mandantes
+
+- Rol `mandante` + `usuarios.cliente_id`: no entra a la API interna (`ROLES_INTERNOS` en `security.py`), solo a `routers/portal.py`, que filtra todo por su cliente. Función de plan `portal_mandantes`.
+- Frontend: `componentes/PortalLayout.tsx` (menú propio, rutas `/portal/*`) y `paginas/Portal.tsx`. `Layout` redirige al mandante a `/portal` y `PortalLayout` devuelve a `/` a los usuarios internos.
+
 ### Personalización por organización
 
 - Campos personalizados (`campos_personalizados`, `app/campos.py`): valores en `datos_extra` JSONB de cobranzas/deudores, validados contra la definición. Pueden limitarse a un mandante (`cliente_id`).

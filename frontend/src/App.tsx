@@ -19,6 +19,8 @@ import Agenda from './paginas/Agenda'
 import Calculadora from './paginas/Calculadora'
 import Clientes from './paginas/Clientes'
 import PanelIndicadores from './paginas/Panel'
+import PortalLayout from './componentes/PortalLayout'
+import { PortalAcuerdos, PortalCartera, PortalFicha, PortalInformes, PortalResumen } from './paginas/Portal'
 
 export default function App() {
   return (
@@ -46,6 +48,14 @@ export default function App() {
             <Route path="/mi-empresa" element={<MiEmpresa />} />
             <Route path="/configuracion" element={<Configuracion />} />
             <Route path="/mi-cuenta" element={<MiCuenta />} />
+          </Route>
+          <Route element={<PortalLayout />}>
+            <Route path="/portal" element={<PortalResumen />} />
+            <Route path="/portal/acuerdos" element={<PortalAcuerdos />} />
+            <Route path="/portal/cartera" element={<PortalCartera />} />
+            <Route path="/portal/cartera/:id" element={<PortalFicha />} />
+            <Route path="/portal/informes" element={<PortalInformes />} />
+            <Route path="/portal/mi-cuenta" element={<MiCuenta />} />
           </Route>
         </Routes>
       </BrowserRouter>

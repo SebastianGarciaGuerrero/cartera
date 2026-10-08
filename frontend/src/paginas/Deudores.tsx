@@ -6,7 +6,7 @@ import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
 import type { Cobranza, Contacto, DeudorBusqueda, DeudorDetalle } from '../api/tipos'
 import NuevoDeudor from '../componentes/NuevoDeudor'
-import { EtiquetaEstado, Plata } from '../componentes/utiles'
+import { EtiquetaEstado, Plata, rutConPuntos } from '../componentes/utiles'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 
 // Deudores: búsqueda por RUT o nombre (con miles de deudores no se lista
@@ -14,13 +14,6 @@ import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 
 const NOMBRE_CONTACTO: Record<string, string> = {
   telefono: 'Teléfono', celular: 'Celular', email: 'Correo', whatsapp: 'WhatsApp', otro: 'Otro',
-}
-
-/** '12345678-5' → '12.345.678-5' */
-export function rutConPuntos(rut: string | null | undefined): string {
-  if (!rut) return '—'
-  const [cuerpo, dv] = rut.split('-')
-  return `${Number(cuerpo).toLocaleString('es-CL')}${dv ? '-' + dv : ''}`
 }
 
 function soloDigitos(v: string) {

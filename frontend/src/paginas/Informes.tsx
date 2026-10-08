@@ -2,11 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, descargarArchivo as descargar } from '../api/client'
 import type { Cliente } from '../api/tipos'
-
-const MESES = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-]
+import { MESES } from '../componentes/utiles'
 
 export default function Informes() {
   const hoy = new Date()

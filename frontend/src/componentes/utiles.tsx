@@ -11,7 +11,7 @@ export function Plata({ valor }: { valor: string | number }) {
   return <span className="mono">{formatoCLP.format(Number(valor))}</span>
 }
 
-const NOMBRE_ESTADO: Record<EstadoCobranza, string> = {
+export const NOMBRE_ESTADO: Record<EstadoCobranza, string> = {
   activa: 'Activa',
   acuerdo_pago: 'Acuerdo de pago',
   judicial: 'Judicial',
@@ -61,3 +61,25 @@ export const NOMBRE_DOCUMENTO: Record<TipoDocumento, string> = {
 export function fechaLocal(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+export const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+/** $1.234.567 (sin decimales). */
+export const clp = (v: number) => '$' + Math.round(v).toLocaleString('es-CL')
+
+/** Monto corto para ejes y tarjetas: $1,2 M · $350 mil. */
+export const compacto = (v: number) =>
+  v >= 1_000_000 ? `$${(v / 1_000_000).toLocaleString('es-CL', { maximumFractionDigits: 1 })} M`
+    : v >= 1000 ? `$${Math.round(v / 1000).toLocaleString('es-CL')} mil` : clp(v)
+
+/** '12345678-5' → '12.345.678-5' */
+export function rutConPuntos(rut: string | null | undefined): string {
+  if (!rut) return '—'
+  const [cuerpo, dv] = rut.split('-')
+  return `${Number(cuerpo).toLocaleString('es-CL')}${dv ? '-' + dv : ''}`
+}
+
+export const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
