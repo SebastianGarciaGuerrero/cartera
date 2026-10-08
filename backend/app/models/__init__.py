@@ -20,3 +20,4 @@ from app.models.campo_personalizado import CampoPersonalizado  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401
 from app.models.seguridad import Sesion, TokenUnUso, EventoAcceso  # noqa: F401
 from app.models.agenda import Recordatorio, Indicador  # noqa: F401
+from app.models.enlace_deudor import EnlaceDeudor  # noqa: F401

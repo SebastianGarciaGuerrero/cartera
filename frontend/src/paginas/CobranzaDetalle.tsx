@@ -8,6 +8,7 @@ import Finanzas from '../componentes/Finanzas'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { useAuth } from '../auth'
 import MensajePago from '../componentes/MensajePago'
+import EnlaceDeudor from '../componentes/EnlaceDeudor'
 import { NuevoRecordatorio } from './Agenda'
 import { fechaLocal } from '../componentes/utiles'
 import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
@@ -20,6 +21,7 @@ export default function CobranzaDetalle() {
   const cliente = useQueryClient()
   const { etiqueta, tiene } = useAuth()
   const [mensaje, setMensaje] = useState(false)
+  const [enlace, setEnlace] = useState(false)
 
   const { data: cob, isLoading } = useQuery({
     queryKey: ['cobranza', id],
@@ -140,6 +142,11 @@ export default function CobranzaDetalle() {
                 Mensaje de pago
               </button>
             )}
+            {tiene('portal_deudor') && cob.deudor && (
+              <button className="btn btn-secundario" onClick={() => setEnlace(true)}>
+                Enlace para el deudor
+              </button>
+            )}
             {tiene('calculadora_369') && (
               <Link className="btn btn-secundario" to={`/calculadora?cobranza=${cob.id}`}>
                 Calculadora / acuerdo 3-6-9
@@ -228,6 +235,10 @@ export default function CobranzaDetalle() {
 
       <Finanzas cobranza={cob} />
       {mensaje && <MensajePago cobranzaId={cob.id} alCerrar={() => setMensaje(false)} />}
+      {enlace && cob.deudor && (
+        <EnlaceDeudor deudorId={cob.deudor.id} deudorNombre={cob.deudor.nombre} cobranzaId={cob.id}
+          alCerrar={() => setEnlace(false)} />
+      )}
     </>
   )
 }

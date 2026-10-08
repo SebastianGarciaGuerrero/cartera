@@ -51,6 +51,14 @@ Incluye el Word del acuerdo / avenimiento con el formato para aprobación del ma
   aprobación u observación de acuerdos (queda como gestión en el caso) y
   descarga de recupero y rendición del mes. Se crea desde Usuarios con el
   rol "mandante" y su cliente.
+- ✅ **Portal del deudor** (plan profesional): el ejecutivo genera desde la
+  ficha un enlace personal (vence en 90 días, uno vigente por deudor) y lo
+  manda por WhatsApp o correo. El deudor escribe su RUT y ve sus deudas, el
+  avance de su convenio, cuotas atrasadas, próxima cuota, sus pagos y cómo
+  pagar; nunca gestiones, notas, honorarios ni nombres del equipo. Cinco RUT
+  equivocados bloquean el enlace. Cada día que lo abre queda una gestión
+  automática en el caso. Pendiente: enviarlo solo junto con los recordatorios
+  de cuota (envío automático, premium) y botón de pago en línea.
 - **Comunicaciones masivas**: envío de correos con la cuenta Workspace del
   estudio (Gmail API) y SMS (exportación en el formato de carga del portal
   Entel, o su API si el contrato la incluye); cada envío queda como gestión.

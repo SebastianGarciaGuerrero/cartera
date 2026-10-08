@@ -57,7 +57,7 @@ CAMPOS_ENMASCARADOS = {
 # solo toca estos no se registra, para no llenar el log de ruido.
 CAMPOS_RUIDO = {
     "ultimo_acceso", "intentos_fallidos", "bloqueado_hasta", "mfa_ultimo_paso",
-    "updated_at", "numero_cobranza_siguiente",
+    "updated_at", "numero_cobranza_siguiente", "accesos", "ultimo_acceso_at",
 }
 
 

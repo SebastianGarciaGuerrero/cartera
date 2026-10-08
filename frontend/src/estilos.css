@@ -821,3 +821,42 @@ label.btn input[type=file] { display: none; }
   .datos { grid-template-columns: 110px 1fr; }
   .acuerdos-portal { grid-template-columns: 1fr; }
 }
+
+/* ---------- Portal del deudor (página pública, pensada para celular) ---------- */
+.publico { min-height: 100vh; display: flex; flex-direction: column; background: var(--fondo); }
+.publico-cabecera {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  background: var(--tarjeta); border-bottom: 1px solid var(--borde);
+}
+.publico-logo { max-height: 44px; max-width: 160px; object-fit: contain; }
+.publico-logo-generico { width: 36px; height: 36px; }
+.publico-estudio { font-weight: 700; font-size: 15px; }
+.publico-contenido {
+  width: 100%; max-width: 640px; margin: 0 auto; padding: 20px 16px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.publico-titulo { margin: 0 0 4px; font-size: 22px; }
+.publico-acceso { display: flex; flex-direction: column; gap: 12px; }
+.publico-acceso label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
+.publico-acceso input { font-size: 18px; }
+.deuda-publica { display: flex; flex-direction: column; gap: 14px; }
+.deuda-publica-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.publico-atraso { background: #fee4e2; color: #912018; border-radius: 10px; padding: 12px 14px; font-size: 14px; }
+.publico-ok { color: var(--verde); font-weight: 600; margin: 0; }
+.publico-progreso-texto { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 14px; margin-bottom: 6px; }
+.publico-barra { height: 10px; background: var(--fondo); border: 1px solid var(--borde); border-radius: 5px; overflow: hidden; }
+.publico-barra span { display: block; height: 100%; background: var(--verde); }
+.publico-proxima { display: flex; flex-direction: column; gap: 2px; background: var(--fondo); border-radius: 10px; padding: 12px 14px; }
+.publico-proxima strong { font-size: 26px; font-variant-numeric: tabular-nums; }
+.publico-pagos { list-style: none; padding: 0; margin: 8px 0 0; }
+.publico-pagos li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--borde); }
+.publico-pago { border-top: 1px solid var(--borde); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.publico-pago h3 { margin: 0; font-size: 15px; }
+.publico-datos-pago { white-space: pre-wrap; margin: 0; background: var(--fondo); border-radius: 8px; padding: 10px 12px; width: 100%; font-size: 14px; }
+.publico-contacto h2 { text-transform: none; letter-spacing: 0; color: var(--texto); }
+.publico-contacto p { margin: 0; }
+.publico-contacto ul { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.publico-cuotas { margin-top: 8px; }
+.publico details summary { cursor: pointer; color: var(--acento); font-weight: 600; font-size: 14px; }
+.publico > .pie-firma { margin-top: auto; padding: 20px 16px; text-align: center; }
+.acciones-fila.envoltura { flex-wrap: wrap; }

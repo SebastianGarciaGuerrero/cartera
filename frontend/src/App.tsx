@@ -21,6 +21,7 @@ import Clientes from './paginas/Clientes'
 import PanelIndicadores from './paginas/Panel'
 import PortalLayout from './componentes/PortalLayout'
 import { PortalAcuerdos, PortalCartera, PortalFicha, PortalInformes, PortalResumen } from './paginas/Portal'
+import EstadoDeudor from './paginas/EstadoDeudor'
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/recuperar" element={<Recuperar />} />
           <Route path="/restablecer" element={<Restablecer />} />
+          <Route path="/estado" element={<EstadoDeudor />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/agenda" replace />} />
             <Route path="/agenda" element={<Agenda />} />

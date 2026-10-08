@@ -18,7 +18,7 @@ import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'ax
 import * as calc from './demoCalculos'
 
 const CLAVE_DB = 'cartera_demo_db'
-const VERSION_SEMILLA = 10
+const VERSION_SEMILLA = 11
 const UF_DEMO = '39841.72'
 const CLAVE_SESION = 'cartera_demo_sesion'
 const PLANTILLA_DEMO = 'Estimado(a) {deudor}:\n\nLe escribimos de {empresa} por la deuda N° {numero} con {cliente}, cuyo saldo a la fecha es de {saldo}.\n\nPuede pagar por transferencia a:\n{datos_pago}\n\nUna vez realizado el pago, envíenos el comprobante por este medio para registrarlo y dar por cerrada su cobranza.\n\nAtentamente,\n{empresa}'
@@ -28,7 +28,8 @@ const PLANTILLA_DEMO = 'Estimado(a) {deudor}:\n\nLe escribimos de {empresa} por 
 let secuencia = 1000
 const uid = () => `demo-${++secuencia}-${Math.random().toString(36).slice(2, 8)}`
 const ahora = () => new Date().toISOString()
-const hoy = () => new Date().toISOString().slice(0, 10)
+// Fecha local (no UTC: en Chile de noche UTC ya es mañana).
+const hoy = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
 function clp(v: number): string {
   return '$' + Math.round(v).toLocaleString('es-CL')
@@ -49,7 +50,7 @@ const ROLES = [
 const FUNCIONES_DEMO = [
   'cobranzas', 'deudores', 'gestiones', 'acuerdos', 'pagos', 'informes', 'carga_masiva',
   'documentos', 'campos_personalizados', 'agenda', 'mensaje_pago', 'judicial',
-  'portal_mandantes', 'recordatorios', 'comunicaciones', 'calculadora_369',
+  'portal_mandantes', 'portal_deudor', 'recordatorios', 'comunicaciones', 'calculadora_369',
   'envio_automatico', 'pagos_en_linea', 'api',
 ]
 
@@ -164,6 +165,13 @@ function generarCasosDemo(cantidad: number, numeroInicial: number) {
   }
 
   return { deudores, cobranzas }
+}
+
+// Enlace del portal del deudor. En la demo el token se guarda tal cual
+// (en el servidor real solo se guarda su hash).
+interface EnlaceDemo {
+  deudor_id: string; token: string; created_at: string; expira_at: string; creado_por: string
+  accesos: number; ultimo_acceso_at: string | null; intentos: number; bloqueado: boolean; revocado: boolean
 }
 
 // ---------- datos de práctica (semilla) ----------
@@ -341,7 +349,7 @@ function semilla() {
   const plantilla = ''
   const cobro = { pct_judicial: '10', comision_pct: '2.2491' }
 
-  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, recordatorios, plantilla, cobro, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosDemo.cobranzas.length }
+  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, recordatorios, plantilla, cobro, gestiones, acuerdos, pagos, enlaces: [] as EnlaceDemo[], proximoNumero: 20004 + casosDemo.cobranzas.length }
 }
 
 // ---------- base de datos en localStorage ----------
@@ -773,6 +781,48 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const d = db.deudores.find((x) => x.id === url.split('/')[2])
     return d ? ok(config, d) : error(404, 'Deudor no encontrado')
   }
+  // ---- portal del deudor: enlace personal (equipo) ----
+  const rutaEnlace = /^\/deudores\/([^/]+)\/enlace$/.exec(url)
+  if (rutaEnlace) {
+    const d = db.deudores.find((x) => x.id === rutaEnlace[1])
+    if (!d) return error(404, 'Deudor no encontrado')
+    const vigentes = db.enlaces.filter((x) => x.deudor_id === d.id && !x.revocado)
+    const vista = (x: EnlaceDemo) => ({
+      created_at: x.created_at, expira_at: x.expira_at, accesos: x.accesos, ultimo_acceso_at: x.ultimo_acceso_at,
+      creado_por: db.usuarios.find((u) => u.id === x.creado_por)?.nombre ?? null, bloqueado: x.bloqueado,
+    })
+    if (metodo === 'GET') {
+      const x = vigentes.filter((e) => e.expira_at > ahora()).pop()
+      return ok(config, x ? vista(x) : null)
+    }
+    for (const x of vigentes) x.revocado = true
+    if (metodo === 'DELETE') {
+      guardarDB(db)
+      return ok(config, null, 204)
+    }
+    const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, '0')).join('')
+    const vence = new Date(); vence.setDate(vence.getDate() + 90)
+    const nuevo: EnlaceDemo = {
+      deudor_id: d.id, token, created_at: ahora(), expira_at: vence.toISOString(),
+      creado_por: usuarioDelToken(config, db).id, accesos: 0, ultimo_acceso_at: null, intentos: 0,
+      bloqueado: false, revocado: false,
+    }
+    db.enlaces.push(nuevo)
+    guardarDB(db)
+    const enlace = `${window.location.origin}/estado#t=${token}`
+    const mensaje = `Hola ${d.nombre.split(' ')[0]}, le escribimos de ${db.empresa.nombre_fantasia}. En este enlace puede `
+      + `revisar el estado de su deuda y de su convenio de pago:\n\n${enlace}\n\n`
+      + 'Para abrirlo se le pedirá su RUT. El enlace es personal: no lo comparta.'
+    const activos = d.contactos.filter((c) => c.activo)
+    const cel = activos.find((c) => ['whatsapp', 'celular', 'telefono'].includes(c.tipo))?.valor ?? ''
+    const correo = activos.find((c) => c.tipo === 'email')?.valor
+    return ok(config, {
+      ...vista(nuevo), url: enlace, mensaje,
+      whatsapp_url: `https://wa.me/${cel.replace(/\D/g, '')}?text=${encodeURIComponent(mensaje)}`,
+      mailto_url: correo ? `mailto:${correo}?subject=${encodeURIComponent('Estado de su deuda')}&body=${encodeURIComponent(mensaje)}` : null,
+    }, 201)
+  }
+
   if (metodo === 'POST' && /^\/deudores\/[^/]+\/contactos$/.test(url)) {
     const d = db.deudores.find((x) => x.id === url.split('/')[2])
     if (!d) return error(404, 'Deudor no encontrado')
@@ -1085,6 +1135,76 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       }
     })
     return ok(config, reporte)
+  }
+
+  // ---- portal del deudor: página pública ----
+  if (metodo === 'POST' && url === '/publico/estado') {
+    const datos = cuerpo(config) as { token: string; rut: string }
+    const enlace = db.enlaces.find((x) => x.token === datos.token && !x.revocado && x.expira_at > ahora())
+    if (!enlace) return error(404, 'Este enlace no es válido o ya venció. Solicite uno nuevo a quien se lo envió.')
+    const bloqueado = () => error(423, 'Por seguridad este enlace se bloqueó. Solicite uno nuevo a quien se lo envió.')
+    if (enlace.bloqueado) return bloqueado()
+    const d = db.deudores.find((x) => x.id === enlace.deudor_id)!
+    const limpio = (r: string) => r.replace(/[.\s-]/g, '').toUpperCase().replace(/^0+/, '')
+    if (limpio(datos.rut ?? '') !== limpio(d.rut)) {
+      enlace.intentos++
+      enlace.bloqueado = enlace.intentos >= 5
+      guardarDB(db)
+      return enlace.bloqueado ? bloqueado() : error(400, 'El RUT no coincide con el de este enlace.')
+    }
+    const hoyIso = hoy()
+    const cobs = db.cobranzas.filter((c) => c.deudor_id === d.id && ['activa', 'acuerdo_pago', 'judicial', 'pagada'].includes(c.estado))
+      .sort((a, b) => a.numero - b.numero)
+    if (!enlace.ultimo_acceso_at || enlace.ultimo_acceso_at.slice(0, 10) < hoyIso) {
+      for (const c of cobs.filter((x) => x.estado !== 'pagada')) {
+        gestionAutomatica(db, c.id, enlace.creado_por, 'automatica', 'El deudor abrió su estado de cuenta en línea (portal del deudor).')
+      }
+    }
+    enlace.intentos = 0
+    enlace.accesos++
+    enlace.ultimo_acceso_at = ahora()
+    guardarDB(db)
+
+    type CuotaDemo = DB['acuerdos'][number]['cuotas'][number]
+    const cuotaDeudor = (q: CuotaDemo) => ({
+      numero: q.numero_cuota, vence: q.fecha_vencimiento, monto: q.monto, pagado: q.monto_pagado,
+      estado: q.estado === 'pagada' ? 'pagada' : q.fecha_vencimiento < hoyIso ? 'atrasada'
+        : q.estado === 'pagada_parcial' ? 'parcial' : 'pendiente',
+    })
+    const resta = (q: { monto: string; pagado: string }) => Number(q.monto) - Number(q.pagado)
+    const deudas = cobs.map((c) => {
+      const cl = db.clientes.find((x) => x.id === c.cliente_id) as (DB['clientes'][number] & { instrucciones_pago?: string | null }) | undefined
+      const a = db.acuerdos.find((x) => x.cobranza_id === c.id && x.estado === 'vigente')
+        ?? db.acuerdos.filter((x) => x.cobranza_id === c.id && x.estado === 'cumplido').pop()
+      let convenio = null
+      if (a) {
+        const cuotas = [...a.cuotas].sort((x, y) => x.numero_cuota - y.numero_cuota).map(cuotaDeudor)
+        const impagas = cuotas.filter((q) => q.estado !== 'pagada')
+        const atrasadas = impagas.filter((q) => q.estado === 'atrasada')
+        convenio = {
+          estado: a.estado, fecha: a.fecha_acuerdo, total: a.monto_total_acordado, pie: a.pie,
+          numero_cuotas: a.numero_cuotas, cuotas_pagadas: cuotas.length - impagas.length,
+          pagado: String(cuotas.reduce((s, q) => s + Number(q.pagado), 0)),
+          por_pagar: String(impagas.reduce((s, q) => s + resta(q), 0)),
+          cuotas_atrasadas: atrasadas.length, monto_atrasado: String(atrasadas.reduce((s, q) => s + resta(q), 0)),
+          proxima: impagas.find((q) => q.estado !== 'atrasada') ?? null, cuotas,
+        }
+      }
+      return {
+        numero: c.numero, acreedor: cl ? cl.nombre_fantasia ?? cl.razon_social : '', estado: c.estado,
+        capital_pendiente: c.monto_actual, convenio,
+        pagos: db.pagos.filter((x) => x.cobranza_id === c.id).sort((x, y) => y.fecha_pago.localeCompare(x.fecha_pago))
+          .map((x) => ({ fecha: x.fecha_pago, monto: x.monto })),
+        como_pagar: cl?.instrucciones_pago || db.empresa.instrucciones_pago || null,
+      }
+    })
+    const e = db.empresa
+    return ok(config, {
+      nombre: d.nombre,
+      estudio: { nombre: e.nombre_fantasia, telefonos: e.telefonos, emails: e.emails, horario: e.horario_atencion,
+        sitio_web: e.sitio_web, direccion: [e.direccion, e.ciudad].filter(Boolean).join(', '), logo: null },
+      deudas, al: hoyIso, enlace_vence: enlace.expira_at.slice(0, 10),
+    })
   }
 
   // ---- portal de mandantes ----

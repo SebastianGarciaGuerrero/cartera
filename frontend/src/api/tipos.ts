@@ -430,3 +430,70 @@ export interface AcuerdoPendiente {
   firma_cliente: FirmaCliente
   observaciones: string | null
 }
+
+// ---------- Portal del deudor ----------
+
+export interface EnlaceDeudor {
+  created_at: string
+  expira_at: string
+  creado_por: string | null
+  accesos: number
+  ultimo_acceso_at: string | null
+  bloqueado: boolean
+}
+
+export interface EnlaceDeudorNuevo extends EnlaceDeudor {
+  url: string
+  mensaje: string
+  whatsapp_url: string
+  mailto_url: string | null
+}
+
+export type EstadoCuotaDeudor = 'pagada' | 'pendiente' | 'parcial' | 'atrasada'
+
+export interface CuotaDeudor {
+  numero: number
+  vence: string
+  monto: string
+  pagado: string
+  estado: EstadoCuotaDeudor
+}
+
+export interface DeudaDeudor {
+  numero: number
+  acreedor: string
+  estado: EstadoCobranza
+  capital_pendiente: string
+  convenio: {
+    estado: 'vigente' | 'cumplido'
+    fecha: string | null
+    total: string
+    pie: string
+    numero_cuotas: number
+    cuotas_pagadas: number
+    pagado: string
+    por_pagar: string
+    cuotas_atrasadas: number
+    monto_atrasado: string
+    proxima: CuotaDeudor | null
+    cuotas: CuotaDeudor[]
+  } | null
+  pagos: { fecha: string; monto: string }[]
+  como_pagar: string | null
+}
+
+export interface EstadoDeudorPublico {
+  nombre: string
+  estudio: {
+    nombre: string
+    telefonos: string | null
+    emails: string | null
+    horario: string | null
+    sitio_web: string | null
+    direccion: string | null
+    logo: string | null
+  }
+  deudas: DeudaDeudor[]
+  al: string
+  enlace_vence: string
+}

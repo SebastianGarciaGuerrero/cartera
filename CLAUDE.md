@@ -64,6 +64,11 @@ FastAPI con capas por dominio: `backend/app/{models,schemas,routers}/<entidad>.p
 - Rol `mandante` + `usuarios.cliente_id`: no entra a la API interna (`ROLES_INTERNOS` en `security.py`), solo a `routers/portal.py`, que filtra todo por su cliente. Función de plan `portal_mandantes`.
 - Frontend: `componentes/PortalLayout.tsx` (menú propio, rutas `/portal/*`) y `paginas/Portal.tsx`. `Layout` redirige al mandante a `/portal` y `PortalLayout` devuelve a `/` a los usuarios internos.
 
+### Portal del deudor
+
+- `routers/estado_deudor.py`: el equipo genera un enlace (`enlaces_deudor`, solo el hash del token) y el deudor lo abre en `/estado#t=TOKEN` (fragmento: no llega al servidor ni a los logs) escribiendo su RUT. `POST /api/publico/estado` busca el enlace en modo sistema y después lee todo con `activar_organizacion` (RLS). Nunca devolver gestiones, honorarios, usuarios ni estados internos (`archivada`, `castigo`).
+- Frontend: `paginas/EstadoDeudor.tsx` (pública, fuera de los layouts, trato de "usted") y `componentes/EnlaceDeudor.tsx` (modal en la ficha de la cobranza).
+
 ### Personalización por organización
 
 - Campos personalizados (`campos_personalizados`, `app/campos.py`): valores en `datos_extra` JSONB de cobranzas/deudores, validados contra la definición. Pueden limitarse a un mandante (`cliente_id`).

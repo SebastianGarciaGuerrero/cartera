@@ -20,7 +20,7 @@ _BASE = {
     "mensaje_pago",  # mensaje listo con datos de transferencia (copiar/abrir)
 }
 _PROFESIONAL = _BASE | {
-    "judicial", "portal_mandantes", "recordatorios", "comunicaciones",
+    "judicial", "portal_mandantes", "portal_deudor", "recordatorios", "comunicaciones",
 }
 _PREMIUM = _PROFESIONAL | {
     "calculadora_369", "envio_automatico", "pagos_en_linea", "api",
@@ -35,6 +35,7 @@ FUNCIONES_POR_PLAN = {
 NOMBRE_FUNCION = {
     "judicial": "Módulo judicial",
     "portal_mandantes": "Portal de clientes",
+    "portal_deudor": "Portal del deudor",
     "recordatorios": "Recordatorios automáticos",
     "comunicaciones": "Comunicaciones masivas",
     "calculadora_369": "Calculadora 3-6-9 y acuerdos asistidos",
