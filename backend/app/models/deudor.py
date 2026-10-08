@@ -47,7 +47,7 @@ class Deudor(TenantMixin, Base):
     telefono_trabajo = Column(String(50))
     direccion_trabajo = Column(Text)
 
-    # Contacto alternativo (ej. "don Hugo" en las gestiones)
+    # Contacto alternativo (un familiar o conocido que ayuda a ubicarlo)
     contacto_alt_nombre = Column(String(200))
     contacto_alt_relacion = Column(String(80))
     contacto_alt_telefono = Column(String(50))

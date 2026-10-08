@@ -15,6 +15,10 @@ Desde la carpeta backend, con el venv activo:
   python -m app.cli enlace-acceso --email ana@perez.cl
       Nuevo enlace para elegir contraseña (si se le perdió la invitación).
 
+  python -m app.cli subir-logo --slug perez --archivo ../logos/perez.png
+      Carga el logo que mandó la empresa (PNG o JPG, máx. 1 MB). Registrarlo
+      también en logos/README.md.
+
   python -m app.cli enviar-agenda [--simular]
       Correo de la mañana a cada persona con su agenda del día (contactos,
       promesas, cuotas y recordatorios, más lo atrasado). Solo para las
@@ -170,6 +174,39 @@ def enviar_agenda(args) -> None:
     print(f"Agendas enviadas: {enviados}")
 
 
+def subir_logo(args) -> None:
+    from pathlib import Path
+    from app.logos import ErrorLogo, validar_logo
+    from app.tenancy import activar_organizacion
+    from app.database import SessionLocal
+
+    archivo = Path(args.archivo)
+    if not archivo.is_file():
+        sys.exit(f"No existe el archivo {archivo}")
+    datos = archivo.read_bytes()
+    try:
+        tipo = validar_logo(datos)
+    except ErrorLogo as e:
+        sys.exit(str(e))
+    with sesion_sistema() as db:
+        org = db.query(Organizacion).filter(Organizacion.slug == args.slug).first()
+        if org is None:
+            sys.exit(f"No existe la organización '{args.slug}'.")
+        org_id = org.id
+    db = SessionLocal()
+    try:
+        activar_organizacion(db, org_id)
+        empresa = db.query(Empresa).first()
+        if empresa is None:
+            sys.exit("La organización no tiene datos de empresa cargados.")
+        empresa.logo, empresa.logo_tipo = datos, tipo
+        empresa.logo_actualizado_at = datetime.now(timezone.utc)
+        db.commit()
+    finally:
+        db.close()
+    print(f"Logo cargado para {args.slug} ({tipo}, {len(datos) // 1024} KB).")
+
+
 def enlace_acceso(args) -> None:
     with sesion_sistema() as db:
         usuario = db.query(Usuario).filter(func.lower(Usuario.email) == args.email.lower()).first()
@@ -211,6 +248,11 @@ def main(argv=None) -> None:
     c.add_argument("--slug", required=True)
     c.add_argument("--estado", required=True, choices=["prueba", "activa", "suspendida", "cancelada"])
     c.set_defaults(func=lambda a: cambiar(a, "estado", a.estado))
+
+    c = sub.add_parser("subir-logo")
+    c.add_argument("--slug", required=True)
+    c.add_argument("--archivo", required=True, help="PNG o JPG de hasta 1 MB")
+    c.set_defaults(func=subir_logo)
 
     c = sub.add_parser("enviar-agenda")
     c.add_argument("--simular", action="store_true", help="muestra los correos sin enviarlos")

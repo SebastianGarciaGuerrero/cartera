@@ -46,7 +46,7 @@ class GestionResponse(GestionBase):
     """Gestión tal como se devuelve (datos planos)."""
     id: UUID
     usuario_id: UUID  # quién la registró (vino del token al crearla)
-    usuario_nombre: Optional[str] = None  # nombre legible (ej. "GRV")
+    usuario_nombre: Optional[str] = None  # nombre legible de quien la registró
     es_masivo: bool = False  # True si vino de una carga masiva de gestiones
     fecha_gestion: datetime
     created_at: datetime

@@ -1,7 +1,8 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import type { ItemAgenda } from '../api/tipos'
+import type { Empresa, ItemAgenda } from '../api/tipos'
+import { LogoEmpresa } from './Logo'
 import { useAuth } from '../auth'
 import { MARCA } from '../marca'
 
@@ -12,6 +13,14 @@ import { MARCA } from '../marca'
 export default function Layout() {
   const { usuario, cargando, logout, esAdmin, etiqueta, tiene } = useAuth()
   const ubicacion = useLocation()
+
+  const { data: empresa } = useQuery({
+    queryKey: ['empresa'],
+    enabled: Boolean(usuario),
+    queryFn: async () => (await api.get<Empresa>('/empresa')).data,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  })
 
   // Contador de la agenda: lo de hoy más lo atrasado.
   const { data: agendaHoy } = useQuery({
@@ -37,6 +46,8 @@ export default function Layout() {
             <div className="marca-sub">{usuario.organizacion.nombre}</div>
           </div>
         </div>
+        <LogoEmpresa tieneLogo={empresa?.tiene_logo} version={empresa?.logo_actualizado_at}
+          alt={usuario.organizacion.nombre} className="sidebar-logo-empresa" />
 
         <nav className="menu">
           <div className="menu-grupo">Gestión</div>

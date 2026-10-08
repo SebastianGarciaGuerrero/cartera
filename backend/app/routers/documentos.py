@@ -65,9 +65,13 @@ def _fecha_corta(f) -> str:
 
 
 def _membrete(doc: Document, emp: Empresa):
-    """Encabezado institucional: wordmark centrado + línea divisoria."""
+    """Encabezado institucional: logo (o el nombre configurado) + línea divisoria."""
     titulo = doc.add_paragraph()
     titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if emp.logo:
+        titulo.add_run().add_picture(BytesIO(emp.logo), height=Cm(2.0))
+        titulo = doc.add_paragraph()
+        titulo.alignment = WD_ALIGN_PARAGRAPH.CENTER
     r = titulo.add_run(emp.wordmark)
     r.bold = True
     r.font.size = Pt(18)

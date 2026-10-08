@@ -253,6 +253,8 @@ export interface Empresa {
   emails: string | null
   sitio_web: string | null
   instrucciones_pago: string | null
+  tiene_logo?: boolean
+  logo_actualizado_at?: string | null
   updated_at?: string | null
 }
 

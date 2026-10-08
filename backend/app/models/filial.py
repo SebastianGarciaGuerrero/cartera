@@ -1,7 +1,7 @@
 """
 Modelo SQLAlchemy para la tabla 'filiales'.
 Representa las sucursales de un cliente.
-Ej: un cliente con sucursales en Iquique, Valparaíso, Temuco.
+Ej: un cliente con sucursales Norte, Centro y Sur.
 """
 
 from sqlalchemy import Column, Integer, String, Boolean, TIMESTAMP, ForeignKey, UniqueConstraint, text
@@ -26,7 +26,7 @@ class Filial(TenantMixin, Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
     
     # Restricción: no puede haber dos filiales con el mismo nombre
-    # dentro del mismo cliente: nadie puede tener dos filiales "Iquique".
+    # dentro del mismo cliente: nadie puede tener dos filiales "Norte".
     __table_args__ = (
         UniqueConstraint('cliente_id', 'nombre', name='uq_filial_cliente_nombre'),
     )

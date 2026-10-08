@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { Empresa } from '../api/tipos'
+import { LogoEmpresa } from '../componentes/Logo'
 
 // Configuración → Mi empresa (solo admin).
 // Estos datos son los que salen impresos en el membrete, la firma y el pie de
@@ -67,6 +68,8 @@ export default function MiEmpresa() {
       <header className="pagina-cabecera">
         <h1>Mi empresa</h1>
       </header>
+
+      <SeccionLogo empresa={data ?? null} />
 
       <form className="form-finanzas form-alta" onSubmit={alEnviar}>
         <h3>Identidad</h3>
@@ -172,5 +175,54 @@ export default function MiEmpresa() {
         </div>
       </form>
     </>
+  )
+}
+
+// Logo de la empresa: sale en los documentos Word y en la barra lateral.
+// Sin logo, los documentos muestran un recuadro "LOGO DE LA EMPRESA".
+function SeccionLogo({ empresa }: { empresa: Empresa | null }) {
+  const qc = useQueryClient()
+  const [error, setError] = useState('')
+  const subir = useMutation({
+    mutationFn: async (archivo: File) => {
+      const form = new FormData()
+      form.append('archivo', archivo)
+      return (await api.put<Empresa>('/empresa/logo', form)).data
+    },
+    onSuccess: (e) => { setError(''); qc.setQueryData(['empresa'], e); qc.invalidateQueries({ queryKey: ['logo-empresa'] }) },
+    onError: (err) => setError(mensajeDeError(err)),
+  })
+  const quitar = useMutation({
+    mutationFn: async () => (await api.delete<Empresa>('/empresa/logo')).data,
+    onSuccess: (e) => { qc.setQueryData(['empresa'], e); qc.invalidateQueries({ queryKey: ['logo-empresa'] }) },
+  })
+
+  return (
+    <section className="form-finanzas form-alta">
+      <h3>Logo</h3>
+      <div className="logo-zona">
+        {empresa?.tiene_logo
+          ? <LogoEmpresa tieneLogo version={empresa.logo_actualizado_at} alt="Logo de la empresa" className="logo-vista" />
+          : <div className="logo-vacio">LOGO DE LA EMPRESA</div>}
+        <div>
+          <p className="nota">
+            PNG (ideal, con fondo transparente) o JPG, de hasta 1 MB y al menos 600 px de ancho.
+            Sale en el encabezado de los acuerdos, informes y estados de cuenta.
+          </p>
+          <div className="fila">
+            <label className="btn btn-secundario">
+              {empresa?.tiene_logo ? 'Cambiar logo' : 'Subir logo'}
+              <input type="file" accept="image/png,image/jpeg" hidden disabled={!empresa || subir.isPending}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) subir.mutate(f); e.target.value = '' }} />
+            </label>
+            {empresa?.tiene_logo && (
+              <button type="button" className="btn btn-secundario" onClick={() => quitar.mutate()}>Quitar logo</button>
+            )}
+          </div>
+          {!empresa && <p className="suave">Guarda primero los datos de la empresa.</p>}
+          {error && <div className="alerta-error">{error}</div>}
+        </div>
+      </div>
+    </section>
   )
 }

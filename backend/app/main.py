@@ -49,6 +49,7 @@ from app.routers import agenda
 from app.routers import calculadora
 from app.routers import mensajes
 from app.routers import panel
+from app.routers import portal
 
 
 logging.basicConfig(
@@ -156,6 +157,7 @@ app.include_router(agenda.router)
 app.include_router(calculadora.router)
 app.include_router(mensajes.router)
 app.include_router(panel.router)
+app.include_router(portal.router)
 
 
 @app.get("/api/health")

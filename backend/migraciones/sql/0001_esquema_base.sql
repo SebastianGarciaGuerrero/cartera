@@ -127,14 +127,13 @@ CREATE TABLE clientes (
 -- ============================================================
 -- [4] FILIALES
 -- Sucursales de un cliente.
--- Ejemplo: Iquique, Elqui, Valparaíso, Rancagua,
---                   Temuco, Magallanes, Santiago, Providencia, Vitacura
+-- Ejemplo: Casa Matriz, Norte, Centro, Sur
 -- Clientes sin sucursales tienen una filial "Principal".
 -- ============================================================
 CREATE TABLE filiales (
     id         SERIAL       PRIMARY KEY,
     cliente_id UUID         NOT NULL REFERENCES clientes(id),
-    nombre     VARCHAR(100) NOT NULL,  -- 'Iquique', 'Valparaíso', 'Principal'
+    nombre     VARCHAR(100) NOT NULL,  -- 'Norte', 'Centro', 'Principal'
     activo     BOOLEAN      DEFAULT TRUE,
     created_at TIMESTAMPTZ  DEFAULT NOW(),
     UNIQUE (cliente_id, nombre)        -- no puede haber dos filiales con el mismo nombre en el mismo cliente
@@ -207,7 +206,7 @@ CREATE TABLE deudores (
     cargo                 VARCHAR(100),
     telefono_trabajo      VARCHAR(50),
     direccion_trabajo     TEXT,
-    -- Contacto alternativo ("don Hugo" en las gestiones)
+    -- Contacto alternativo (familiar o conocido)
     contacto_alt_nombre   VARCHAR(200),
     contacto_alt_relacion VARCHAR(80),
     contacto_alt_telefono VARCHAR(50),

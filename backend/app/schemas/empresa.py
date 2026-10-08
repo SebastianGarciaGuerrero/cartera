@@ -51,6 +51,7 @@ class EmpresaResponse(BaseModel):
     sitio_web: Optional[str] = None
 
     instrucciones_pago: Optional[str] = None
+    tiene_logo: bool = False
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

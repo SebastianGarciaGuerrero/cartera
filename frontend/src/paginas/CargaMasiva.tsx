@@ -140,7 +140,7 @@ const CAMPOS_GESTION: [string, boolean, string][] = [
   ['ID cliente', true, 'El ID interno con que el cliente identifica la cobranza. Se busca dentro del cliente elegido arriba.'],
   ['Fecha', false, 'Cuándo se hizo la gestión (AAAA-MM-DD). Si se omite: hoy.'],
   ['Gestión', true, 'El texto de la gestión (qué se hizo).'],
-  ['Persona', true, 'Quién la realizó. Debe ser un usuario del sistema (ej: GRV). Quedará marcada como "masivo".'],
+  ['Persona', true, 'Quién la realizó. Debe ser un usuario del sistema (nombre o email). Quedará marcada como "masivo".'],
 ]
 
 function CargaGestiones() {

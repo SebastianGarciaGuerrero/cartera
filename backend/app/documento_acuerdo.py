@@ -26,6 +26,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
+from docx.table import _Cell
 
 from app.calculos import MESES, clp
 from app.models.acuerdo import AcuerdoPago, Cuota
@@ -97,13 +98,7 @@ def _encabezados(doc, emp: Empresa, cob: Cobranza, hoy: date) -> None:
     seccion.different_first_page_header_footer = True
 
     def membrete(contenedor):
-        p = contenedor.paragraphs[0]
-        r = p.add_run(emp.wordmark)
-        r.bold, r.font.name, r.font.size = True, FUENTE, Pt(14)
-        if emp.bajada:
-            r2 = contenedor.add_paragraph().add_run(emp.bajada)
-            r2.font.name, r2.font.size = FUENTE, Pt(8)
-            r2.font.color.rgb = RGBColor(0x55, 0x55, 0x5E)
+        insertar_logo(contenedor, emp)
 
     # Primera hoja: membrete + datos del caso a la derecha.
     tabla = seccion.first_page_header.add_table(rows=1, cols=2, width=Cm(16.6))
@@ -122,6 +117,27 @@ def _encabezados(doc, emp: Empresa, cob: Cobranza, hoy: date) -> None:
 
     # Hojas siguientes: solo el membrete.
     membrete(seccion.header)
+
+
+def insertar_logo(contenedor, emp: Empresa, alto_cm: float = 2.2) -> None:
+    """
+    Logo de la empresa en el encabezado. Si todavía no lo cargó, queda un
+    recuadro que marca dónde va (sin ningún nombre: cada empresa pone el suyo).
+    """
+    p = contenedor.paragraphs[0]
+    if emp.logo:
+        p.add_run().add_picture(BytesIO(emp.logo), height=Cm(alto_cm))
+        return
+    if isinstance(contenedor, _Cell):
+        tabla = contenedor.add_table(rows=1, cols=1)
+    else:
+        tabla = contenedor.add_table(rows=1, cols=1, width=Cm(4.5))
+    celda = tabla.rows[0].cells[0]
+    celda.width = Cm(4.5)
+    _sombrear(celda, "EEEEEE")
+    _celda(celda, "LOGO DE LA EMPRESA", tam=8)
+    celda.paragraphs[0].runs[0].font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+    tabla.rows[0].height = Cm(alto_cm)
 
 
 def _texto_cuotas(acuerdo: AcuerdoPago, cuotas: List[Cuota]) -> str:

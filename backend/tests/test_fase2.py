@@ -195,3 +195,78 @@ def test_panel_de_indicadores(cliente_http, org_a):
     assert p["cuotas_atrasadas"] >= 1 and float(p["monto_atrasado"]) > 0
     assert any(float(c["recuperado_total"]) == 100000 for c in p["por_cliente"])
     assert sum(e["cantidad"] for e in p["cartera"]) == 1
+
+
+def test_portal_de_mandantes(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    propia = crear_cartera(cliente_http, h, monto=400_000, n=45)
+    ajena = crear_cartera(cliente_http, h, monto=300_000, n=46)  # otro mandante, misma organización
+    cliente_http.post("/api/gestiones/", headers=h, json={
+        "cobranza_id": propia["cobranza_id"], "descripcion": "Llamada al deudor"})
+    nota = next(t["id"] for t in cliente_http.get("/api/gestiones/tipos", headers=h).json() if t["codigo"] == "nota")
+    cliente_http.post("/api/gestiones/", headers=h, json={
+        "cobranza_id": propia["cobranza_id"], "tipo_id": nota, "descripcion": "NOTA INTERNA secreta"})
+    acuerdo = cliente_http.post("/api/acuerdos/", headers=h, json={
+        "cobranza_id": propia["cobranza_id"], "monto_total_acordado": 400000, "numero_cuotas": 2,
+        "fecha_primera_cuota": (date.today() + timedelta(days=5)).isoformat()}).json()
+
+    hm = login(cliente_http, agregar_usuario(org_a["org_id"], "mandante", cliente_id=propia["cliente_id"]))
+    resumen = cliente_http.get("/api/portal/resumen", headers=hm).json()
+    assert resumen["casos_totales"] == 1 and resumen["acuerdos_por_aprobar"] == 1
+
+    lista = cliente_http.get("/api/portal/cobranzas", headers=hm).json()
+    assert [c["id"] for c in lista] == [propia["cobranza_id"]]
+    assert cliente_http.get(f"/api/portal/cobranzas/{ajena['cobranza_id']}", headers=hm).status_code == 404
+
+    ficha = cliente_http.get(f"/api/portal/cobranzas/{propia['cobranza_id']}", headers=hm).json()
+    textos = " ".join(g["descripcion"] for g in ficha["gestiones"])
+    assert "Llamada al deudor" in textos and "NOTA INTERNA" not in textos
+
+    assert cliente_http.post(f"/api/portal/acuerdos/{acuerdo['id']}/aprobar", headers=hm).status_code == 204
+    assert cliente_http.get("/api/portal/acuerdos/pendientes", headers=hm).json() == []
+    # El estudio ve la aprobación en el historial.
+    historial = cliente_http.get("/api/gestiones/", params={"cobranza_id": propia["cobranza_id"]}, headers=h).json()
+    assert any("APROBADO por el mandante" in g["descripcion"] for g in historial)
+
+    # Un usuario interno no entra al portal, y el mandante no entra a la API interna.
+    assert cliente_http.get("/api/portal/resumen", headers=h).status_code == 403
+    assert cliente_http.get("/api/cobranzas/", headers=hm).status_code == 403
+
+
+def test_logo_de_la_empresa(cliente_http, org_a, org_b):
+    import io
+    import zipfile
+    import segno
+
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, n=47)
+    acuerdo = cliente_http.post("/api/acuerdos/", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "monto_total_acordado": 100000, "numero_cuotas": 2,
+        "fecha_primera_cuota": (date.today() + timedelta(days=5)).isoformat()}).json()
+
+    def archivos_word():
+        r = cliente_http.get(f"/api/documentos/acuerdo/{acuerdo['id']}", headers=h)
+        return zipfile.ZipFile(io.BytesIO(r.content))
+
+    # Sin logo: recuadro que marca dónde va.
+    z = archivos_word()
+    encabezados = "".join(z.read(n).decode("utf-8") for n in z.namelist() if "header" in n)
+    assert "LOGO DE LA EMPRESA" in encabezados
+
+    # Un archivo que no es imagen se rechaza.
+    r = cliente_http.put("/api/empresa/logo", headers=h,
+                         files={"archivo": ("logo.png", b"<svg onload=alert(1)>", "image/png")})
+    assert r.status_code == 422
+
+    png = io.BytesIO()
+    segno.make("logo").save(png, kind="png", scale=10)
+    r = cliente_http.put("/api/empresa/logo", headers=h,
+                         files={"archivo": ("logo.png", png.getvalue(), "image/png")})
+    assert r.status_code == 200 and r.json()["tiene_logo"] is True
+    r = cliente_http.get("/api/empresa/logo", headers=h)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert any(n.startswith("word/media/") for n in archivos_word().namelist())
+
+    # Cada organización ve solo su logo.
+    hb = login(cliente_http, org_b["email"])
+    assert cliente_http.get("/api/empresa/logo", headers=hb).status_code == 404

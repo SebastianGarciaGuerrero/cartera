@@ -35,3 +35,7 @@ logs/
 # Docker volumes locales (si se exportaran)
 *.dump
 *.tar
+
+# Logos de las empresas: solo el registro va al repositorio (ver logos/README.md)
+logos/*
+!logos/README.md

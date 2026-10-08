@@ -44,7 +44,7 @@ TABLAS_EXCLUIDAS = {
 # Campos cuyo VALOR nunca debe quedar en el log.
 CAMPOS_ENMASCARADOS = {
     "password_hash", "mfa_secreto_cifrado", "mfa_codigos_recuperacion",
-    "refresh_hash", "refresh_anterior_hash", "token_hash",
+    "refresh_hash", "refresh_anterior_hash", "token_hash", "logo",
 }
 
 # Campos que cambian solos con el uso (login, contadores): un UPDATE que
@@ -63,6 +63,8 @@ def _valor(v):
         return v.isoformat()
     if isinstance(v, Decimal):
         return str(v)
+    if isinstance(v, (bytes, bytearray, memoryview)):
+        return f"<{len(v)} bytes>"
     return v
 
 

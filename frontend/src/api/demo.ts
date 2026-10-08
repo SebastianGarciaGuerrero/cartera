@@ -108,10 +108,10 @@ function sinAcentos(s: string): string {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
 }
 
-// Genera N deudores + sus cobranzas ficticias en la filial Santiago (id 7)
+// Genera N deudores + sus cobranzas ficticias en la filial Costa (id 7)
 // del cliente cl-1. Todo inventado y determinístico (mismo resultado en
 // cada reseed): sirve para poblar la demo sin usar datos reales.
-function generarCasosSantiago(cantidad: number, numeroInicial: number) {
+function generarCasosDemo(cantidad: number, numeroInicial: number) {
   const nombres = ['José', 'María', 'Juan', 'Ana', 'Luis', 'Carmen', 'Pedro', 'Rosa', 'Carlos', 'Javiera', 'Diego', 'Fernanda', 'Matías', 'Camila', 'Sebastián', 'Valentina', 'Francisco', 'Antonia', 'Cristóbal', 'Catalina', 'Felipe', 'Isidora', 'Benjamín', 'Martina', 'Vicente']
   const apellidos = ['González', 'Muñoz', 'Rojas', 'Díaz', 'Pérez', 'Soto', 'Contreras', 'Silva', 'Martínez', 'Sepúlveda', 'Morales', 'Rodríguez', 'López', 'Fuentes', 'Hernández', 'Torres', 'Araya', 'Flores', 'Espinoza', 'Castillo', 'Tapia', 'Reyes', 'Gutiérrez', 'Vergara', 'Cortés']
   const comunas = ['Santiago', 'Maipú', 'Puente Alto', 'La Florida', 'Las Condes', 'Ñuñoa', 'Providencia', 'San Bernardo', 'Conchalí', 'Recoleta', 'Peñalolén', 'La Pintana', 'Quilicura', 'Renca', 'Estación Central', 'Lo Espejo']
@@ -171,15 +171,15 @@ function generarCasosSantiago(cantidad: number, numeroInicial: number) {
 function semilla() {
   const usuarios = [
     { id: 'u-admin', nombre: 'Administrador', email: 'admin@demo.cl', password: 'demo1234', rol_id: 1, activo: true },
-    { id: 'u-sgg', nombre: 'Ana Torres', email: 'ana@demo.cl', password: 'demo1234', rol_id: 2, activo: true },
-    { id: 'u-grv', nombre: 'María Soto', email: 'maria@demo.cl', password: 'demo1234', rol_id: 3, activo: true },
+    { id: 'u-supervisor', nombre: 'Ana Torres', email: 'ana@demo.cl', password: 'demo1234', rol_id: 2, activo: true },
+    { id: 'u-operador', nombre: 'María Soto', email: 'maria@demo.cl', password: 'demo1234', rol_id: 3, activo: true },
   ]
   const clientes = [
     { id: 'cl-1', rut: '96570220-7', razon_social: 'CLÍNICA LOS ANDES S.A.', nombre_fantasia: 'Clínica Los Andes' },
     { id: 'cl-2', rut: '99520000-1', razon_social: 'COMERCIAL DEL SUR SPA', nombre_fantasia: 'Comercial Sur' },
   ]
   const filiales = [
-    ...['Iquique', 'Elqui', 'Valparaíso', 'Rancagua', 'Temuco', 'Magallanes', 'Santiago', 'Providencia', 'Vitacura']
+    ...['Casa Matriz', 'Norte', 'Centro', 'Sur', 'Oriente', 'Poniente', 'Costa', 'Cordillera', 'Valle']
       .map((nombre, i) => ({ id: i + 1, cliente_id: 'cl-1', nombre, activo: true })),
     { id: 10, cliente_id: 'cl-2', nombre: 'Principal', activo: true },
   ]
@@ -246,17 +246,17 @@ function semilla() {
 
   const gestiones = [
     {
-      id: 'g-1', cobranza_id: 'cob-1', usuario_id: 'u-grv', tipo_id: 1 as number | null,
+      id: 'g-1', cobranza_id: 'cob-1', usuario_id: 'u-operador', tipo_id: 1 as number | null,
       descripcion: 'Primera llamada a don Pedro. Contesta. Reconoce la deuda y pide unos días para revisar su situación.',
       fecha_gestion: '2026-06-02T10:30:00', fecha_proximo_contacto: null,
     },
     {
-      id: 'g-2', cobranza_id: 'cob-1', usuario_id: 'u-grv', tipo_id: 4,
+      id: 'g-2', cobranza_id: 'cob-1', usuario_id: 'u-operador', tipo_id: 4,
       descripcion: 'Se envía carta de cobranza formal por correo certificado. Comprobante Correos Chile N° 458921.',
       fecha_gestion: '2026-06-05T15:00:00', fecha_proximo_contacto: null,
     },
     {
-      id: 'g-3', cobranza_id: 'cob-1', usuario_id: 'u-grv', tipo_id: 5,
+      id: 'g-3', cobranza_id: 'cob-1', usuario_id: 'u-operador', tipo_id: 5,
       descripcion: 'ACUERDO DE PAGO: $870.000 en 6 cuota(s) de $145.000. Primera cuota vence el 11-07-2026, última el 11-12-2026.',
       fecha_gestion: '2026-06-11T11:45:00', fecha_proximo_contacto: null,
     },
@@ -272,7 +272,7 @@ function semilla() {
       id: 'ac-1', cobranza_id: 'cob-1', estado: 'vigente', fecha_acuerdo: '2026-06-11',
       fecha_termino: '2026-12-11', pie: '0', monto_total_acordado: '870000',
       numero_cuotas: 6, dia_pago: 11, fecha_primera_cuota: '2026-07-11',
-      usuario_id: 'u-grv', cuotas,
+      usuario_id: 'u-operador', cuotas,
     },
   ]
   const historicos = Array.from({ length: 9 }, (_, i) => {
@@ -283,7 +283,7 @@ function semilla() {
       fecha_pago: d.toISOString().slice(0, 10), monto: String(Math.round(capital * 1.08)),
       capital: String(capital), honorarios: String(Math.round(capital * 0.08)), intereses: '0',
       gastos_judiciales: '0', forma_pago: 'transferencia', numero_comprobante: null as string | null,
-      estado_pago: 'abono', usuario_id: 'u-grv',
+      estado_pago: 'abono', usuario_id: 'u-operador',
     }
   })
   const pagos = [
@@ -293,15 +293,15 @@ function semilla() {
       monto: '145000', capital: '123750', honorarios: '21250',
       intereses: '0', gastos_judiciales: '0',
       forma_pago: 'transferencia', numero_comprobante: 'BCI-20260712-458912' as string | null,
-      estado_pago: 'cuota', usuario_id: 'u-grv',
+      estado_pago: 'cuota', usuario_id: 'u-operador',
     },
   ]
 
-  // 100 casos ficticios extra en la filial Santiago del cliente 1, para que la
+  // 100 casos ficticios extra en la filial Costa del cliente 1, para que la
   // demo tenga volumen realista. Se anexan a los 3 casos guiados de arriba.
-  const casosSantiago = generarCasosSantiago(100, 20004)
-  deudores.push(...(casosSantiago.deudores as never[]))
-  cobranzas.push(...(casosSantiago.cobranzas as never[]))
+  const casosDemo = generarCasosDemo(100, 20004)
+  deudores.push(...(casosDemo.deudores as never[]))
+  cobranzas.push(...(casosDemo.cobranzas as never[]))
 
   // Datos de la empresa que "usa" el sistema en la demo. En la versión
   // completa se editan desde Configuración → Mi empresa.
@@ -339,7 +339,7 @@ function semilla() {
   const plantilla = ''
   const cobro = { pct_judicial: '10', comision_pct: '2.2491' }
 
-  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, recordatorios, plantilla, cobro, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosSantiago.cobranzas.length }
+  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, recordatorios, plantilla, cobro, gestiones, acuerdos, pagos, proximoNumero: 20004 + casosDemo.cobranzas.length }
 }
 
 // ---------- base de datos en localStorage ----------
