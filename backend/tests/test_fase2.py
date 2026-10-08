@@ -153,3 +153,25 @@ def test_mensaje_de_pago(cliente_http, org_a):
         "plantilla_mensaje_pago": "Hola {nombre}, debes {saldo}. Paga en: {datos_pago}"})
     m = cliente_http.get(f"/api/cobranzas/{cartera['cobranza_id']}/mensaje-pago", headers=h).json()
     assert m["texto"].startswith("Hola Deudor, debes $250.000.")
+
+
+def test_word_del_acuerdo(cliente_http, org_a):
+    from io import BytesIO
+    from docx import Document
+
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=600_000, n=43)
+    r = cliente_http.post("/api/calculadora/acuerdo/crear", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "capital": 600000, "numero_cuotas": 3,
+        "tasa_mensual": 1, "uf": 39000, "abono_inicial": 100000,
+        "fecha_primera_cuota": (date.today() + timedelta(days=5)).isoformat()})
+    acuerdo = r.json()
+    r = cliente_http.get(f"/api/documentos/acuerdo/{acuerdo['id']}", headers=h)
+    assert r.status_code == 200 and r.content[:2] == b"PK"
+    doc = Document(BytesIO(r.content))
+    texto = "\n".join(p.text for p in doc.paragraphs)
+    assert "ACUERDO DE PAGO" in texto and "TOTAL PAGARÉ" in texto
+    assert "3 cuotas iguales" in texto
+    tabla = doc.tables[-1]
+    assert tabla.rows[1].cells[0].text == "PIE"
+    assert tabla.rows[-1].cells[-1].text.replace(".", "") == str(int(float(acuerdo["monto_total_acordado"])))

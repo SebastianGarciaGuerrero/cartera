@@ -15,8 +15,9 @@ cualquier empresa que instale el sistema.
 from io import BytesIO
 from uuid import UUID
 from datetime import date, datetime
+from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from docx import Document
@@ -398,3 +399,32 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
 
     nombre = f"estado_cuenta_cobranza_{cob.numero}_{date.today().isoformat()}.docx"
     return _responder_docx(doc, nombre)
+
+
+# ------------------------------------------------------------
+# Acuerdo de pago / avenimiento (formato para aprobación del mandante)
+# ------------------------------------------------------------
+
+@router.get("/acuerdo/{acuerdo_id}")
+def documento_acuerdo(acuerdo_id: UUID, request: Request, db: Session = Depends(get_db)):
+    """Word del acuerdo con su tabla de cuotas, listo para enviar al mandante."""
+    from app import documento_acuerdo as plantilla
+
+    acuerdo = db.get(AcuerdoPago, acuerdo_id)
+    if acuerdo is None:
+        raise HTTPException(status_code=404, detail="Acuerdo no encontrado")
+    emp = _empresa(db)
+    cob = acuerdo.cobranza
+    # Lo pagado antes de firmar este acuerdo (abonos previos a la deuda).
+    pagado_antes = sum(
+        (Decimal(p.capital or 0) for p in db.query(Pago).filter(Pago.cobranza_id == cob.id).all()
+         if p.created_at and acuerdo.created_at and p.created_at < acuerdo.created_at),
+        Decimal(0),
+    )
+    cierre = (request.state.organizacion.configuracion or {}).get("texto_cierre_acuerdo")
+    buffer = plantilla.generar(acuerdo, cob, emp, pagado_antes, cierre, date.today())
+    nombre = ("avenimiento" if cob.tipo == "judicial" else "acuerdo") + f"_cobranza_{cob.numero}.docx"
+    return StreamingResponse(
+        buffer, media_type=DOCX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, mensajeDeError } from '../api/client'
+import { api, mensajeDeError, descargarArchivo } from '../api/client'
 import type {
   Cobranza, Acuerdo, AcuerdoDetalle, Cuota, Pago, EstadoCuota,
 } from '../api/tipos'
@@ -97,6 +97,10 @@ export default function Finanzas({ cobranza }: { cobranza: Cobranza }) {
                 <span className="suave"> · pie <Plata valor={acuerdoDetalle.pie} /></span>
               )}
             </div>
+            <button className="btn btn-chico btn-secundario"
+              onClick={() => descargarArchivo(`/documentos/acuerdo/${acuerdoDetalle.id}`)}>
+              {cobranza.tipo === 'judicial' ? 'Avenimiento' : 'Acuerdo'} (Word)
+            </button>
           </div>
 
           <table className="tabla tabla-cuotas">
