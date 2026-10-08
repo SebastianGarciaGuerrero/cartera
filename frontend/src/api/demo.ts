@@ -18,7 +18,7 @@ import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'ax
 import * as calc from './demoCalculos'
 
 const CLAVE_DB = 'cartera_demo_db'
-const VERSION_SEMILLA = 8
+const VERSION_SEMILLA = 9
 const UF_DEMO = '39841.72'
 const CLAVE_SESION = 'cartera_demo_sesion'
 const PLANTILLA_DEMO = 'Estimado(a) {deudor}:\n\nLe escribimos de {empresa} por la deuda N° {numero} con {cliente}, cuyo saldo a la fecha es de {saldo}.\n\nPuede pagar por transferencia a:\n{datos_pago}\n\nUna vez realizado el pago, envíenos el comprobante por este medio para registrarlo y dar por cerrada su cobranza.\n\nAtentamente,\n{empresa}'
@@ -275,12 +275,24 @@ function semilla() {
       usuario_id: 'u-grv', cuotas,
     },
   ]
+  const historicos = Array.from({ length: 9 }, (_, i) => {
+    const d = new Date(); d.setDate(10); d.setMonth(d.getMonth() - (i + 1))
+    const capital = 180000 + ((i * 37) % 7) * 45000
+    return {
+      id: `p-h${i}`, cobranza_id: `cob-s${i * 3 + 1}`, cuota_id: null as string | null,
+      fecha_pago: d.toISOString().slice(0, 10), monto: String(Math.round(capital * 1.08)),
+      capital: String(capital), honorarios: String(Math.round(capital * 0.08)), intereses: '0',
+      gastos_judiciales: '0', forma_pago: 'transferencia', numero_comprobante: null as string | null,
+      estado_pago: 'abono', usuario_id: 'u-grv',
+    }
+  })
   const pagos = [
+    ...historicos,
     {
-      id: 'p-1', cobranza_id: 'cob-1', cuota_id: 'cu-1', fecha_pago: '2026-07-12',
+      id: 'p-1', cobranza_id: 'cob-1', cuota_id: 'cu-1' as string | null, fecha_pago: '2026-07-12',
       monto: '145000', capital: '123750', honorarios: '21250',
       intereses: '0', gastos_judiciales: '0',
-      forma_pago: 'transferencia', numero_comprobante: 'BCI-20260712-458912',
+      forma_pago: 'transferencia', numero_comprobante: 'BCI-20260712-458912' as string | null,
       estado_pago: 'cuota', usuario_id: 'u-grv',
     },
   ]
@@ -948,6 +960,73 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     }
     guardarDB(db)
     return ok(config, nuevo, 201)
+  }
+
+  // ---- panel de indicadores ----
+  if (metodo === 'GET' && url === '/panel') {
+    const hoyIso = hoy()
+    const desde = params.desde ?? hoyIso.slice(0, 8) + '01'
+    const hasta = params.hasta ?? hoyIso
+    const delCliente = (cobranzaId: string) => {
+      const c = db.cobranzas.find((x) => x.id === cobranzaId)
+      return !params.cliente_id || c?.cliente_id === params.cliente_id
+    }
+    const sumar = (lista: typeof db.pagos) => ({
+      total: String(lista.reduce((s, x) => s + Number(x.monto), 0)),
+      capital: String(lista.reduce((s, x) => s + Number(x.capital), 0)),
+      honorarios: String(lista.reduce((s, x) => s + Number(x.honorarios), 0)),
+      intereses: String(lista.reduce((s, x) => s + Number(x.intereses), 0)),
+      pagos: lista.length,
+    })
+    const pagos = db.pagos.filter((x) => delCliente(x.cobranza_id))
+    const dias = (Date.parse(hasta) - Date.parse(desde)) / 86400000 + 1
+    const desdeAnt = new Date(Date.parse(desde) - dias * 86400000).toISOString().slice(0, 10)
+    const cobs = db.cobranzas.filter((c) => !params.cliente_id || c.cliente_id === params.cliente_id)
+    const estados = new Map<string, { cantidad: number; saldo: number; original: number }>()
+    for (const c of cobs) {
+      const e = estados.get(c.estado) ?? { cantidad: 0, saldo: 0, original: 0 }
+      e.cantidad++; e.saldo += Number(c.monto_actual); e.original += Number(c.monto_original)
+      estados.set(c.estado, e)
+    }
+    const cuotasAbiertas = db.acuerdos.filter((a) => a.estado === 'vigente' && delCliente(a.cobranza_id))
+      .flatMap((a) => a.cuotas).filter((cu) => cu.estado !== 'pagada' && cu.fecha_vencimiento < hoyIso)
+    const vencidasPeriodo = db.acuerdos.filter((a) => delCliente(a.cobranza_id)).flatMap((a) => a.cuotas)
+      .filter((cu) => cu.fecha_vencimiento >= desde && cu.fecha_vencimiento <= (hasta < hoyIso ? hasta : hoyIso))
+    const meses = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - (11 - i))
+      const mes = d.toISOString().slice(0, 7)
+      const delMes = pagos.filter((x) => x.fecha_pago.startsWith(mes))
+      const s = sumar(delMes)
+      return { mes: mes + '-01', capital: s.capital, honorarios: s.honorarios,
+        otros: String(Number(s.total) - Number(s.capital) - Number(s.honorarios)), total: s.total }
+    })
+    const porCliente = db.clientes.map((cl) => {
+      const suyas = db.cobranzas.filter((c) => c.cliente_id === cl.id)
+      const abiertas = suyas.filter((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado))
+      const pagosCl = db.pagos.filter((x) => suyas.some((c) => c.id === x.cobranza_id))
+      return { cliente_id: cl.id, cliente: cl.nombre_fantasia ?? cl.razon_social, abiertas: abiertas.length,
+        saldo: String(abiertas.reduce((s, c) => s + Number(c.monto_actual), 0)),
+        asignado: String(suyas.reduce((s, c) => s + Number(c.monto_original), 0)),
+        recuperado_periodo: String(pagosCl.filter((x) => x.fecha_pago >= desde && x.fecha_pago <= hasta)
+          .reduce((s, x) => s + Number(x.capital), 0)),
+        recuperado_total: String(pagosCl.reduce((s, x) => s + Number(x.capital), 0)) }
+    }).filter((c) => !params.cliente_id || c.cliente_id === params.cliente_id)
+    return ok(config, {
+      desde, hasta,
+      recupero: sumar(pagos.filter((x) => x.fecha_pago >= desde && x.fecha_pago <= hasta)),
+      recupero_anterior: sumar(pagos.filter((x) => x.fecha_pago >= desdeAnt && x.fecha_pago < desde)),
+      cartera: [...estados.entries()].map(([estado, e]) => ({ estado, cantidad: e.cantidad,
+        saldo: String(e.saldo), original: String(e.original) })).sort((a, b) => b.cantidad - a.cantidad),
+      cuotas_atrasadas: cuotasAbiertas.length,
+      monto_atrasado: String(cuotasAbiertas.reduce((s, cu) => s + Number(cu.monto) - Number(cu.monto_pagado), 0)),
+      cuotas_vencidas_periodo: vencidasPeriodo.length,
+      cuotas_pagadas_periodo: vencidasPeriodo.filter((cu) => cu.estado === 'pagada').length,
+      gestiones_periodo: db.gestiones.filter((g) => g.fecha_gestion.slice(0, 10) >= desde && delCliente(g.cobranza_id)).length,
+      sin_gestion_30_dias: cobs.filter((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado)
+        && !db.gestiones.some((g) => g.cobranza_id === c.id
+          && Date.parse(g.fecha_gestion) > Date.now() - 30 * 86400000)).length,
+      meses, por_cliente: porCliente,
+    })
   }
 
   // ---- reportes (admin) ----

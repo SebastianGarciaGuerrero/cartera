@@ -48,6 +48,7 @@ from app.routers import auditoria as auditoria_router
 from app.routers import agenda
 from app.routers import calculadora
 from app.routers import mensajes
+from app.routers import panel
 
 
 logging.basicConfig(
@@ -154,6 +155,7 @@ app.include_router(auditoria_router.router)
 app.include_router(agenda.router)
 app.include_router(calculadora.router)
 app.include_router(mensajes.router)
+app.include_router(panel.router)
 
 
 @app.get("/api/health")

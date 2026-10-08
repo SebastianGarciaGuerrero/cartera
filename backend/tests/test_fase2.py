@@ -175,3 +175,23 @@ def test_word_del_acuerdo(cliente_http, org_a):
     tabla = doc.tables[-1]
     assert tabla.rows[1].cells[0].text == "PIE"
     assert tabla.rows[-1].cells[-1].text.replace(".", "") == str(int(float(acuerdo["monto_total_acordado"])))
+
+
+def test_panel_de_indicadores(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=500_000, n=44)
+    hoy = hoy_chile()
+    cliente_http.post("/api/pagos/", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "monto": 120000, "capital": 100000,
+        "honorarios": 20000, "fecha_pago": hoy.isoformat()})
+    cliente_http.post("/api/acuerdos/", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "monto_total_acordado": 300000, "numero_cuotas": 3,
+        "fecha_primera_cuota": (hoy - timedelta(days=40)).isoformat()})
+    r = cliente_http.get("/api/panel", headers=h)
+    assert r.status_code == 200, r.text
+    p = r.json()
+    assert float(p["recupero"]["capital"]) == 100000 and p["recupero"]["pagos"] == 1
+    assert len(p["meses"]) == 12 and float(p["meses"][-1]["total"]) == 120000
+    assert p["cuotas_atrasadas"] >= 1 and float(p["monto_atrasado"]) > 0
+    assert any(float(c["recuperado_total"]) == 100000 for c in p["por_cliente"])
+    assert sum(e["cantidad"] for e in p["cartera"]) == 1

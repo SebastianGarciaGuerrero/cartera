@@ -55,6 +55,7 @@ export default function Layout() {
           <NavLink to="/carga-masiva">Carga masiva</NavLink>
 
           <div className="menu-grupo">Reportes</div>
+          <NavLink to="/panel">Panel</NavLink>
           <NavLink to="/informes">Informes</NavLink>
           {esAdmin && <NavLink to="/equipo">Equipo</NavLink>}
 

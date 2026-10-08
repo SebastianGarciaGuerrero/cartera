@@ -18,6 +18,7 @@ import Configuracion from './paginas/Configuracion'
 import Agenda from './paginas/Agenda'
 import Calculadora from './paginas/Calculadora'
 import Clientes from './paginas/Clientes'
+import PanelIndicadores from './paginas/Panel'
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/calculadora" element={<Calculadora />} />
             <Route path="/clientes" element={<Clientes />} />
+            <Route path="/panel" element={<PanelIndicadores />} />
             <Route path="/cobranzas" element={<Cobranzas />} />
             <Route path="/cobranzas/nueva" element={<NuevaCobranzaPagina />} />
             <Route path="/cobranzas/:id" element={<CobranzaDetalle />} />
