@@ -1,19 +1,27 @@
-# Blueprint de Render: al conectar el repo, Render lee este archivo y crea
-# el servicio automáticamente. Ver DEPLOY.md para el paso a paso.
+# Blueprint de Render: al conectar el repo (New → Blueprint), Render lee este
+# archivo y crea el servicio. Ver DEPLOY.md para el paso a paso.
+#
+# La imagen (Dockerfile) compila el frontend, aplica las migraciones en la
+# base (Supabase) al arrancar y sirve API + frontend en una sola URL.
 services:
   - type: web
     name: cartera
     runtime: docker
     plan: free
+    branch: saas/fase-1
+    autoDeploy: true
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
-        sync: false          # se pega a mano (la URL de Neon)
+        sync: false          # se pega a mano en Render: la del Session pooler de Supabase
       - key: SECRET_KEY
-        generateValue: true  # Render genera una clave segura sola
-      - key: DEBUG
-        value: "false"
-      - key: URL_PUBLICA
-        sync: false          # la URL pública que asigne Render
+        generateValue: true  # Render genera una clave larga y aleatoria
       - key: ENVIRONMENT
-        value: "demo"
+        value: production
+      - key: URL_PUBLICA
+        sync: false          # la URL que asigne Render, ej. https://cartera-xxxx.onrender.com
+      # El pooler gratuito de Supabase admite pocas conexiones: pool chico.
+      - key: POOL_SIZE
+        value: "3"
+      - key: POOL_MAX_OVERFLOW
+        value: "2"
