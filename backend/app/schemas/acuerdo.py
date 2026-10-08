@@ -13,7 +13,7 @@ from uuid import UUID
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional, List, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 EstadoAcuerdo = Literal["vigente", "cumplido", "incumplido", "renegociado"]
@@ -67,14 +67,45 @@ class AcuerdoBase(BaseModel):
     observaciones: Optional[str] = None
 
 
+class CuotaManual(BaseModel):
+    """Una cuota escrita a mano (fecha y monto propios)."""
+    fecha_vencimiento: date
+    monto: Decimal = Field(..., gt=0, max_digits=15, decimal_places=2)
+
+
+def validar_cuotas_manuales(datos):
+    """
+    Cuotas a mano: deben sumar exactamente lo que queda después del pie y
+    venir en orden de fecha. El N° de cuotas y la primera fecha salen de ellas.
+    """
+    if not datos.cuotas:
+        return datos
+    total = sum((c.monto for c in datos.cuotas), Decimal(0))
+    esperado = Decimal(datos.monto_total_acordado) - Decimal(datos.pie or 0)
+    if total != esperado:
+        raise ValueError(
+            f"Las cuotas suman {total:,.0f} y deben sumar {esperado:,.0f} "
+            "(monto total menos el pie).".replace(",", ".")
+        )
+    fechas = [c.fecha_vencimiento for c in datos.cuotas]
+    if fechas != sorted(fechas):
+        raise ValueError("Las cuotas deben ir en orden de fecha de vencimiento.")
+    datos.numero_cuotas = len(datos.cuotas)
+    datos.fecha_primera_cuota = fechas[0]
+    return datos
+
+
 class AcuerdoCreate(AcuerdoBase):
     """
     Datos para crear un acuerdo. El backend:
-    - genera las cuotas automáticamente,
+    - genera las cuotas automáticamente (o usa las que vienen escritas a mano
+      en `cuotas`, si se mandan),
     - calcula fecha_termino (vencimiento de la última cuota),
     - lo crea en estado 'vigente'.
     """
-    pass
+    cuotas: Optional[List[CuotaManual]] = Field(None, min_length=1, max_length=120)
+
+    _cuotas = model_validator(mode="after")(validar_cuotas_manuales)
 
 
 class AcuerdoEstadoUpdate(BaseModel):

@@ -117,7 +117,7 @@ export function mensajeDeError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const detalle = error.response?.data?.detail
     if (typeof detalle === 'string') return detalle
-    if (Array.isArray(detalle)) return detalle.map((d) => d.msg).join('; ')
+    if (Array.isArray(detalle)) return detalle.map((d) => String(d.msg).replace(/^Value error, /, '')).join('; ')
     if (error.response?.status === 429) return 'Demasiados intentos. Espera unos minutos.'
   }
   return 'Error inesperado. Revisa la conexión con el servidor.'

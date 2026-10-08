@@ -30,7 +30,7 @@ from app.models.cobranza import Cobranza
 from app.models.gestion import Gestion, tipo_de_sistema
 from app.models.usuario import Usuario
 from app.planes import requiere_funcion
-from app.routers.acuerdos import validar_sin_acuerdo_vigente
+from app.operaciones import validar_sin_acuerdo_vigente
 from app.schemas.acuerdo import AcuerdoDetalle
 from app.security import get_current_user, usuario_autorizado
 

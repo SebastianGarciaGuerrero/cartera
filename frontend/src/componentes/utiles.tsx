@@ -83,3 +83,20 @@ export const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
+
+/** Suma meses a una fecha AAAA-MM-DD; si el mes es más corto, queda en su último día. */
+export function sumarMeses(iso: string, meses: number): string {
+  const [a, m, d] = iso.split('-').map(Number)
+  const total = m - 1 + meses
+  const anio = a + Math.floor(total / 12)
+  const mes = (total % 12) + 1
+  const dia = Math.min(d, new Date(anio, mes, 0).getDate())
+  return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+}
+
+/** Fecha local de hoy + N días (AAAA-MM-DD). */
+export function enDias(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return fechaLocal(d)
+}

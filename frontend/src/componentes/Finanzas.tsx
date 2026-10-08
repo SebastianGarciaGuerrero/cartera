@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError, descargarArchivo } from '../api/client'
+import { refrescarCaso } from '../api/refrescar'
 import type {
   Cobranza, Acuerdo, AcuerdoDetalle, Cuota, Pago, EstadoCuota,
 } from '../api/tipos'
@@ -35,7 +36,11 @@ export const CLASE_CUOTA: Record<EstadoCuota, string> = {
   pagada_parcial: 'etiqueta-acuerdo_pago',
 }
 
-export default function Finanzas({ cobranza }: { cobranza: Cobranza }) {
+export default function Finanzas({ cobranza, alPedirAcuerdo }: {
+  cobranza: Cobranza
+  /** Abre "Registrar gestión" en modo acuerdo (gestión + acuerdo en un paso). */
+  alPedirAcuerdo?: () => void
+}) {
   const qc = useQueryClient()
   const cobranzaId = cobranza.id
 
@@ -62,13 +67,7 @@ export default function Finanzas({ cobranza }: { cobranza: Cobranza }) {
   })
 
   // Refresca todo lo que la cascada del backend puede haber cambiado.
-  function refrescarTodo() {
-    qc.invalidateQueries({ queryKey: ['cobranza', cobranzaId] })
-    qc.invalidateQueries({ queryKey: ['cobranzas'] })
-    qc.invalidateQueries({ queryKey: ['acuerdos', cobranzaId] })
-    qc.invalidateQueries({ queryKey: ['acuerdo'] })
-    qc.invalidateQueries({ queryKey: ['pagos', cobranzaId] })
-  }
+  const refrescarTodo = () => refrescarCaso(qc, cobranzaId)
 
   // --- Estado del formulario de pago (por cuota o directo) ---
   const [pagando, setPagando] = useState<Cuota | 'directo' | null>(null)
@@ -139,10 +138,13 @@ export default function Finanzas({ cobranza }: { cobranza: Cobranza }) {
           </table>
         </>
       ) : (
-        <>
+        <div className="sin-acuerdo">
+          <p className="suave">Esta cobranza no tiene un acuerdo de pago vigente.</p>
+          {alPedirAcuerdo && (
+            <button className="btn btn-secundario" onClick={alPedirAcuerdo}>+ Registrar acuerdo de pago</button>
+          )}
           <LinkCalculadora cobranzaId={cobranzaId} />
-          <FormNuevoAcuerdo cobranza={cobranza} alCrear={refrescarTodo} />
-        </>
+        </div>
       )}
 
       {pagando && (
@@ -191,94 +193,6 @@ export default function Finanzas({ cobranza }: { cobranza: Cobranza }) {
         <p className="suave">Aún no hay pagos registrados.</p>
       )}
     </section>
-  )
-}
-
-// ------------------------------------------------------------
-// Formulario para crear un acuerdo (solo si no hay uno vigente)
-// ------------------------------------------------------------
-
-function FormNuevoAcuerdo({ cobranza, alCrear }: { cobranza: Cobranza; alCrear: () => void }) {
-  const [abierto, setAbierto] = useState(false)
-  const [monto, setMonto] = useState(cobranza.monto_actual)
-  const [pie, setPie] = useState('0')
-  const [cuotas, setCuotas] = useState('6')
-  const [primeraCuota, setPrimeraCuota] = useState('')
-  const [diaPago, setDiaPago] = useState('5')
-  const [error, setError] = useState('')
-
-  const crear = useMutation({
-    mutationFn: async () => {
-      await api.post('/acuerdos/', {
-        cobranza_id: cobranza.id,
-        monto_total_acordado: monto,
-        pie,
-        numero_cuotas: Number(cuotas),
-        fecha_primera_cuota: primeraCuota,
-        dia_pago: Number(diaPago) || null,
-      })
-    },
-    onSuccess: () => { setAbierto(false); alCrear() },
-    onError: (err) => setError(mensajeDeError(err)),
-  })
-
-  if (!abierto) {
-    return (
-      <div>
-        <p className="suave">Esta cobranza no tiene un acuerdo de pago vigente.</p>
-        <button className="btn btn-secundario" onClick={() => setAbierto(true)}>
-          + Crear acuerdo de pago
-        </button>
-      </div>
-    )
-  }
-
-  function alEnviar(e: FormEvent) {
-    e.preventDefault()
-    setError('')
-    crear.mutate()
-  }
-
-  return (
-    <form className="form-finanzas" onSubmit={alEnviar}>
-      <div className="fila">
-        <label>
-          Monto total acordado
-          <input type="number" min="1" value={monto} onChange={(e) => setMonto(e.target.value)} required />
-        </label>
-        <label>
-          Pie
-          <input type="number" min="0" value={pie} onChange={(e) => setPie(e.target.value)} />
-        </label>
-        <label>
-          N° de cuotas
-          <input type="number" min="1" max="120" value={cuotas} onChange={(e) => setCuotas(e.target.value)} required />
-        </label>
-      </div>
-      <div className="fila">
-        <label>
-          Primera cuota vence
-          <input type="date" value={primeraCuota} onChange={(e) => setPrimeraCuota(e.target.value)} required />
-        </label>
-        <label>
-          Día de pago (1-31)
-          <input type="number" min="1" max="31" value={diaPago} onChange={(e) => setDiaPago(e.target.value)} />
-        </label>
-      </div>
-      <p className="nota">
-        Las cuotas se generan automáticamente en partes iguales y la cobranza
-        pasa a estado "acuerdo de pago".
-      </p>
-      {error && <div className="alerta-error">{error}</div>}
-      <div className="fila">
-        <button className="btn btn-primario" disabled={crear.isPending}>
-          {crear.isPending ? 'Creando…' : 'Crear acuerdo'}
-        </button>
-        <button type="button" className="btn btn-secundario" onClick={() => setAbierto(false)}>
-          Cancelar
-        </button>
-      </div>
-    </form>
   )
 }
 
@@ -336,6 +250,7 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
   const [fecha, setFecha] = useState(fechaLocal())
   const [forma, setForma] = useState('transferencia')
   const [comprobante, setComprobante] = useState('')
+  const [comentario, setComentario] = useState('')
   const [editando, setEditando] = useState(false)
   const [capital, setCapital] = useState(desgloseGuardado ? entero(cuota!.capital) : '')
   const [honorarios, setHonorarios] = useState(desgloseGuardado ? entero(cuota!.honorarios) : '0')
@@ -392,6 +307,7 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
         gastos_judiciales: gastos || '0',
         forma_pago: forma,
         numero_comprobante: comprobante || null,
+        observaciones: comentario.trim() || null,
         estado_pago: cuota ? 'cuota' : 'abono',
       })
     },
@@ -467,8 +383,14 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
         </div>
       )}
 
+      <label className="campo-ancho">
+        Comentario (opcional)
+        <input value={comentario} onChange={(e) => setComentario(e.target.value)} maxLength={500}
+          placeholder="Ej.: pagó en la oficina, envió comprobante por WhatsApp…" />
+      </label>
       <p className="nota">
-        Solo el capital descuenta el saldo. El pago entra al recupero del mes y queda en el historial.
+        Solo el capital descuenta el saldo. El pago entra al recupero del mes y queda en el historial
+        junto con tu comentario.
       </p>
       {error && <div className="alerta-error">{error}</div>}
       <div className="fila">

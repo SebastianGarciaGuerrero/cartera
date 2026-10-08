@@ -497,3 +497,40 @@ export interface EstadoDeudorPublico {
   al: string
   enlace_vence: string
 }
+
+// ---------- Avisos y Mi seguimiento ----------
+
+export interface Avisos {
+  atrasados: ItemAgenda[]
+  hoy: ItemAgenda[]
+  manana: ItemAgenda[]
+}
+
+export interface Seguimiento {
+  usuario_id: string
+  usuario: string
+  desde: string
+  hasta: string
+  hoy: { gestiones: number; contactos: number; promesas: number; acuerdos: number }
+  periodo: {
+    gestiones: number
+    contactos: number
+    promesas: number
+    acuerdos: number
+    promesas_cumplidas: number
+    promesas_vencidas: number
+    monto_acordado: string
+    pagos_registrados: number
+    monto_pagos: string
+    cuotas_vencidas: number
+    cuotas_pagadas: number
+  }
+  por_dia: { fecha: string; gestiones: number }[]
+  por_tipo: { tipo: string; cantidad: number }[]
+  acuerdos_vigentes: number
+  acuerdos_al_dia: number
+  por_cobrar: string
+  atrasados: { cobranza_id: string; numero: number; deudor: string; cuotas_atrasadas: number; monto_atrasado: string; desde: string }[]
+  proximas_cuotas: { cobranza_id: string; numero: number; deudor: string; cuota: number; de: number; fecha: string; monto: string }[]
+  ultimas: { cobranza_id: string; numero: number; deudor: string; tipo: string | null; descripcion: string; fecha: string }[]
+}

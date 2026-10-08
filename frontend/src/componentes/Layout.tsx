@@ -1,8 +1,9 @@
 import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import type { Empresa, ItemAgenda } from '../api/tipos'
+import type { Empresa } from '../api/tipos'
 import { LogoEmpresa } from './Logo'
+import Avisos, { useAvisos } from './Avisos'
 import { useAuth } from '../auth'
 import { MARCA } from '../marca'
 
@@ -23,13 +24,9 @@ export default function Layout() {
     retry: false,
   })
 
-  // Contador de la agenda: lo de hoy más lo atrasado.
-  const { data: agendaHoy } = useQuery({
-    queryKey: ['agenda-hoy', 'yo'],
-    enabled: Boolean(usuario) && usuario?.rol !== 'mandante',
-    queryFn: async () => (await api.get<ItemAgenda[]>('/agenda/hoy')).data,
-    refetchInterval: 5 * 60 * 1000,
-  })
+  // Avisos (campana y contador de la agenda): lo atrasado, lo de hoy y lo de mañana.
+  const { data: avisos } = useAvisos(Boolean(usuario) && usuario?.rol !== 'mandante')
+  const pendientes = (avisos?.atrasados.length ?? 0) + (avisos?.hoy.length ?? 0)
 
   if (cargando) return <div className="pantalla-carga">Cargando…</div>
   if (!usuario) return <Navigate to="/login" replace />
@@ -48,15 +45,17 @@ export default function Layout() {
             <div className="marca-nombre">{MARCA.nombre}</div>
             <div className="marca-sub">{usuario.organizacion.nombre}</div>
           </div>
+          <Avisos datos={avisos} />
         </div>
         <LogoEmpresa tieneLogo={empresa?.tiene_logo} version={empresa?.logo_actualizado_at}
           alt={usuario.organizacion.nombre} className="sidebar-logo-empresa" />
 
         <nav className="menu">
           <div className="menu-grupo">Gestión</div>
+          <NavLink to="/seguimiento">Mi seguimiento</NavLink>
           <NavLink to="/agenda">
             Agenda
-            {agendaHoy && agendaHoy.length > 0 && <span className="menu-contador">{agendaHoy.length}</span>}
+            {pendientes > 0 && <span className="menu-contador">{pendientes}</span>}
           </NavLink>
           <NavLink to="/cobranzas" end>{etiqueta('cobranzas', 'Cobranzas')}</NavLink>
           <NavLink to="/deudores">{etiqueta('deudores', 'Deudores')}</NavLink>

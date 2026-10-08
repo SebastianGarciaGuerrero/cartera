@@ -6,6 +6,7 @@ Endpoints:
   GET  /api/gestiones            → listar (normalmente filtrado por cobranza_id)
   GET  /api/gestiones/{id}       → obtener una, con su tipo anidado
   POST /api/gestiones            → registrar una gestión nueva
+  POST /api/gestiones/completa   → gestión en un paso: con promesa o acuerdo incluidos
 
 *** NO hay PUT ni DELETE: las gestiones son inmutables. ***
 Si una gestión quedó mal, se registra una gestión correctiva nueva.
@@ -23,7 +24,11 @@ from app.security import get_current_user, require_admin, usuario_autorizado
 from app.models.gestion import Gestion, TipoGestion
 from app.models.cobranza import Cobranza
 from app.models.usuario import Usuario
+from app.indicadores import hoy_chile
+from app.operaciones import clp, con_nota, crear_acuerdo, gestion_automatica
+from app.schemas.acuerdo import AcuerdoCreate
 from app.schemas.gestion import (
+    GestionCompleta,
     GestionCreate,
     GestionResponse,
     GestionDetalle,
@@ -172,3 +177,52 @@ def crear_gestion(
         )
 
     return nueva_gestion
+
+
+@router.post("/completa", response_model=GestionResponse, status_code=status.HTTP_201_CREATED)
+def registrar_gestion_completa(
+    datos: GestionCompleta,
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
+):
+    """
+    Gestión en un paso: lo que pasó y su resultado, todo junto o nada.
+      - gestion: la gestión con su tipo, comentario y próximo contacto.
+      - promesa: gestión "Promesa de pago" con la fecha prometida (sale en la
+        agenda ese día, para quien la registró).
+      - acuerdo: crea el acuerdo con sus cuotas y UNA gestión con los términos
+        y el comentario; las cuotas avisan a quien lo registró.
+    El pago tiene su propio formulario (POST /api/pagos, con comentario).
+    """
+    cobranza = db.get(Cobranza, datos.cobranza_id)
+    if not cobranza:
+        raise HTTPException(status_code=404, detail="Cobranza no encontrada")
+    canal = None
+    if datos.tipo_id is not None:
+        canal = db.get(TipoGestion, datos.tipo_id)
+        if canal is None:
+            raise HTTPException(status_code=404, detail="El tipo de gestión no existe")
+    nota = (datos.descripcion or "").strip() or None
+
+    if datos.resultado == "gestion":
+        gestion = Gestion(cobranza_id=cobranza.id, usuario_id=usuario.id, tipo_id=datos.tipo_id,
+                          descripcion=nota, fecha_proximo_contacto=datos.fecha_proximo_contacto)
+        db.add(gestion)
+    elif datos.resultado == "promesa":
+        promesa = datos.promesa
+        if promesa.fecha < hoy_chile():
+            raise HTTPException(status_code=422, detail="La fecha de la promesa no puede ser anterior a hoy.")
+        texto = "PROMESA DE PAGO"
+        if promesa.monto:
+            texto += f" de {clp(promesa.monto)}"
+        texto += f" para el {promesa.fecha.strftime('%d-%m-%Y')}."
+        gestion = gestion_automatica(db, cobranza.id, usuario.id, "promesa_pago",
+                                     con_nota(texto, nota, canal), promesa.fecha)
+    else:
+        terminos = AcuerdoCreate(cobranza_id=cobranza.id, **datos.acuerdo.model_dump())
+        _, gestion = crear_acuerdo(db, cobranza, terminos, usuario, nota=nota, canal=canal,
+                                   fecha_proximo_contacto=datos.fecha_proximo_contacto)
+
+    db.commit()
+    db.refresh(gestion)
+    return gestion

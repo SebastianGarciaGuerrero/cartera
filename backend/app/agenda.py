@@ -9,8 +9,9 @@ Un ítem de agenda sale de:
     vigentes, por fecha de vencimiento.
   - recordatorio: lo que cada persona se anotó (tabla `recordatorios`).
 
-"De quién" es un ítem: del ejecutivo asignado a la cobranza; si la
-cobranza no tiene ejecutivo, de quien registró la gestión / el acuerdo.
+"De quién" es un ítem: de quien registró la gestión / el acuerdo (así le
+llegan los avisos de las cuotas que pactó) y también del ejecutivo asignado
+a la cobranza, si es otra persona.
 
 Las consultas llevan el filtro de organización explícito además de la RLS.
 """
@@ -59,10 +60,8 @@ def items_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
     filtro_contacto = ""
     filtro_cuota = ""
     if usuario_id is not None:
-        filtro_contacto = ("AND (c.ejecutivo_id = :usuario "
-                           "OR (c.ejecutivo_id IS NULL AND u.usuario_id = :usuario))")
-        filtro_cuota = ("AND (c.ejecutivo_id = :usuario "
-                        "OR (c.ejecutivo_id IS NULL AND ap.usuario_id = :usuario))")
+        filtro_contacto = "AND (c.ejecutivo_id = :usuario OR u.usuario_id = :usuario)"
+        filtro_cuota = "AND (c.ejecutivo_id = :usuario OR ap.usuario_id = :usuario)"
 
     items: List[ItemAgenda] = []
 

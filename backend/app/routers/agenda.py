@@ -91,6 +91,29 @@ def agenda_de_hoy(
                                            hoy - timedelta(days=60), hoy, objetivo, hoy)]
 
 
+class Avisos(BaseModel):
+    atrasados: List[ItemVista]
+    hoy: List[ItemVista]
+    manana: List[ItemVista]
+
+
+@router.get("/api/agenda/avisos", response_model=Avisos)
+def mis_avisos(db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
+    """
+    Avisos de la campana, siempre de la propia persona: lo atrasado (60 días),
+    lo de hoy y lo de mañana (cuotas que vencen, promesas, contactos y
+    recordatorios), para avisarle al deudor antes de que venza.
+    """
+    hoy = hoy_chile()
+    manana = hoy + timedelta(days=1)
+    items = items_agenda(db, usuario.organizacion_id, hoy - timedelta(days=60), manana, usuario.id, hoy)
+    return Avisos(
+        atrasados=[i.dict() for i in items if i.fecha < hoy],
+        hoy=[i.dict() for i in items if i.fecha == hoy],
+        manana=[i.dict() for i in items if i.fecha == manana],
+    )
+
+
 # ------------------------------------------------------------ recordatorios
 
 class RecordatorioEntrada(BaseModel):

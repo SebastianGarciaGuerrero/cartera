@@ -19,6 +19,7 @@ import Agenda from './paginas/Agenda'
 import Calculadora from './paginas/Calculadora'
 import Clientes from './paginas/Clientes'
 import PanelIndicadores from './paginas/Panel'
+import Seguimiento from './paginas/Seguimiento'
 import PortalLayout from './componentes/PortalLayout'
 import { PortalAcuerdos, PortalCartera, PortalFicha, PortalInformes, PortalResumen } from './paginas/Portal'
 import EstadoDeudor from './paginas/EstadoDeudor'
@@ -35,6 +36,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/agenda" replace />} />
             <Route path="/agenda" element={<Agenda />} />
+            <Route path="/seguimiento" element={<Seguimiento />} />
             <Route path="/calculadora" element={<Calculadora />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/panel" element={<PanelIndicadores />} />

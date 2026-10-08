@@ -20,7 +20,6 @@ CASCADA al registrar un pago (todo en UNA transacción):
 
 from uuid import UUID
 from datetime import date
-from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -30,26 +29,9 @@ from app.database import get_db
 from app.security import get_current_user, usuario_autorizado
 from app.models.pago import Pago
 from app.models.cobranza import Cobranza
-from app.models.acuerdo import Cuota, AcuerdoPago
-from app.models.gestion import Gestion, tipo_de_sistema
+from app.operaciones import registrar_pago as registrar_pago_en
 from app.models.usuario import Usuario
 from app.schemas.pago import PagoCreate, PagoResponse
-
-
-def _clp(valor) -> str:
-    """Formatea un monto como pesos chilenos: $1.234.567."""
-    return "$" + f"{int(valor):,}".replace(",", ".")
-
-
-def _gestion_automatica(db: Session, cobranza_id, usuario_id, codigo_tipo: str, descripcion: str):
-    """Registra una gestión automática (ej. abono, pagado) en el historial."""
-    tipo = tipo_de_sistema(db, codigo_tipo)
-    db.add(Gestion(
-        cobranza_id=cobranza_id,
-        usuario_id=usuario_id,
-        tipo_id=tipo.id if tipo else None,
-        descripcion=descripcion,
-    ))
 
 
 # dependencies=[...] exige token válido en TODOS los endpoints del router
@@ -117,84 +99,7 @@ def registrar_pago(
             detail=f"Cobranza con id {pago_data.cobranza_id} no encontrada"
         )
 
-    cuota = None
-    if pago_data.cuota_id is not None:
-        cuota = db.query(Cuota).filter(Cuota.id == pago_data.cuota_id).first()
-        if not cuota:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Cuota con id {pago_data.cuota_id} no encontrada"
-            )
-        # La cuota debe pertenecer a un acuerdo de ESTA cobranza (coherencia).
-        if cuota.acuerdo.cobranza_id != cobranza.id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La cuota indicada no pertenece a esta cobranza."
-            )
-
-    # --- Crear el pago ---
-    nuevo_pago = Pago(
-        **pago_data.model_dump(),
-        usuario_id=usuario.id,  # ← del token, no falsificable
-    )
-    db.add(nuevo_pago)
-
-    monto = Decimal(pago_data.monto)
-    capital = Decimal(pago_data.capital)
-
-    # 1. Descontar del saldo de la cobranza (sin bajar de 0).
-    # REGLA: SOLO el capital descuenta el saldo capital del cliente (que es lo
-    # que muestra la app). Honorarios/interés/gastos varían con la UF del día y
-    # NO descuentan. Si no se ingresa capital, el saldo no se mueve.
-    saldo = Decimal(cobranza.monto_actual) - capital
-    cobranza.monto_actual = saldo if saldo > 0 else Decimal("0")
-
-    # 2. Si el pago es de una cuota, actualizar su monto_pagado y estado.
-    #    La cuota se mide contra el monto TOTAL pagado (lo comprometido).
-    if cuota is not None:
-        cuota.monto_pagado = Decimal(cuota.monto_pagado) + monto
-        if cuota.monto_pagado >= Decimal(cuota.monto):
-            cuota.estado = "pagada"
-        elif cuota.monto_pagado > 0:
-            cuota.estado = "pagada_parcial"
-
-        # 3. ¿Quedaron TODAS las cuotas del acuerdo pagadas?
-        acuerdo = cuota.acuerdo
-        if all(c.estado == "pagada" for c in acuerdo.cuotas):
-            acuerdo.estado = "cumplido"
-            cobranza.estado = "pagada"
-
-    # 4. Si el saldo llegó a 0, la cobranza está pagada (cubre pago directo).
-    if cobranza.monto_actual == 0:
-        cobranza.estado = "pagada"
-
-    # 5. Dejar rastro en el historial de gestiones (automático).
-    #    Desglose: solo se listan los conceptos con monto; los vacíos se omiten.
-    desglose = []
-    if capital > 0:
-        desglose.append(f"Saldo Capital: {_clp(capital)}")
-    if pago_data.honorarios > 0:
-        desglose.append(f"Honorarios: {_clp(pago_data.honorarios)}")
-    if pago_data.intereses > 0:
-        desglose.append(f"Interés: {_clp(pago_data.intereses)}")
-    if pago_data.gastos_judiciales > 0:
-        desglose.append(f"Gastos judiciales: {_clp(pago_data.gastos_judiciales)}")
-    encabezado = (
-        f"Pago de cuota {cuota.numero_cuota} por un total de {_clp(monto)}"
-        if cuota is not None
-        else f"Se realizó un abono por un total de {_clp(monto)}"
-    )
-    detalle = f" Desglose: {' · '.join(desglose)}." if desglose else ""
-    _gestion_automatica(
-        db, cobranza.id, usuario.id, "abono",
-        f"{encabezado}.{detalle} "
-        f"Saldo capital restante: {_clp(cobranza.monto_actual)}."
-    )
-    if cobranza.estado == "pagada":
-        _gestion_automatica(
-            db, cobranza.id, usuario.id, "pagado",
-            "CUENTA SALDADA. La cobranza queda en estado pagada."
-        )
+    nuevo_pago, _ = registrar_pago_en(db, cobranza, pago_data, usuario)
 
     try:
         db.commit()

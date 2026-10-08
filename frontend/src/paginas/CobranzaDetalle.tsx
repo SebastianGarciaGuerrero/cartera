@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, mensajeDeError, descargarArchivo } from '../api/client'
+import { useQuery } from '@tanstack/react-query'
+import { api, descargarArchivo } from '../api/client'
 import type { CobranzaDetalle as Ficha, Gestion, TipoGestion } from '../api/tipos'
 import { EtiquetaEstado, Plata, fechaLegible, fechaHoraLegible } from '../componentes/utiles'
 import Finanzas from '../componentes/Finanzas'
@@ -9,6 +9,8 @@ import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { useAuth } from '../auth'
 import MensajePago from '../componentes/MensajePago'
 import EnlaceDeudor from '../componentes/EnlaceDeudor'
+import RegistrarGestion from '../componentes/RegistrarGestion'
+import type { ResultadoGestion } from '../componentes/RegistrarGestion'
 import { NuevoRecordatorio } from './Agenda'
 import { fechaLocal } from '../componentes/utiles'
 import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
@@ -18,7 +20,6 @@ import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
 
 export default function CobranzaDetalle() {
   const { id } = useParams()
-  const cliente = useQueryClient()
   const { etiqueta, tiene } = useAuth()
   const [mensaje, setMensaje] = useState(false)
   const [enlace, setEnlace] = useState(false)
@@ -39,27 +40,12 @@ export default function CobranzaDetalle() {
     queryFn: async () => (await api.get<TipoGestion[]>('/gestiones/tipos')).data,
   })
 
-  // --- Formulario de nueva gestión (mínimo: para gestiones rápidas) ---
-  const [tipoId, setTipoId] = useState('')
-  const [descripcion, setDescripcion] = useState('')
-  const [error, setError] = useState('')
-
-  const crearGestion = useMutation({
-    mutationFn: async () => {
-      const cuerpo: Record<string, unknown> = {
-        cobranza_id: id,
-        descripcion,
-      }
-      if (tipoId) cuerpo.tipo_id = Number(tipoId)
-      await api.post('/gestiones/', cuerpo)
-    },
-    onSuccess: () => {
-      setDescripcion('')
-      setError('')
-      cliente.invalidateQueries({ queryKey: ['gestiones', id] })
-    },
-    onError: (err) => setError(mensajeDeError(err)),
-  })
+  // Resultado elegido en "Registrar gestión" (Finanzas puede abrirlo en modo acuerdo).
+  const [resultado, setResultado] = useState<ResultadoGestion>('gestion')
+  function pedirAcuerdo() {
+    setResultado('acuerdo')
+    document.getElementById('registrar-gestion')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   const { data: campos } = useCampos('cobranza', cob?.cliente_id)
 
@@ -172,35 +158,7 @@ export default function CobranzaDetalle() {
 
         {/* Columna derecha: gestiones */}
         <section className="tarjeta">
-          <h2>Registrar gestión</h2>
-          <form
-            className="form-gestion"
-            onSubmit={(e) => {
-              e.preventDefault()
-              crearGestion.mutate()
-            }}
-          >
-            <select value={tipoId} onChange={(e) => setTipoId(e.target.value)}>
-              <option value="">Tipo de gestión (opcional)</option>
-              {tipos?.map((t) => (
-                <option key={t.id} value={t.id}>{t.nombre}</option>
-              ))}
-            </select>
-            <textarea
-              placeholder="¿Qué pasó? Ej: Llamada a don Pedro, se compromete a pagar el día 5…"
-              value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
-              rows={3}
-              required
-            />
-            {error && <div className="alerta-error">{error}</div>}
-            <button className="btn btn-primario" disabled={crearGestion.isPending}>
-              {crearGestion.isPending ? 'Guardando…' : 'Registrar gestión'}
-            </button>
-            <p className="nota">
-              Las gestiones son inmutables: no se pueden editar ni borrar después.
-            </p>
-          </form>
+          <RegistrarGestion cobranza={cob} resultado={resultado} setResultado={setResultado} />
 
           <h2>Historial ({gestiones?.length ?? 0})</h2>
           <ul className="linea-tiempo">
@@ -233,7 +191,7 @@ export default function CobranzaDetalle() {
         </section>
       </div>
 
-      <Finanzas cobranza={cob} />
+      <Finanzas cobranza={cob} alPedirAcuerdo={pedirAcuerdo} />
       {mensaje && <MensajePago cobranzaId={cob.id} alCerrar={() => setMensaje(false)} />}
       {enlace && cob.deudor && (
         <EnlaceDeudor deudorId={cob.deudor.id} deudorNombre={cob.deudor.nombre} cobranzaId={cob.id}
