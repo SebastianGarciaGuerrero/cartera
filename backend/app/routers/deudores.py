@@ -21,19 +21,21 @@ tienen soft-delete ('activo').
 from uuid import UUID
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.campos import ErrorCampo, validar_datos_extra
 from app.database import get_db
 from app.security import usuario_autorizado
+from app.models.cobranza import Cobranza
 from app.models.deudor import Deudor, ContactoDeudor
 from app.schemas.deudor import (
     DeudorCreate,
     DeudorUpdate,
     DeudorResponse,
     DeudorDetalle,
+    DeudorBusqueda,
     ContactoCreate,
     ContactoResponse,
 )
@@ -67,7 +69,7 @@ def listar_deudores(
     return deudores
 
 
-@router.get("/buscar", response_model=List[DeudorResponse])
+@router.get("/buscar", response_model=List[DeudorBusqueda])
 def buscar_deudores(
     q: str = Query(..., min_length=1, max_length=100, description="RUT o parte del nombre"),
     limit: int = Query(50, ge=1, le=200),
@@ -84,10 +86,31 @@ def buscar_deudores(
     deudores = (
         db.query(Deudor)
         .filter(or_(Deudor.rut.ilike(patron_rut), Deudor.nombre.ilike(patron)))
+        .order_by(Deudor.nombre)
         .limit(limit)
         .all()
     )
-    return deudores
+    resumen = {}
+    if deudores:
+        abiertas = Cobranza.estado.in_(("activa", "acuerdo_pago", "judicial"))
+        filas = (
+            db.query(
+                Cobranza.deudor_id,
+                func.count(Cobranza.id),
+                func.count(Cobranza.id).filter(abiertas),
+                func.coalesce(func.sum(Cobranza.monto_actual).filter(abiertas), 0),
+            )
+            .filter(Cobranza.deudor_id.in_([d.id for d in deudores]))
+            .group_by(Cobranza.deudor_id).all()
+        )
+        resumen = {f[0]: f[1:] for f in filas}
+    resultado = []
+    for d in deudores:
+        total, n_abiertas, saldo = resumen.get(d.id, (0, 0, 0))
+        item = DeudorBusqueda.model_validate(d)
+        item.total_cobranzas, item.cobranzas_abiertas, item.saldo_abierto = total, n_abiertas, float(saldo)
+        resultado.append(item)
+    return resultado
 
 
 @router.get("/{deudor_id}", response_model=DeudorDetalle)

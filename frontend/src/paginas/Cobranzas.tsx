@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
+import { useAuth } from '../auth'
 import type { Cobranza, Cliente, EstadoCobranza } from '../api/tipos'
-import { EtiquetaEstado, Plata } from '../componentes/utiles'
+import { EtiquetaEstado, Plata, fechaLegible } from '../componentes/utiles'
 
 const ESTADOS: EstadoCobranza[] = [
   'activa', 'acuerdo_pago', 'judicial', 'pagada', 'archivada', 'castigo',
@@ -12,6 +13,7 @@ const ESTADOS: EstadoCobranza[] = [
 const POR_PAGINA = 20
 
 export default function Cobranzas() {
+  const { etiqueta } = useAuth()
   const [busqueda, setBusqueda] = useState('')
   const [estado, setEstado] = useState('')
   const [clienteId, setClienteId] = useState('')
@@ -84,8 +86,9 @@ export default function Cobranzas() {
         <table className="tabla">
           <thead>
             <tr>
-              <th>N° Cobranza</th>
-              <th>ID cliente</th>
+              <th>N°</th>
+              <th>Deudor</th>
+              <th>{etiqueta('cliente', 'Cliente')}</th>
               <th>Estado</th>
               <th className="der">Deuda original</th>
               <th className="der">Saldo actual</th>
@@ -97,11 +100,15 @@ export default function Cobranzas() {
             {cobranzas?.map((c) => (
               <tr key={c.id}>
                 <td className="mono negrita">{c.numero}</td>
-                <td className="mono">{c.id_externo ?? '—'}</td>
+                <td>
+                  {c.deudor_nombre}
+                  <div className="mono suave">{c.deudor_rut}{c.id_externo ? ` · ${etiqueta('id_externo', 'ID')} ${c.id_externo}` : ''}</div>
+                </td>
+                <td>{c.cliente_nombre}</td>
                 <td><EtiquetaEstado estado={c.estado} /></td>
                 <td className="der"><Plata valor={c.monto_original} /></td>
                 <td className="der"><Plata valor={c.monto_actual} /></td>
-                <td>{c.fecha_ingreso ?? '—'}</td>
+                <td>{fechaLegible(c.fecha_ingreso)}</td>
                 <td>
                   <Link className="btn btn-chico btn-secundario" to={`/cobranzas/${c.id}`}>
                     Ver ficha
@@ -110,7 +117,7 @@ export default function Cobranzas() {
               </tr>
             ))}
             {cobranzas?.length === 0 && (
-              <tr><td colSpan={7} className="vacio">Sin resultados</td></tr>
+              <tr><td colSpan={8} className="vacio">Sin resultados</td></tr>
             )}
           </tbody>
         </table>

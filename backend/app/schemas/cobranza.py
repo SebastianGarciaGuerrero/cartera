@@ -145,6 +145,10 @@ class CobranzaResponse(CobranzaBase):
     monto_actual: Decimal
     created_at: datetime
     updated_at: datetime
+    # Datos legibles para listados
+    deudor_nombre: Optional[str] = None
+    deudor_rut: Optional[str] = None
+    cliente_nombre: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

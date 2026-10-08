@@ -168,3 +168,12 @@ def test_auditoria_registra_cambios_con_organizacion(cliente_http, org_a, org_b)
     log_a = cliente_http.get("/api/auditoria/", params={"tabla": "cobranzas"}, headers=ha).json()
     assert any(e["datos_nuevos"] and e["datos_nuevos"].get("estado") == "archivada" for e in log_a)
     assert cliente_http.get("/api/auditoria/", params={"tabla": "cobranzas"}, headers=hb).json() == []
+
+
+def test_listados_muestran_deudor_y_resumen(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=250000, n=25)
+    lista = cliente_http.get("/api/cobranzas/", headers=h, params={"deudor_id": cartera["deudor_id"]}).json()
+    assert len(lista) == 1 and lista[0]["deudor_nombre"] == "Deudor 25" and lista[0]["cliente_nombre"]
+    encontrados = cliente_http.get("/api/deudores/buscar", headers=h, params={"q": "Deudor 25"}).json()
+    assert encontrados[0]["cobranzas_abiertas"] == 1 and encontrados[0]["saldo_abierto"] == 250000

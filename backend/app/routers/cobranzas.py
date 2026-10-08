@@ -19,7 +19,7 @@ from uuid import UUID
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy import or_, cast, String
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
 from app.campos import ErrorCampo, validar_datos_extra
@@ -77,6 +77,7 @@ def listar_cobranzas(
     cliente_id: Optional[UUID] = None,
     filial_id: Optional[int] = None,
     ejecutivo_id: Optional[UUID] = None,
+    deudor_id: Optional[UUID] = None,
     estado: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
@@ -84,7 +85,7 @@ def listar_cobranzas(
     Lista cobranzas con paginación y filtros opcionales (se combinan con AND).
     El total sin paginar va en el header X-Total-Count.
     """
-    query = db.query(Cobranza)
+    query = db.query(Cobranza).options(joinedload(Cobranza.deudor), joinedload(Cobranza.cliente))
 
     if cliente_id is not None:
         query = query.filter(Cobranza.cliente_id == cliente_id)
@@ -92,10 +93,12 @@ def listar_cobranzas(
         query = query.filter(Cobranza.filial_id == filial_id)
     if ejecutivo_id is not None:
         query = query.filter(Cobranza.ejecutivo_id == ejecutivo_id)
+    if deudor_id is not None:
+        query = query.filter(Cobranza.deudor_id == deudor_id)
     if estado is not None:
         query = query.filter(Cobranza.estado == estado)
 
-    response.headers["X-Total-Count"] = str(query.count())
+    response.headers["X-Total-Count"] = str(query.order_by(None).count())
     return query.order_by(Cobranza.numero).offset(skip).limit(limit).all()
 
 
@@ -111,7 +114,8 @@ def buscar_cobranzas(
     encuentra la 20001), ID cliente, o RUT/nombre del deudor.
     """
     patron = f"%{q.replace('.', '')}%"
-    query = db.query(Cobranza).join(Deudor, Cobranza.deudor_id == Deudor.id)
+    query = (db.query(Cobranza).join(Deudor, Cobranza.deudor_id == Deudor.id)
+             .options(joinedload(Cobranza.deudor), joinedload(Cobranza.cliente)))
 
     condiciones = [
         cast(Cobranza.numero, String).like(patron),

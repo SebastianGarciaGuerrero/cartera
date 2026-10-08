@@ -132,3 +132,10 @@ class DeudorDetalle(DeudorResponse):
     Se usa en GET /api/deudores/{id} (ficha completa del deudor).
     """
     contactos: List[ContactoResponse] = Field(default_factory=list)
+
+
+class DeudorBusqueda(DeudorResponse):
+    """Resultado de búsqueda: el deudor más un resumen de sus deudas."""
+    total_cobranzas: int = 0
+    cobranzas_abiertas: int = 0
+    saldo_abierto: float = 0

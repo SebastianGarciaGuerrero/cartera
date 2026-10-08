@@ -248,10 +248,11 @@ def test_logo_de_la_empresa(cliente_http, org_a, org_b):
         r = cliente_http.get(f"/api/documentos/acuerdo/{acuerdo['id']}", headers=h)
         return zipfile.ZipFile(io.BytesIO(r.content))
 
-    # Sin logo: recuadro que marca dónde va.
+    # Sin logo: va la esfera genérica del producto.
+    from app.documento_acuerdo import LOGO_GENERICO
     z = archivos_word()
-    encabezados = "".join(z.read(n).decode("utf-8") for n in z.namelist() if "header" in n)
-    assert "LOGO DE LA EMPRESA" in encabezados
+    imagenes = [z.read(n) for n in z.namelist() if n.startswith("word/media/")]
+    assert LOGO_GENERICO.read_bytes() in imagenes
 
     # Un archivo que no es imagen se rechaza.
     r = cliente_http.put("/api/empresa/logo", headers=h,
@@ -265,7 +266,8 @@ def test_logo_de_la_empresa(cliente_http, org_a, org_b):
     assert r.status_code == 200 and r.json()["tiene_logo"] is True
     r = cliente_http.get("/api/empresa/logo", headers=h)
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
-    assert any(n.startswith("word/media/") for n in archivos_word().namelist())
+    z = archivos_word()
+    assert png.getvalue() in [z.read(n) for n in z.namelist() if n.startswith("word/media/")]
 
     # Cada organización ve solo su logo.
     hb = login(cliente_http, org_b["email"])

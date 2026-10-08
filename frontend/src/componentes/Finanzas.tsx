@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError, descargarArchivo } from '../api/client'
 import type {
   Cobranza, Acuerdo, AcuerdoDetalle, Cuota, Pago, EstadoCuota,
 } from '../api/tipos'
-import { Plata, fechaLegible } from './utiles'
+import { Plata, fechaLegible, fechaLocal } from './utiles'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useUF } from './UF'
@@ -297,38 +297,95 @@ function LinkCalculadora({ cobranzaId }: { cobranzaId: string }) {
   )
 }
 
-// Para una cuota calculada con la calculadora, su desglose ya está guardado.
+
+// ------------------------------------------------------------
+// Formulario de pago (de una cuota o abono libre)
+// ------------------------------------------------------------
+// Se ingresa lo que pagó el deudor; el desglose se arma solo:
+//  - cuota de un acuerdo calculado: el desglose guardado de la cuota;
+//  - plan con calculadora: capital y honorarios 3-6-9 con la UF del día
+//    del pago;
+//  - si no: todo a capital.
+// Siempre se puede editar el desglose a mano.
+
 const entero = (v: string | null | undefined) => (v == null ? '' : String(Math.round(Number(v))))
+
+export interface PagoRegistrado {
+  monto: number
+  capital: number
+  honorarios: number
+  intereses: number
+  gastos: number
+  fecha: string
+  cuota: number | null
+}
 
 export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTerminar, alCancelar }: {
   cobranzaId: string
   cuota: Cuota | null
   modalidad?: Modalidad
-  alTerminar: () => void
+  alTerminar: (pago: PagoRegistrado) => void
   alCancelar: () => void
 }) {
-  // Desglose del abono. El CAPITAL es la guía: es lo único que descuenta
-  // el saldo. Honorarios varían según el abono y la UF del día.
-  const conDesglose = cuota != null && cuota.capital != null && Number(cuota.monto_pagado) === 0
-  const [capital, setCapital] = useState(conDesglose ? entero(cuota!.capital) : '')
-  const [honorarios, setHonorarios] = useState(conDesglose ? entero(cuota!.honorarios) : '')
-  const [interes, setInteres] = useState(conDesglose ? entero(cuota!.intereses) : '')
-  const [gastos, setGastos] = useState(conDesglose
-    ? String(Math.round(Number(cuota!.gastos_judiciales ?? 0) + Number(cuota!.comision ?? 0))) : '')
+  const { tiene } = useAuth()
+  const conCalculadora = tiene('calculadora_369')
+  const saldoCuota = cuota ? Math.max(0, Number(cuota.monto) - Number(cuota.monto_pagado)) : 0
+  const desgloseGuardado = cuota != null && cuota.capital != null && Number(cuota.monto_pagado) === 0
+
+  const [total, setTotal] = useState(cuota ? String(Math.round(saldoCuota)) : '')
+  const [fecha, setFecha] = useState(fechaLocal())
   const [forma, setForma] = useState('transferencia')
   const [comprobante, setComprobante] = useState('')
+  const [editando, setEditando] = useState(false)
+  const [capital, setCapital] = useState(desgloseGuardado ? entero(cuota!.capital) : '')
+  const [honorarios, setHonorarios] = useState(desgloseGuardado ? entero(cuota!.honorarios) : '0')
+  const [interes, setInteres] = useState(desgloseGuardado ? entero(cuota!.intereses) : '0')
+  const [gastos, setGastos] = useState(desgloseGuardado
+    ? String(Math.round(Number(cuota!.gastos_judiciales ?? 0) + Number(cuota!.comision ?? 0))) : '0')
+  const [origen, setOrigen] = useState(desgloseGuardado ? 'Desglose de la cuota según el acuerdo.' : '')
   const [error, setError] = useState('')
+  const { data: uf } = useUF(fecha < fechaLocal() ? fecha : undefined)
 
-  const total =
-    (Number(capital) || 0) + (Number(honorarios) || 0) +
-    (Number(interes) || 0) + (Number(gastos) || 0)
+  // Desglose automático cuando cambia el total (salvo que se esté editando
+  // a mano o la cuota ya traiga su desglose y el total sea el de la cuota).
+  useEffect(() => {
+    if (editando) return
+    const monto = Number(total)
+    if (!(monto > 0)) return
+    if (desgloseGuardado && monto === Math.round(saldoCuota)) return
+    if (!conCalculadora || (modalidad === 'extrajudicial' && !uf)) {
+      setCapital(String(monto)); setHonorarios('0'); setInteres('0'); setGastos('0')
+      setOrigen('Todo el monto va a capital. Usa "Editar desglose" si incluye honorarios o interés.')
+      return
+    }
+    const t = setTimeout(() => {
+      api.post<ResultadoHonorarios>('/calculadora/abono', {
+        abono: monto, modalidad, uf: modalidad === 'extrajudicial' ? uf?.valor : null,
+      }).then(({ data }) => {
+        setCapital(entero(data.capital)); setHonorarios(entero(data.total_honorarios))
+        setInteres('0'); setGastos('0')
+        setOrigen(modalidad === 'judicial'
+          ? 'Separado con el porcentaje judicial.'
+          : `Separado con la tabla 3-6-9 (UF ${Number(uf!.valor).toLocaleString('es-CL')}).`)
+      }).catch(() => {
+        setCapital(String(monto)); setHonorarios('0')
+        setOrigen('No se pudo calcular el 3-6-9: todo va a capital.')
+      })
+    }, 350)
+    return () => clearTimeout(t)
+  }, [total, editando, conCalculadora, modalidad, uf, desgloseGuardado, saldoCuota])
+
+  const monto = Number(total) || 0
+  const suma = (Number(capital) || 0) + (Number(honorarios) || 0) + (Number(interes) || 0) + (Number(gastos) || 0)
+  const cuadra = Math.round(suma) === Math.round(monto)
 
   const pagar = useMutation({
     mutationFn: async () => {
       await api.post('/pagos/', {
         cobranza_id: cobranzaId,
         cuota_id: cuota?.id ?? null,
-        monto: String(total),
+        fecha_pago: fecha,
+        monto: String(monto),
         capital: capital || '0',
         honorarios: honorarios || '0',
         intereses: interes || '0',
@@ -338,113 +395,93 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
         estado_pago: cuota ? 'cuota' : 'abono',
       })
     },
-    onSuccess: alTerminar,
+    onSuccess: () => alTerminar({
+      monto, capital: Number(capital) || 0, honorarios: Number(honorarios) || 0,
+      intereses: Number(interes) || 0, gastos: Number(gastos) || 0, fecha,
+      cuota: cuota?.numero_cuota ?? null,
+    }),
     onError: (err) => setError(mensajeDeError(err)),
   })
 
   function alEnviar(e: FormEvent) {
     e.preventDefault()
     setError('')
+    if (!cuadra) { setError('El desglose debe sumar exactamente el monto recibido.'); return }
     pagar.mutate()
   }
 
   return (
     <form className="form-finanzas form-pago" onSubmit={alEnviar}>
-      <h3>
-        {cuota
-          ? `Registrar pago de la cuota ${cuota.numero_cuota}`
-          : 'Registrar abono'}
-      </h3>
-      {conDesglose && (
-        <p className="nota">Desglose de la cuota según el acuerdo calculado. Ajústalo si el pago fue distinto.</p>
-      )}
-      {!conDesglose && (
-        <DesgloseAutomatico modalidad={modalidad} alCalcular={(c, h) => {
-          setCapital(c); setHonorarios(h); setInteres(''); setGastos('')
-        }} />
-      )}
+      <h3>{cuota ? `Pago de la cuota ${cuota.numero_cuota}` : 'Abono'}</h3>
       <div className="fila">
-        <label>
-          Capital *
-          <input type="number" min="1" value={capital}
-            onChange={(e) => setCapital(e.target.value)} required autoFocus />
+        <label className="campo-destacado">
+          Monto recibido *
+          <input type="number" min="1" value={total} onChange={(e) => setTotal(e.target.value)}
+            required autoFocus placeholder="$" />
         </label>
         <label>
-          Honorarios *
-          <input type="number" min="0" value={honorarios}
-            onChange={(e) => setHonorarios(e.target.value)} required />
+          Fecha del pago
+          <input type="date" value={fecha} max={fechaLocal()} onChange={(e) => setFecha(e.target.value)} required />
         </label>
-        <label>
-          Interés
-          <input type="number" min="0" value={interes}
-            onChange={(e) => setInteres(e.target.value)} placeholder="opcional" />
-        </label>
-        <label>
-          Gastos judiciales
-          <input type="number" min="0" value={gastos}
-            onChange={(e) => setGastos(e.target.value)} placeholder="opcional" />
-        </label>
-      </div>
-      <div className="fila">
         <label>
           Forma de pago
           <select value={forma} onChange={(e) => setForma(e.target.value)}>
-            {FORMAS_PAGO.map((f) => <option key={f} value={f}>{f}</option>)}
+            {FORMAS_PAGO.map((f) => <option key={f} value={f}>{NOMBRE_FORMA[f]}</option>)}
           </select>
         </label>
         <label>
           N° comprobante
           <input value={comprobante} onChange={(e) => setComprobante(e.target.value)} placeholder="opcional" />
         </label>
-        <div className="total-abono">
-          Total: <Plata valor={total} />
-        </div>
       </div>
+
+      {monto > 0 && (
+        <div className="desglose">
+          {editando ? (
+            <div className="fila">
+              <label>Capital *<input type="number" min="0" value={capital} onChange={(e) => setCapital(e.target.value)} /></label>
+              <label>Honorarios<input type="number" min="0" value={honorarios} onChange={(e) => setHonorarios(e.target.value)} /></label>
+              <label>Interés<input type="number" min="0" value={interes} onChange={(e) => setInteres(e.target.value)} /></label>
+              <label>Gastos<input type="number" min="0" value={gastos} onChange={(e) => setGastos(e.target.value)} /></label>
+            </div>
+          ) : (
+            <div className="desglose-resumen">
+              <span>Capital <strong><Plata valor={capital || 0} /></strong></span>
+              {Number(honorarios) > 0 && <span>Honorarios <strong><Plata valor={honorarios} /></strong></span>}
+              {Number(interes) > 0 && <span>Interés <strong><Plata valor={interes} /></strong></span>}
+              {Number(gastos) > 0 && <span>Gastos <strong><Plata valor={gastos} /></strong></span>}
+            </div>
+          )}
+          <div className="desglose-pie">
+            <span className="suave">{editando ? 'Desglose a mano.' : origen}</span>
+            <button type="button" className="btn btn-chico btn-secundario" onClick={() => setEditando(!editando)}>
+              {editando ? 'Volver al automático' : 'Editar desglose'}
+            </button>
+          </div>
+          {!cuadra && (
+            <div className="alerta-error">
+              El desglose suma <Plata valor={suma} /> y el monto es <Plata valor={monto} />
+              {' '}(diferencia <Plata valor={monto - suma} />).
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="nota">
-        Solo el CAPITAL descuenta el saldo de la cobranza. El pago queda en el
-        recupero del mes automáticamente y deja una gestión en el historial.
+        Solo el capital descuenta el saldo. El pago entra al recupero del mes y queda en el historial.
       </p>
       {error && <div className="alerta-error">{error}</div>}
       <div className="fila">
-        <button className="btn btn-primario" disabled={pagar.isPending || total <= 0}>
-          {pagar.isPending ? 'Registrando…' : `Registrar ${cuota ? 'pago' : 'abono'}`}
+        <button className="btn btn-primario" disabled={pagar.isPending || monto <= 0 || !cuadra}>
+          {pagar.isPending ? 'Registrando…' : `Registrar ${cuota ? 'pago' : 'abono'} de ${monto > 0 ? '$' + Math.round(monto).toLocaleString('es-CL') : ''}`}
         </button>
-        <button type="button" className="btn btn-secundario" onClick={alCancelar}>
-          Cancelar
-        </button>
+        <button type="button" className="btn btn-secundario" onClick={alCancelar}>Cancelar</button>
       </div>
     </form>
   )
 }
 
-// Pagó un total: la calculadora 3-6-9 lo separa en capital y honorarios.
-function DesgloseAutomatico({ modalidad, alCalcular }: {
-  modalidad: Modalidad
-  alCalcular: (capital: string, honorarios: string) => void
-}) {
-  const { tiene } = useAuth()
-  const { data: uf } = useUF()
-  const [total, setTotal] = useState('')
-  const [error, setError] = useState('')
-  const calcular = useMutation({
-    mutationFn: async () => (await api.post<ResultadoHonorarios>('/calculadora/abono', {
-      abono: total, modalidad, uf: modalidad === 'extrajudicial' ? uf?.valor ?? null : null,
-    })).data,
-    onSuccess: (r) => { setError(''); alCalcular(entero(r.capital), entero(r.total_honorarios)) },
-    onError: (err) => setError(mensajeDeError(err)),
-  })
-  if (!tiene('calculadora_369')) return null
-  return (
-    <div className="fila">
-      <label>
-        Total recibido (para separar con 3-6-9{modalidad === 'judicial' ? ' judicial' : ''})
-        <input type="number" min="1" value={total} onChange={(e) => setTotal(e.target.value)} />
-      </label>
-      <button type="button" className="btn btn-secundario" disabled={!(Number(total) > 0) || calcular.isPending}
-        onClick={() => calcular.mutate()}>
-        Separar capital y honorarios
-      </button>
-      {error && <div className="alerta-error">{error}</div>}
-    </div>
-  )
+const NOMBRE_FORMA: Record<string, string> = {
+  transferencia: 'Transferencia', cheque: 'Cheque', efectivo: 'Efectivo', deposito: 'Depósito',
+  flow: 'Pago en línea', presencial: 'Presencial', bonificacion: 'Bonificación', otro: 'Otro',
 }

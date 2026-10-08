@@ -95,5 +95,18 @@ class Cobranza(TenantMixin, Base):
         "CobranzaTercero", back_populates="cobranza", cascade="all, delete-orphan"
     )
 
+    # Para listados (se cargan con joinedload en los routers).
+    @property
+    def deudor_nombre(self):
+        return self.deudor.nombre if self.deudor else None
+
+    @property
+    def deudor_rut(self):
+        return self.deudor.rut if self.deudor else None
+
+    @property
+    def cliente_nombre(self):
+        return (self.cliente.nombre_fantasia or self.cliente.razon_social) if self.cliente else None
+
     def __repr__(self):
         return f"<Cobranza(numero={self.numero}, estado='{self.estado}')>"

@@ -18,6 +18,7 @@ mandante si tiene propios, si no los del estudio) y texto de cierre.
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 from typing import List, Optional
 
 from docx import Document
@@ -26,7 +27,6 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
-from docx.table import _Cell
 
 from app.calculos import MESES, clp
 from app.models.acuerdo import AcuerdoPago, Cuota
@@ -119,25 +119,17 @@ def _encabezados(doc, emp: Empresa, cob: Cobranza, hoy: date) -> None:
     membrete(seccion.header)
 
 
+LOGO_GENERICO = Path(__file__).resolve().parent / "recursos" / "logo_generico.png"
+
+
 def insertar_logo(contenedor, emp: Empresa, alto_cm: float = 2.2) -> None:
     """
-    Logo de la empresa en el encabezado. Si todavía no lo cargó, queda un
-    recuadro que marca dónde va (sin ningún nombre: cada empresa pone el suyo).
+    Logo de la empresa en el encabezado. Si todavía no cargó el suyo, va la
+    esfera genérica del producto (nunca el nombre ni el logo de otro estudio).
     """
     p = contenedor.paragraphs[0]
-    if emp.logo:
-        p.add_run().add_picture(BytesIO(emp.logo), height=Cm(alto_cm))
-        return
-    if isinstance(contenedor, _Cell):
-        tabla = contenedor.add_table(rows=1, cols=1)
-    else:
-        tabla = contenedor.add_table(rows=1, cols=1, width=Cm(4.5))
-    celda = tabla.rows[0].cells[0]
-    celda.width = Cm(4.5)
-    _sombrear(celda, "EEEEEE")
-    _celda(celda, "LOGO DE LA EMPRESA", tam=8)
-    celda.paragraphs[0].runs[0].font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-    tabla.rows[0].height = Cm(alto_cm)
+    imagen = BytesIO(emp.logo) if emp.logo else str(LOGO_GENERICO)
+    p.add_run().add_picture(imagen, height=Cm(alto_cm))
 
 
 def _texto_cuotas(acuerdo: AcuerdoPago, cuotas: List[Cuota]) -> str:

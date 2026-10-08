@@ -751,12 +751,36 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   // ---- deudores ----
   if (metodo === 'GET' && url === '/deudores/buscar') {
     const q = (params.q ?? '').toLowerCase()
-    return ok(config, db.deudores.filter((d) => d.rut.includes(q) || d.nombre.toLowerCase().includes(q)))
+    const abiertos = ['activa', 'acuerdo_pago', 'judicial']
+    return ok(config, db.deudores
+      .filter((d) => d.rut.includes(q.replace(/\./g, '')) || d.nombre.toLowerCase().includes(q))
+      .slice(0, 30)
+      .map((d) => {
+        const suyas = db.cobranzas.filter((c) => c.deudor_id === d.id)
+        const abiertas = suyas.filter((c) => abiertos.includes(c.estado))
+        return { ...d, total_cobranzas: suyas.length, cobranzas_abiertas: abiertas.length,
+          saldo_abierto: abiertas.reduce((s, c) => s + Number(c.monto_actual), 0) }
+      }))
   }
   if (metodo === 'GET' && url === '/deudores/') return ok(config, db.deudores)
   if (metodo === 'GET' && /^\/deudores\/[^/]+$/.test(url)) {
     const d = db.deudores.find((x) => x.id === url.split('/')[2])
     return d ? ok(config, d) : error(404, 'Deudor no encontrado')
+  }
+  if (metodo === 'POST' && /^\/deudores\/[^/]+\/contactos$/.test(url)) {
+    const d = db.deudores.find((x) => x.id === url.split('/')[2])
+    if (!d) return error(404, 'Deudor no encontrado')
+    const datos = cuerpo(config) as { tipo: string; valor: string }
+    const nuevo = { id: uid(), deudor_id: d.id, tipo: datos.tipo, valor: datos.valor, activo: true }
+    d.contactos.push(nuevo as never)
+    guardarDB(db)
+    return ok(config, nuevo, 201)
+  }
+  if (metodo === 'DELETE' && /^\/deudores\/contactos\/[^/]+$/.test(url)) {
+    const id = url.split('/')[3]
+    for (const d of db.deudores) for (const c of d.contactos) if (c.id === id) c.activo = false
+    guardarDB(db)
+    return ok(config, null, 204)
   }
   if (metodo === 'POST' && url === '/deudores/') {
     const datos = cuerpo(config) as Record<string, unknown> & { rut: string; contactos?: { tipo: string; valor: string }[] }
@@ -777,6 +801,12 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   }
 
   // ---- cobranzas ----
+  const conNombres = (c: DB['cobranzas'][number]) => {
+    const d = db.deudores.find((x) => x.id === c.deudor_id)
+    const cl = db.clientes.find((x) => x.id === c.cliente_id)
+    return { ...c, deudor_nombre: d?.nombre ?? null, deudor_rut: d?.rut ?? null,
+      cliente_nombre: cl ? (cl.nombre_fantasia ?? cl.razon_social) : null }
+  }
   if (metodo === 'GET' && url === '/cobranzas/buscar') {
     const q = (params.q ?? '').toLowerCase()
     const lista = db.cobranzas.filter((c) => {
@@ -784,15 +814,16 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       return String(c.numero).includes(q) || (c.id_externo ?? '').toLowerCase().includes(q)
         || d?.rut.includes(q) || d?.nombre.toLowerCase().includes(q)
     })
-    return ok(config, lista)
+    return ok(config, lista.slice(0, Number(params.limit) || 50).map(conNombres))
   }
   if (metodo === 'GET' && url === '/cobranzas/') {
     let lista = db.cobranzas
     if (params.estado) lista = lista.filter((c) => c.estado === params.estado)
     if (params.cliente_id) lista = lista.filter((c) => c.cliente_id === params.cliente_id)
+    if (params.deudor_id) lista = lista.filter((c) => c.deudor_id === params.deudor_id)
     const skip = Number(params.skip) || 0
     const limit = Number(params.limit) || 100
-    const pagina = lista.slice(skip, skip + limit)
+    const pagina = lista.slice(skip, skip + limit).map(conNombres)
     return ok(config, pagina, 200, { 'x-total-count': String(lista.length) })
   }
   if (metodo === 'GET' && /^\/cobranzas\/[^/]+$/.test(url)) {

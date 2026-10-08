@@ -727,3 +727,59 @@ label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-w
 }
 .sidebar-logo-empresa { display: block; max-width: 100%; max-height: 56px; object-fit: contain; margin: 0 16px 12px; background: #fff; border-radius: 6px; padding: 4px; }
 label.btn input[type=file] { display: none; }
+
+/* ---------- Resultados de búsqueda (abonos, deudores) ---------- */
+.lista-resultados { display: flex; flex-direction: column; gap: 8px; }
+.resultado {
+  font: inherit; text-align: left; cursor: pointer; width: 100%;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 12px; align-items: center;
+  background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 10px; padding: 10px 14px;
+}
+.resultado:hover { border-color: var(--acento-claro); }
+.resultado.elegido { border-color: var(--acento); box-shadow: 0 0 0 1px var(--acento); }
+.resultado-principal { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.resultado-principal strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resultado-principal .mono { white-space: nowrap; font-size: 13px; }
+.resultado-secundario { grid-column: 1; font-size: 13px; color: var(--texto-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resultado .etiqueta { grid-column: 2; grid-row: 2; justify-self: end; }
+.resultado-monto { grid-column: 2; grid-row: 1; font-weight: 600; text-align: right; white-space: nowrap; }
+
+/* ---------- Abonos ---------- */
+.resumen-cobranza { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.tarjeta .resumen-titulo, .resumen-titulo { margin: 4px 0 6px; font-size: 20px; text-transform: none; letter-spacing: 0; color: var(--texto); }
+.resumen-cifras { display: flex; gap: 28px; }
+.resumen-cobranza .acciones { display: flex; flex-direction: row; gap: 6px; }
+.resumen-cifras > div { display: flex; flex-direction: column; gap: 2px; font-size: 16px; }
+.resumen-cifras .suave { font-size: 12px; }
+.opciones-cuota { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.opcion {
+  display: grid; grid-template-columns: auto 1fr auto auto; gap: 12px; align-items: center;
+  border: 1px solid var(--borde); border-radius: 8px; padding: 10px 14px; cursor: pointer;
+}
+.opcion.elegida { border-color: var(--acento); background: var(--fondo); }
+.texto-rojo { color: var(--rojo); font-size: 13px; }
+.opcion .suave { font-size: 13px; }
+.campo-destacado input { font-size: 20px; font-weight: 600; }
+.desglose { background: var(--fondo); border-radius: 8px; padding: 12px 14px; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
+.desglose-resumen { display: flex; flex-wrap: wrap; gap: 20px; }
+.desglose-pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+.comprobante .datos { margin: 12px 0; }
+
+/* ---------- Deudores ---------- */
+.deudores-grilla { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; align-items: start; }
+.ficha-deudor-cabecera { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.ficha-deudor .etiqueta { margin-left: 8px; }
+.ficha-deudor-cabecera .acciones { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; }
+.lista-cobranzas { list-style: none; padding: 0; margin: 0; }
+.lista-cobranzas li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 8px 0; border-bottom: 1px solid var(--borde); }
+.lista-cobranzas .etiqueta { justify-self: end; }
+.lista-cobranzas .suave { font-size: 13px; }
+.subtitulo { font-size: 13px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--texto-suave); margin: 22px 0 8px; }
+.btn-texto { font: inherit; font-size: 12px; background: none; border: none; color: var(--texto-suave); cursor: pointer; text-decoration: underline; margin-left: auto; }
+.btn-texto:hover { color: var(--rojo); }
+.lista-contactos li { display: flex; gap: 12px; align-items: center; }
+.contents { display: contents; }
+@media (max-width: 900px) {
+  .deudores-grilla { grid-template-columns: 1fr; }
+  .resumen-cifras { gap: 16px; }
+}

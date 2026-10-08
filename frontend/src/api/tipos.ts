@@ -92,6 +92,15 @@ export interface Deudor {
   nombre: string
   comuna: string | null
   ciudad: string | null
+  direccion?: string | null
+  departamento?: string | null
+  region?: string | null
+  empleador?: string | null
+  cargo?: string | null
+  telefono_trabajo?: string | null
+  contacto_alt_nombre?: string | null
+  contacto_alt_relacion?: string | null
+  contacto_alt_telefono?: string | null
   en_boletin_comercial: boolean
   observaciones: string | null
   datos_extra: DatosExtra
@@ -103,6 +112,12 @@ export interface Contacto {
   tipo: 'telefono' | 'celular' | 'email' | 'whatsapp' | 'otro'
   valor: string
   activo: boolean
+}
+
+export interface DeudorBusqueda extends Deudor {
+  total_cobranzas: number
+  cobranzas_abiertas: number
+  saldo_abierto: number
 }
 
 export interface DeudorDetalle extends Deudor {
@@ -134,6 +149,10 @@ export interface Cobranza {
   fecha_ingreso: string | null
   observaciones: string | null
   datos_extra: DatosExtra
+  // Para listados
+  deudor_nombre?: string | null
+  deudor_rut?: string | null
+  cliente_nombre?: string | null
 }
 
 export interface TerceroEnCobranza {
