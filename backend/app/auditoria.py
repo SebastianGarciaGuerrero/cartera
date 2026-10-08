@@ -41,6 +41,12 @@ TABLAS_EXCLUIDAS = {
     "audit_log", "roles", "eventos_acceso", "sesiones", "tokens_un_uso",
 }
 
+# Tablas inmutables (la base impide editarlas o borrarlas): el registro
+# mismo ya guarda quién lo hizo y cuándo, así que su ALTA no se copia al
+# log. Sin esto, la auditoría pesaba casi el doble que las gestiones (medido:
+# 825 bytes de log por cada gestión de 480 bytes).
+TABLAS_INMUTABLES = {"gestiones", "pagos"}
+
 # Campos cuyo VALOR nunca debe quedar en el log.
 CAMPOS_ENMASCARADOS = {
     "password_hash", "mfa_secreto_cifrado", "mfa_codigos_recuperacion",
@@ -130,7 +136,7 @@ def registrar_auditoria(session, flush_context):
     entradas = []
 
     for obj in session.new:
-        if obj.__table__.name in TABLAS_EXCLUIDAS:
+        if obj.__table__.name in TABLAS_EXCLUIDAS or obj.__table__.name in TABLAS_INMUTABLES:
             continue
         entradas.append(_entrada(obj, "INSERT", ctx, None, _serializar(obj), session))
 

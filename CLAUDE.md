@@ -73,5 +73,5 @@ FastAPI con capas por dominio: `backend/app/{models,schemas,routers}/<entidad>.p
 - **Montos `NUMERIC(15,2)`**, nunca FLOAT. Solo el **capital** descuenta el saldo de la cobranza.
 - **`cobranzas.numero`**: correlativo por organización asignado por trigger (`organizaciones.numero_cobranza_siguiente`); no cambia nunca.
 - **Nada de marca ni de rubro en el código**: nombre del producto en `frontend/src/marca.ts`; datos del estudio en `empresa` (una fila por organización); lo propio de un rubro va en campos personalizados.
-- **Auditoría automática** (`app/auditoria.py`, listener `after_flush`) con `organizacion_id`; no auditar a mano.
+- **Auditoría automática** (`app/auditoria.py`, listener `after_flush`) con `organizacion_id`; no auditar a mano. No copia el alta de `gestiones` ni `pagos` (inmutables): medido, la copia pesaba más que el dato.
 - El modo demo (`frontend/src/api/demo.ts`) replica la API: al cambiar un endpoint usado por el frontend, actualizarlo también.
