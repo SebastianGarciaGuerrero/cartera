@@ -4,7 +4,7 @@ Representa las empresas mandantes que entregan su cartera para cobrar
 (clínicas, retail, servicios: cualquier empresa con cartera morosa).
 """
 
-from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP, text
+from sqlalchemy import Column, String, Boolean, Integer, Text, TIMESTAMP, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -39,6 +39,9 @@ class Cliente(TenantMixin, Base):
     # Datos de transferencia propios (si el deudor le paga directo al
     # mandante). Si está vacío se usan los del estudio.
     instrucciones_pago = Column(Text)
+    # A los cuántos días desde el ingreso se sugiere preparar la demanda
+    # (NULL = sin sugerencia, 0 = de inmediato).
+    dias_para_demanda = Column(Integer)
     activo = Column(Boolean, server_default=text("true"))
     
     # Timestamps gestionados por PostgreSQL

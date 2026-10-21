@@ -201,6 +201,10 @@ def registrar_pago(db: Session, cobranza: Cobranza, datos: PagoCreate, usuario: 
 
     if cobranza.monto_actual == 0:
         cobranza.estado = "pagada"
+    if cobranza.estado == "pagada" and not cobranza.motivo_cierre:
+        # Ciclo de vida: la cobranza termina por pago.
+        cobranza.motivo_cierre = "pagada"
+        cobranza.fecha_cierre = datos.fecha_pago or hoy_chile()
 
     # Desglose: solo los conceptos con monto.
     desglose = []

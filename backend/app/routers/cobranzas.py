@@ -22,9 +22,12 @@ from sqlalchemy import or_, cast, String
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
+from app import ciclo
 from app.campos import ErrorCampo, validar_datos_extra
 from app.database import get_db
-from app.security import usuario_autorizado
+from app.indicadores import hoy_chile
+from app.schemas.judicial import CambiarEtapa, CicloVida
+from app.security import get_current_user, usuario_autorizado
 from app.models.cliente import Cliente
 from app.models.cobranza import Cobranza
 from app.models.deudor import Deudor
@@ -79,6 +82,7 @@ def listar_cobranzas(
     ejecutivo_id: Optional[UUID] = None,
     deudor_id: Optional[UUID] = None,
     estado: Optional[str] = None,
+    etapa: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -97,6 +101,8 @@ def listar_cobranzas(
         query = query.filter(Cobranza.deudor_id == deudor_id)
     if estado is not None:
         query = query.filter(Cobranza.estado == estado)
+    if etapa is not None:
+        query = query.filter(Cobranza.etapa == etapa)
 
     response.headers["X-Total-Count"] = str(query.order_by(None).count())
     return query.order_by(Cobranza.numero).offset(skip).limit(limit).all()
@@ -199,8 +205,19 @@ def actualizar_cobranza(
         except ErrorCampo as e:
             raise HTTPException(status_code=422, detail=str(e))
 
+    if cambios.get("motivo_cierre") and cambios["motivo_cierre"] not in ciclo.MOTIVOS_CIERRE:
+        raise HTTPException(status_code=422, detail="Motivo de cierre desconocido")
     for campo, valor in cambios.items():
         setattr(cobranza, campo, valor)
+    # Ciclo de vida: al cerrar queda la fecha; al reabrir se limpia el cierre.
+    if "estado" in cambios:
+        if cobranza.estado in ciclo.ESTADOS_TERMINALES:
+            cobranza.fecha_cierre = cobranza.fecha_cierre or hoy_chile()
+            if not cobranza.motivo_cierre:
+                cobranza.motivo_cierre = "pagada" if cobranza.estado == "pagada" else "otro"
+        else:
+            cobranza.fecha_cierre = None
+            cobranza.motivo_cierre = None
 
     try:
         db.commit()
@@ -213,3 +230,34 @@ def actualizar_cobranza(
         )
 
     return cobranza
+
+
+# ------------------------------------------------------------ ciclo de vida
+
+@router.get("/{cobranza_id}/ciclo", response_model=CicloVida)
+def ciclo_de_vida(cobranza_id: UUID, db: Session = Depends(get_db)):
+    """Etapa actual, pasos de la barra, causas e historial de etapas."""
+    cobranza = db.get(Cobranza, cobranza_id)
+    if not cobranza:
+        raise _404(cobranza_id)
+    return ciclo.estado_ciclo(db, cobranza)
+
+
+@router.post("/{cobranza_id}/etapa", response_model=CicloVida)
+def cambiar_etapa(cobranza_id: UUID, datos: CambiarEtapa, db: Session = Depends(get_db),
+                  usuario: Usuario = Depends(get_current_user)):
+    """
+    Mueve una cobranza entre las etapas previas a la demanda (extrajudicial
+    ↔ para demanda). A judicial se pasa presentando la demanda.
+    """
+    cobranza = db.get(Cobranza, cobranza_id)
+    if not cobranza:
+        raise _404(cobranza_id)
+    try:
+        ciclo.cambiar_etapa(db, cobranza, datos.etapa, usuario.id, datos.motivo)
+    except ciclo.ErrorEtapa as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    db.refresh(cobranza)
+    return ciclo.estado_ciclo(db, cobranza)

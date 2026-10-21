@@ -45,7 +45,7 @@ TABLAS_EXCLUIDAS = {
 # mismo ya guarda quién lo hizo y cuándo, así que su ALTA no se copia al
 # log. Sin esto, la auditoría pesaba casi el doble que las gestiones (medido:
 # 825 bytes de log por cada gestión de 480 bytes).
-TABLAS_INMUTABLES = {"gestiones", "pagos"}
+TABLAS_INMUTABLES = {"gestiones", "pagos", "tramites", "causa_cobranzas", "cambios_etapa"}
 
 # Campos cuyo VALOR nunca debe quedar en el log.
 CAMPOS_ENMASCARADOS = {

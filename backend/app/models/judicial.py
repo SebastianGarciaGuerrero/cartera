@@ -1,49 +1,241 @@
 """
-Modelo SQLAlchemy para 'gestiones_judiciales'.
+Modelos del módulo judicial (migración 0010).
 
-Información adicional cuando la cobranza pasa a tribunal: rol de la causa,
-tribunal, abogado a cargo y estado del proceso.
-
-Relación 1-a-1 con cobranzas (UNIQUE en cobranza_id): una cobranza tiene a
-lo más UNA ficha judicial. A diferencia de las gestiones normales, esta ficha
-SÍ es editable (tiene updated_at): el estado del proceso avanza en el tiempo.
+  Tribunal, TipoTramite  → catálogos mixtos (sistema + propios).
+  Causa                  → una demanda: un rol en un tribunal. Puede llevar
+                           varias cobranzas del mismo deudor y cliente.
+  Tramite                → lo que pasa en la causa. INMUTABLE (sin
+                           updated_at), igual que las gestiones.
+  Embargo                → bien trabado y su estado; se edita a medida que
+                           avanza (trabado → retirado → rematado).
+  Gasto, RendicionGastos → lo que paga el estudio y después le cobra al
+                           mandante.
+  CambioEtapa            → historial del ciclo de vida de la cobranza (lo
+                           escribe un trigger, ver app/ciclo.py).
 """
 
-from sqlalchemy import Column, String, Text, Date, TIMESTAMP, ForeignKey, text
+from sqlalchemy import (
+    Boolean, Column, Date, ForeignKey, Integer, Numeric, String, Text, TIMESTAMP, text
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+
 from app.database import Base
-from app.tenancy import TenantMixin
+from app.tenancy import TenantGlobalMixin, TenantMixin
 
 
-class GestionJudicial(TenantMixin, Base):
-    __tablename__ = "gestiones_judiciales"
+def _uuid_pk():
+    return Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
 
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        server_default=text("gen_random_uuid()")
-    )
-    # UNIQUE: una sola ficha judicial por cobranza.
-    cobranza_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("cobranzas.id"),
-        nullable=False,
-        unique=True,
-    )
 
-    numero_rol = Column(String(50))       # rol de la causa (ej. C-1234-2026)
-    tribunal = Column(String(200))        # ej. 2° Juzgado Civil de Valparaíso
-    fecha_ingreso = Column(Date)          # cuándo ingresó la demanda
-    estado_proceso = Column(String(100))  # texto libre: notificación, embargo...
+class Tribunal(TenantGlobalMixin, Base):
+    __tablename__ = "tribunales"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String(150), nullable=False)
+    ciudad = Column(String(80))
+    competencia = Column(String(20), nullable=False, server_default=text("'civil'"))
+    activo = Column(Boolean, nullable=False, server_default=text("true"))
+
+    @property
+    def propio(self) -> bool:
+        return self.organizacion_id is not None
+
+
+class TipoTramite(TenantGlobalMixin, Base):
+    __tablename__ = "tipos_tramite"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    codigo = Column(String(40))
+    nombre = Column(String(150), nullable=False)
+    etapa = Column(String(20))  # demanda / notificacion / embargo / defensa / remate
+    plazo_dias = Column(Integer)  # revisar en N días corridos
+    siguiente_id = Column(Integer, ForeignKey("tipos_tramite.id"))
+    genera_gasto = Column(Boolean, nullable=False, server_default=text("false"))
+    alerta = Column(Boolean, nullable=False, server_default=text("false"))
+    nota = Column(String(300))
+    resultado = Column(String(30))  # si normalmente cierra la causa
+    orden = Column(Integer, nullable=False, server_default=text("0"))
+    activo = Column(Boolean, nullable=False, server_default=text("true"))
+
+    @property
+    def propio(self) -> bool:
+        return self.organizacion_id is not None
+
+
+class Causa(TenantMixin, Base):
+    __tablename__ = "causas"
+
+    id = _uuid_pk()
+    cliente_id = Column(UUID(as_uuid=True), ForeignKey("clientes.id"), nullable=False)
+    deudor_id = Column(UUID(as_uuid=True), ForeignKey("deudores.id"), nullable=False)
+    rol = Column(String(40))
+    tribunal_id = Column(Integer, ForeignKey("tribunales.id"))
+    procedimiento = Column(String(30), nullable=False, server_default=text("'ejecutivo'"))
+    etapa_procesal = Column(String(20), nullable=False, server_default=text("'demanda'"))
+    estado = Column(String(20), nullable=False, server_default=text("'vigente'"))
+    resultado = Column(String(30))
+    fecha_ingreso = Column(Date, nullable=False)
+    fecha_termino = Column(Date)
+    cuantia = Column(Numeric(15, 2))
+    caratula = Column(String(250))
     abogado_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
-
+    procurador_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
     observaciones = Column(Text)
+    creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)
     created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
     updated_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
 
-    # cobranza.judicial devuelve la ficha (o None si no ha ido a tribunal).
-    cobranza = relationship("Cobranza", backref="judicial")
+    cliente = relationship("Cliente")
+    deudor = relationship("Deudor")
+    tribunal = relationship("Tribunal")
+    abogado = relationship("Usuario", foreign_keys=[abogado_id])
+    procurador = relationship("Usuario", foreign_keys=[procurador_id])
+    vinculos = relationship("CausaCobranza", back_populates="causa", cascade="all")
 
-    def __repr__(self):
-        return f"<GestionJudicial(rol={self.numero_rol}, tribunal='{self.tribunal}')>"
+
+class CausaCobranza(TenantMixin, Base):
+    __tablename__ = "causa_cobranzas"
+
+    causa_id = Column(UUID(as_uuid=True), ForeignKey("causas.id"), primary_key=True)
+    cobranza_id = Column(UUID(as_uuid=True), ForeignKey("cobranzas.id"), primary_key=True)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+
+    causa = relationship("Causa", back_populates="vinculos")
+    cobranza = relationship("Cobranza")
+
+
+class Tramite(TenantMixin, Base):
+    __tablename__ = "tramites"
+
+    id = _uuid_pk()
+    causa_id = Column(UUID(as_uuid=True), ForeignKey("causas.id"), nullable=False)
+    tipo_id = Column(Integer, ForeignKey("tipos_tramite.id"))  # NULL = observación
+    fecha = Column(Date, nullable=False)
+    descripcion = Column(Text)
+    plazo_fecha = Column(Date)
+    siguiente_id = Column(Integer, ForeignKey("tipos_tramite.id"))
+    usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    # Sin updated_at → INMUTABLE.
+
+    tipo = relationship("TipoTramite", foreign_keys=[tipo_id])
+    siguiente = relationship("TipoTramite", foreign_keys=[siguiente_id])
+    usuario = relationship("Usuario")
+
+    @property
+    def tipo_nombre(self):
+        return self.tipo.nombre if self.tipo else None
+
+    @property
+    def siguiente_nombre(self):
+        return self.siguiente.nombre if self.siguiente else None
+
+    @property
+    def usuario_nombre(self):
+        return self.usuario.nombre if self.usuario else None
+
+
+class Embargo(TenantMixin, Base):
+    __tablename__ = "embargos"
+
+    id = _uuid_pk()
+    causa_id = Column(UUID(as_uuid=True), ForeignKey("causas.id"), nullable=False)
+    tipo_bien = Column(String(20), nullable=False)
+    descripcion = Column(String(300), nullable=False)
+    estado = Column(String(20), nullable=False, server_default=text("'trabado'"))
+    fecha_traba = Column(Date)
+    inscripcion = Column(String(150))
+    depositario = Column(String(150))
+    monto_tasacion = Column(Numeric(15, 2))
+    fecha_remate = Column(Date)
+    monto_remate = Column(Numeric(15, 2))
+    observaciones = Column(Text)
+    creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+
+
+class RendicionGastos(TenantMixin, Base):
+    __tablename__ = "rendiciones_gastos"
+
+    id = _uuid_pk()
+    numero = Column(Integer, nullable=False)
+    cliente_id = Column(UUID(as_uuid=True), ForeignKey("clientes.id"), nullable=False)
+    fecha = Column(Date, nullable=False)
+    total = Column(Numeric(15, 2), nullable=False)
+    estado = Column(String(20), nullable=False, server_default=text("'enviada'"))
+    fecha_pago = Column(Date)
+    observaciones = Column(Text)
+    creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+
+    cliente = relationship("Cliente")
+    gastos = relationship("Gasto", back_populates="rendicion")
+
+    @property
+    def cliente_nombre(self):
+        return (self.cliente.nombre_fantasia or self.cliente.razon_social) if self.cliente else None
+
+
+class Gasto(TenantMixin, Base):
+    __tablename__ = "gastos"
+
+    id = _uuid_pk()
+    cliente_id = Column(UUID(as_uuid=True), ForeignKey("clientes.id"), nullable=False)
+    cobranza_id = Column(UUID(as_uuid=True), ForeignKey("cobranzas.id"))
+    causa_id = Column(UUID(as_uuid=True), ForeignKey("causas.id"))
+    tramite_id = Column(UUID(as_uuid=True), ForeignKey("tramites.id"))
+    fecha = Column(Date, nullable=False)
+    tipo = Column(String(20), nullable=False, server_default=text("'receptor'"))
+    concepto = Column(String(200), nullable=False)
+    monto = Column(Numeric(15, 2), nullable=False)
+    proveedor = Column(String(150))
+    numero_boleta = Column(String(50))
+    estado = Column(String(20), nullable=False, server_default=text("'por_rendir'"))
+    rendicion_id = Column(UUID(as_uuid=True), ForeignKey("rendiciones_gastos.id"))
+    fecha_reembolso = Column(Date)
+    observaciones = Column(Text)
+    usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+
+    cliente = relationship("Cliente")
+    cobranza = relationship("Cobranza")
+    causa = relationship("Causa")
+    rendicion = relationship("RendicionGastos", back_populates="gastos")
+
+    @property
+    def cliente_nombre(self):
+        return (self.cliente.nombre_fantasia or self.cliente.razon_social) if self.cliente else None
+
+    @property
+    def numero_cobranza(self):
+        return self.cobranza.numero if self.cobranza else None
+
+    @property
+    def rol_causa(self):
+        return self.causa.rol if self.causa else None
+
+    @property
+    def numero_rendicion(self):
+        return self.rendicion.numero if self.rendicion else None
+
+
+class CambioEtapa(TenantMixin, Base):
+    __tablename__ = "cambios_etapa"
+
+    id = _uuid_pk()
+    cobranza_id = Column(UUID(as_uuid=True), ForeignKey("cobranzas.id"), nullable=False)
+    etapa_anterior = Column(String(20))
+    etapa_nueva = Column(String(20), nullable=False)
+    usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
+    motivo = Column(String(300))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+
+    usuario = relationship("Usuario")
+
+    @property
+    def usuario_nombre(self):
+        return self.usuario.nombre if self.usuario else None

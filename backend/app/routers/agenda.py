@@ -46,6 +46,7 @@ class ItemVista(BaseModel):
     responsable_id: Optional[UUID] = None
     recordatorio_id: Optional[UUID] = None
     cuota_id: Optional[UUID] = None
+    causa_id: Optional[UUID] = None
 
 
 def _usuario_objetivo(usuario: Usuario, usuario_id: Optional[UUID], todos: bool) -> Optional[UUID]:

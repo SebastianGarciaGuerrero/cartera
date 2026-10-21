@@ -32,7 +32,7 @@ ESTADOS_ABIERTOS = ("activa", "acuerdo_pago", "judicial")
 
 @dataclass
 class ItemAgenda:
-    tipo: str                       # contacto / promesa / cuota / recordatorio
+    tipo: str                       # contacto / promesa / cuota / recordatorio / plazo
     fecha: date
     titulo: str
     detalle: Optional[str] = None
@@ -45,6 +45,7 @@ class ItemAgenda:
     responsable_id: Optional[UUID] = None
     recordatorio_id: Optional[UUID] = None
     cuota_id: Optional[UUID] = None
+    causa_id: Optional[UUID] = None
 
     def dict(self):
         return asdict(self)
@@ -140,6 +141,22 @@ def items_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
             responsable_id=r.usuario_id, recordatorio_id=r.id,
         ))
 
-    orden_tipo = {"recordatorio": 0, "promesa": 1, "cuota": 2, "contacto": 3}
+    # Plazos de las causas judiciales vigentes (del procurador o abogado a cargo).
+    from app.judicial import plazos_agenda  # import local: judicial importa operaciones
+
+    for p in plazos_agenda(db, organizacion_id, desde, hasta, usuario_id):
+        siguiente = f" Sigue: {p['siguiente_nombre']}." if p["siguiente_nombre"] else ""
+        items.append(ItemAgenda(
+            tipo="plazo",
+            fecha=p["plazo_fecha"],
+            titulo=f"Plazo judicial: {p['deudor']}" + (f" (rol {p['rol']})" if p["rol"] else ""),
+            detalle=f"Último trámite: {p['ultimo_tramite']}.{siguiente}"
+                    + (f" {p['tribunal']}." if p["tribunal"] else ""),
+            atrasado=p["plazo_fecha"] < hoy,
+            cobranza_id=p["cobranza_id"], numero_cobranza=p["numero_cobranza"], deudor=p["deudor"],
+            responsable_id=p["responsable_id"], causa_id=p["causa_id"],
+        ))
+
+    orden_tipo = {"recordatorio": 0, "plazo": 1, "promesa": 2, "cuota": 3, "contacto": 4}
     items.sort(key=lambda i: (i.fecha, i.hora or time.min, orden_tipo[i.tipo], i.titulo))
     return items

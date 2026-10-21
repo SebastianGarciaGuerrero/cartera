@@ -40,6 +40,7 @@ from app.routers import gestiones
 from app.routers import acuerdos
 from app.routers import pagos
 from app.routers import judicial
+from app.routers import gastos
 from app.routers import exportar
 from app.routers import documentos
 from app.routers import importar
@@ -150,6 +151,7 @@ app.include_router(gestiones.router)
 app.include_router(acuerdos.router)
 app.include_router(pagos.router)
 app.include_router(judicial.router)
+app.include_router(gastos.router)
 app.include_router(exportar.router)
 app.include_router(documentos.router)
 app.include_router(importar.router)

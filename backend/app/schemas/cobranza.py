@@ -134,6 +134,8 @@ class CobranzaUpdate(BaseModel):
     ejecutivo_id: Optional[UUID] = None
     observaciones: Optional[str] = None
     datos_extra: Optional[dict] = None
+    # Al cerrar (pagada / archivada / castigo): por qué. Ver app/ciclo.py.
+    motivo_cierre: Optional[str] = Field(None, max_length=30)
 
 
 class CobranzaResponse(CobranzaBase):
@@ -149,6 +151,11 @@ class CobranzaResponse(CobranzaBase):
     deudor_nombre: Optional[str] = None
     deudor_rut: Optional[str] = None
     cliente_nombre: Optional[str] = None
+    # Ciclo de vida (lo mueve el sistema, no se edita por PUT)
+    etapa: str = "ingreso"
+    etapa_desde: Optional[date] = None
+    motivo_cierre: Optional[str] = None
+    fecha_cierre: Optional[date] = None
 
     model_config = ConfigDict(from_attributes=True)
 

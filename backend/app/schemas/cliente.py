@@ -32,6 +32,8 @@ class ClienteBase(BaseModel):
     email: Optional[EmailStr] = None  # EmailStr valida formato de email automáticamente
     # Datos de transferencia propios del mandante (vacío = los del estudio)
     instrucciones_pago: Optional[str] = Field(None, max_length=2000)
+    # Días desde el ingreso para sugerir preparar la demanda (vacío = sin sugerencia)
+    dias_para_demanda: Optional[int] = Field(None, ge=0, le=3650)
 
 
 class ClienteCreate(ClienteBase):
@@ -57,6 +59,7 @@ class ClienteUpdate(BaseModel):
     telefono: Optional[str] = None
     email: Optional[EmailStr] = None
     instrucciones_pago: Optional[str] = Field(None, max_length=2000)
+    dias_para_demanda: Optional[int] = Field(None, ge=0, le=3650)
     activo: Optional[bool] = None
     # NOTA: el RUT no se puede cambiar. Es identificador.
 

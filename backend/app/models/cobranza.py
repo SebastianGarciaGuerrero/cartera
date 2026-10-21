@@ -72,6 +72,16 @@ class Cobranza(TenantMixin, Base):
     tipo = Column(String(20), nullable=False, server_default=text("'extrajudicial'"))
     etapa_cobranza = Column(String(50))
 
+    # --- Ciclo de vida (migración 0010) ---
+    # ingreso → extrajudicial → para_demanda → judicial. La cambia app/ciclo.py
+    # (y un trigger con la primera gestión); de judicial no se vuelve. El
+    # término sale del estado (pagada / archivada / castigo).
+    etapa = Column(String(20), nullable=False, server_default=text("'ingreso'"))
+    etapa_desde = Column(Date, FetchedValue(), nullable=False)
+    motivo_cierre = Column(String(30))  # pagada, inubicable, sin_bienes...
+    fecha_cierre = Column(Date)
+    estudio_a_cargo = Column(String(150))  # corresponsal (sin pantalla por ahora)
+
     # --- Ejecutivo responsable ---
     ejecutivo_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
 

@@ -15,7 +15,9 @@ from app.models.cobranza import Cobranza  # noqa: F401
 from app.models.gestion import Gestion, TipoGestion  # noqa: F401
 from app.models.acuerdo import AcuerdoPago, Cuota  # noqa: F401
 from app.models.pago import Pago  # noqa: F401
-from app.models.judicial import GestionJudicial  # noqa: F401
+from app.models.judicial import (  # noqa: F401
+    Tribunal, TipoTramite, Causa, CausaCobranza, Tramite, Embargo, Gasto, RendicionGastos, CambioEtapa,
+)
 from app.models.campo_personalizado import CampoPersonalizado  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401
 from app.models.seguridad import Sesion, TokenUnUso, EventoAcceso  # noqa: F401
