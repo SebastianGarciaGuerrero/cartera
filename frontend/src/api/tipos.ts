@@ -76,6 +76,7 @@ export interface Cliente {
   razon_social: string
   nombre_fantasia: string | null
   instrucciones_pago?: string | null
+  dias_para_demanda?: number | null
 }
 
 export interface Filial {
@@ -130,6 +131,9 @@ export type EstadoCobranza =
 export type TipoDocumento =
   | 'pagare' | 'factura' | 'letra' | 'cheque' | 'contrato' | 'boleta' | 'credito' | 'otro'
 
+// Ciclo de vida: la etapa abierta (el término sale del estado).
+export type EtapaCobranza = 'ingreso' | 'extrajudicial' | 'para_demanda' | 'judicial'
+
 export interface Cobranza {
   id: string
   numero: number
@@ -146,6 +150,10 @@ export interface Cobranza {
   numero_operacion: string | null
   estado: EstadoCobranza
   tipo: 'extrajudicial' | 'judicial'
+  etapa?: EtapaCobranza
+  etapa_desde?: string | null
+  motivo_cierre?: string | null
+  fecha_cierre?: string | null
   fecha_ingreso: string | null
   observaciones: string | null
   datos_extra: DatosExtra
@@ -279,7 +287,7 @@ export interface Empresa {
 
 // ---------- Fase 2: agenda, calculadora, mensaje de pago ----------
 
-export type TipoItemAgenda = 'contacto' | 'promesa' | 'cuota' | 'recordatorio'
+export type TipoItemAgenda = 'contacto' | 'promesa' | 'cuota' | 'recordatorio' | 'plazo'
 
 export interface ItemAgenda {
   tipo: TipoItemAgenda
@@ -295,6 +303,7 @@ export interface ItemAgenda {
   responsable_id: string | null
   recordatorio_id: string | null
   cuota_id: string | null
+  causa_id?: string | null
 }
 
 export interface Recordatorio {

@@ -917,3 +917,115 @@ label.btn input[type=file] { display: none; }
 .barras-dia span { display: block; background: var(--acento); border-radius: 3px 3px 0 0; min-height: 1px; }
 .lista-simple { list-style: none; padding: 0; margin: 0; }
 .lista-simple li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--borde); font-size: 14px; }
+
+/* ---------- Ciclo de vida y módulo judicial ---------- */
+
+.ciclo {
+  background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px;
+  padding: 16px 18px 14px; margin-bottom: 20px;
+}
+.ciclo-cargando { min-height: 92px; }
+.ciclo-pasos { list-style: none; margin: 0; padding: 0; display: flex; align-items: flex-start; overflow-x: auto; }
+.ciclo-paso {
+  flex: 1 1 0; min-width: 84px; position: relative; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--texto-suave); padding: 0 2px;
+}
+/* Línea que une cada paso con el anterior. */
+.ciclo-paso::before {
+  content: ''; position: absolute; top: 11px; right: 50%; width: 100%; height: 2px;
+  background: var(--borde); z-index: 0;
+}
+.ciclo-paso.inicio::before { display: none; }
+.ciclo-punto {
+  position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid var(--borde); background: var(--tarjeta);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+}
+.ciclo-nombre { line-height: 1.25; }
+.ciclo-paso.hecho { color: var(--texto); }
+.ciclo-paso.hecho .ciclo-punto { background: var(--verde); border-color: var(--verde); color: #fff; }
+.ciclo-paso.hecho::before, .ciclo-paso.actual::before { background: var(--verde); }
+.ciclo-paso.actual { color: var(--texto); font-weight: 700; }
+.ciclo-paso.actual .ciclo-punto {
+  background: var(--acento); border-color: var(--acento); color: #fff;
+  box-shadow: 0 0 0 4px rgba(63, 63, 70, 0.16);
+}
+.ciclo-paso.omitido { opacity: 0.45; }
+.ciclo-paso.omitido .ciclo-punto { border-style: dashed; }
+.ciclo-paso.omitido::before, .ciclo-pasos .ciclo-paso.desde-omitido::before { background: repeating-linear-gradient(90deg, var(--borde) 0 4px, transparent 4px 8px); }
+/* Grupo judicial: una llave con su nombre sobre los cinco pasos. */
+.ciclo-pasos.con-grupo { padding-top: 28px; }
+.ciclo-grupo { flex: 5 1 0; min-width: 420px; position: relative; }
+.ciclo-grupo::before {
+  content: ''; position: absolute; top: -10px; left: 10%; right: 10%; height: 6px;
+  border: 2px solid var(--borde); border-bottom: none; border-radius: 6px 6px 0 0;
+}
+.ciclo-grupo.activo::before { border-color: var(--morado); }
+.ciclo-grupo-nombre {
+  position: absolute; top: -27px; left: 0; right: 0; text-align: center;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--texto-suave); font-weight: 600;
+}
+.ciclo-grupo.activo .ciclo-grupo-nombre { color: var(--morado); }
+.ciclo-grupo > .ciclo-pasos { overflow: visible; }
+.ciclo-pie {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--borde); font-size: 14px;
+}
+.ciclo-estado { display: flex; flex-direction: column; gap: 4px; }
+.ciclo-estado > strong:first-child, .ciclo-estado > span { display: inline; }
+.ciclo-causa { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.ciclo-alerta {
+  background: #fef3f2; color: var(--rojo); border-radius: 8px; padding: 6px 10px; font-size: 13px; font-weight: 600;
+}
+.ciclo-acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.plazo { font-weight: 700; font-size: 13px; }
+.plazo-vencido { color: var(--rojo); }
+.plazo-cerca { color: var(--ambar); }
+.plazo-ok { color: var(--verde); }
+.plazo-sin { color: var(--texto-suave); font-weight: 400; }
+
+.kpi-boton { font: inherit; text-align: left; cursor: pointer; }
+.kpi-boton:hover { border-color: var(--acento-claro); }
+.kpi-alerta { border-color: #fda29b; background: #fffbfa; }
+.kpi-alerta .kpi-valor { color: var(--rojo); }
+
+.tarjeta-cabecera { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.tarjeta-cabecera h2 { margin: 0; }
+.filtros.sin-margen { margin: 0; }
+.form-grilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.form-grilla .ancho-completo { grid-column: 1 / -1; }
+.form-grilla input, .form-grilla select { width: 100%; }
+.nota-alerta { color: var(--ambar); font-weight: 600; }
+.tramite-observacion .gestion-tipo { color: var(--texto-suave); font-weight: 600; }
+.lista-elegibles { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lista-elegibles .check { display: grid; grid-template-columns: auto auto 1fr auto; gap: 10px; align-items: center; font-weight: 400; }
+.lista-elegibles li { display: flex; gap: 8px; align-items: center; }
+.sumar-cobranza { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.form-termino, .aviso-termino { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.aviso-termino { margin: 0 0 20px; border-color: var(--morado); }
+.aviso-termino p { margin: 0; }
+details > summary { list-style: none; display: inline-block; }
+details > summary::-webkit-details-marker { display: none; }
+.barra-seleccion {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  background: var(--fondo); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px;
+}
+.barra-seleccion .btn-texto { margin-left: auto; }
+
+.embargo-trabado, .gasto-por_rendir, .rendicion-enviada { background: #fef0c7; color: var(--ambar); }
+.embargo-solicitado { background: #e0edff; color: #175cd3; }
+.embargo-retirado { background: #ece4ff; color: var(--morado); }
+.embargo-rematado, .gasto-reembolsado, .rendicion-pagada { background: #d3f5e2; color: var(--verde); }
+.embargo-frustrado, .embargo-alzado, .gasto-anulado, .rendicion-anulada, .gasto-no_reembolsable {
+  background: #e7ebef; color: var(--texto-suave);
+}
+.gasto-rendido { background: #e0edff; color: #175cd3; }
+.modal.modal-ancho { max-height: 92vh; overflow-y: auto; }
+
+@media print {
+  .sidebar, .contenido > *:not(.modal-fondo), .no-imprimir { display: none !important; }
+  .modal-fondo { position: static; background: none; padding: 0; }
+  .modal { box-shadow: none; border: none; width: 100% !important; max-height: none; }
+}

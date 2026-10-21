@@ -114,6 +114,14 @@ def catalogos():
     }
 
 
+@router.get("/equipo")
+def equipo(db: Session = Depends(get_db)):
+    """Personas que pueden llevar una causa (para elegir abogado y procurador)."""
+    personas = db.query(Usuario).filter(Usuario.activo.is_(True)).order_by(Usuario.nombre).all()
+    return [{"id": u.id, "nombre": u.nombre, "rol": u.rol_nombre} for u in personas
+            if u.rol_nombre in ("admin", "supervisor", "operador", "abogado", "procurador")]
+
+
 @router.get("/para-demanda", response_model=ParaDemanda)
 def para_demanda(db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
     hoy = hoy_chile()

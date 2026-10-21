@@ -69,6 +69,14 @@ FastAPI con capas por dominio: `backend/app/{models,schemas,routers}/<entidad>.p
 - `routers/estado_deudor.py`: el equipo genera un enlace (`enlaces_deudor`, solo el hash del token) y el deudor lo abre en `/estado#t=TOKEN` (fragmento: no llega al servidor ni a los logs) escribiendo su RUT. `POST /api/publico/estado` busca el enlace en modo sistema y después lee todo con `activar_organizacion` (RLS). Nunca devolver gestiones, honorarios, usuarios ni estados internos (`archivada`, `castigo`).
 - Frontend: `paginas/EstadoDeudor.tsx` (pública, fuera de los layouts, trato de "usted") y `componentes/EnlaceDeudor.tsx` (modal en la ficha de la cobranza).
 
+### Ciclo de vida y módulo judicial (Fase 3)
+
+- `cobranzas.etapa` (ingreso / extrajudicial / para_demanda / judicial) la mueven `app/ciclo.py` y dos triggers (migración 0010): la primera gestión pasa de ingreso a extrajudicial, y de judicial no se vuelve (la base lo rechaza). Cada cambio queda en `cambios_etapa`; quién y por qué llegan por `set_config('app.usuario_id' / 'app.motivo_etapa')` → usar `ciclo.fijar_contexto`. El término no es etapa: sale de `estado` + `motivo_cierre` / `fecha_cierre`.
+- `app/judicial.py`: `crear_causa` (una causa = un rol; varias cobranzas del mismo deudor y cliente vía `causa_cobranzas`), `registrar_tramite` (plazo = el del tipo salvo uno a mano; la etapa procesal sigue al tipo), `terminar_causa`. El plazo pendiente de una causa es el del ÚLTIMO trámite con tipo por fecha (las observaciones no lo cumplen). `tramites` y `cambios_etapa` son inmutables (trigger), como `gestiones`.
+- Catálogos mixtos `tipos_tramite` y `tribunales` (sistema + propios); los de sistema se siembran desde `migraciones/datos_judicial.py` y no se editan por API.
+- Gastos: por_rendir → rendido (en una `rendiciones_gastos`) → reembolsado. Routers `judicial.py` y `gastos.py` exigen la función de plan `judicial`; el ciclo de vida (`/api/cobranzas/{id}/ciclo`) es para todos.
+- Frontend: `componentes/CicloVida.tsx` (barra en la ficha), `paginas/Judicial.tsx` (bandeja), `paginas/Causa.tsx`, `paginas/Gastos.tsx`. En la demo solo existe la barra (lectura).
+
 ### Personalización por organización
 
 - Campos personalizados (`campos_personalizados`, `app/campos.py`): valores en `datos_extra` JSONB de cobranzas/deudores, validados contra la definición. Pueden limitarse a un mandante (`cliente_id`).

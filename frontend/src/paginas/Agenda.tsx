@@ -20,6 +20,7 @@ export const ESTILO_TIPO: Record<TipoItemAgenda, { nombre: string; color: string
   promesa: { nombre: 'Promesa de pago', color: '#EF9F27' },
   cuota: { nombre: 'Cuota', color: '#1D9E75' },
   contacto: { nombre: 'Contacto', color: '#378ADD' },
+  plazo: { nombre: 'Plazo judicial', color: '#D85A30' },
 }
 
 const iso = (d: Date) =>
@@ -105,6 +106,7 @@ export default function Agenda() {
               </div>
               {i.detalle && <div className="suave">{i.detalle}</div>}
               <div className="agenda-acciones">
+                {i.causa_id && <Link to={`/judicial/causas/${i.causa_id}`}>Ver causa</Link>}
                 {i.cobranza_id && <Link to={`/cobranzas/${i.cobranza_id}`}>Cobranza N° {i.numero_cobranza}</Link>}
                 {i.monto != null && i.tipo !== 'recordatorio' && <span className="suave"><Plata valor={i.monto} /></span>}
                 {i.recordatorio_id && (

@@ -49,7 +49,7 @@ const ROLES = [
 // En la demo la organización tiene el plan más completo.
 const FUNCIONES_DEMO = [
   'cobranzas', 'deudores', 'gestiones', 'acuerdos', 'pagos', 'informes', 'carga_masiva',
-  'documentos', 'campos_personalizados', 'agenda', 'mensaje_pago', 'judicial',
+  'documentos', 'campos_personalizados', 'agenda', 'mensaje_pago',
   'portal_mandantes', 'portal_deudor', 'recordatorios', 'comunicaciones', 'calculadora_369',
   'envio_automatico', 'pagos_en_linea', 'api',
 ]
@@ -881,6 +881,34 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const limit = Number(params.limit) || 100
     const pagina = lista.slice(skip, skip + limit).map(conNombres)
     return ok(config, pagina, 200, { 'x-total-count': String(lista.length) })
+  }
+  // Ciclo de vida (solo lectura en la demo: el módulo judicial necesita servidor).
+  if (metodo === 'GET' && /^\/cobranzas\/[^/]+\/ciclo$/.test(url)) {
+    const c = db.cobranzas.find((x) => x.id === url.split('/')[2])
+    if (!c) return error(404, 'Cobranza no encontrada')
+    const conGestiones = db.gestiones.some((g) => g.cobranza_id === c.id)
+    const etapa = c.estado === 'judicial' ? 'judicial' : conGestiones ? 'extrajudicial' : 'ingreso'
+    const cerrada = ['pagada', 'archivada', 'castigo'].includes(c.estado)
+    const claves: [string, string, string | null][] = [
+      ['ingreso', 'Ingreso', null], ['extrajudicial', 'Extrajudicial', null], ['para_demanda', 'Para demanda', null],
+      ['demanda', 'Demanda', 'judicial'], ['notificacion', 'Notificación', 'judicial'], ['embargo', 'Embargo', 'judicial'],
+      ['defensa', 'Excepciones y sentencia', 'judicial'], ['remate', 'Remate y pago', 'judicial'], ['termino', 'Término', null],
+    ]
+    const actual = cerrada ? 'termino' : etapa === 'judicial' ? 'demanda' : etapa
+    const alcanzado = etapa === 'judicial' ? 'demanda' : etapa
+    const idx = (k: string) => claves.findIndex(([x]) => x === k)
+    const pasos = claves.map(([clave, nombre, grupo]) => ({
+      clave, nombre, grupo,
+      estado: cerrada
+        ? (clave === 'termino' ? 'actual' : idx(clave) <= idx(alcanzado) ? 'hecho' : 'omitido')
+        : clave === actual ? 'actual' : idx(clave) < idx(actual) ? 'hecho' : 'pendiente',
+    }))
+    return ok(config, {
+      cobranza_id: c.id, etapa, etapa_desde: c.fecha_ingreso ?? hoy(), dias_en_etapa: null, paso_actual: actual,
+      pasos, estado: c.estado, motivo_cierre: cerrada ? c.estado : null,
+      motivo_cierre_nombre: cerrada ? { pagada: 'Pagada', archivada: 'Archivada', castigo: 'Castigo' }[c.estado as string] : null,
+      fecha_cierre: null, fecha_prescripcion: null, prescripcion_proxima: false, causas: [], historial: [],
+    })
   }
   if (metodo === 'GET' && /^\/cobranzas\/[^/]+$/.test(url)) {
     const c = db.cobranzas.find((x) => x.id === url.split('/')[2])

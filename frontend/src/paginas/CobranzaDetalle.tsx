@@ -14,6 +14,7 @@ import type { ResultadoGestion } from '../componentes/RegistrarGestion'
 import { NuevoRecordatorio } from './Agenda'
 import { fechaLocal } from '../componentes/utiles'
 import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
+import CicloVida from '../componentes/CicloVida'
 
 // La pantalla más usada del sistema: la ficha de una cobranza con su
 // historial de gestiones y el formulario para registrar la siguiente.
@@ -69,6 +70,8 @@ export default function CobranzaDetalle() {
           </h1>
         </div>
       </header>
+
+      <CicloVida cobranza={cob} />
 
       <div className="ficha-grilla">
         {/* Columna izquierda: datos del caso */}

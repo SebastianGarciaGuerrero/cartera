@@ -107,6 +107,7 @@ function FormCliente({ cliente, alCerrar }: { cliente: ClienteCompleto | null; a
     comuna: cliente?.comuna ?? '',
     ciudad: cliente?.ciudad ?? '',
     instrucciones_pago: cliente?.instrucciones_pago ?? '',
+    dias_para_demanda: cliente?.dias_para_demanda != null ? String(cliente.dias_para_demanda) : '',
     activo: cliente?.activo ?? true,
   })
   const [error, setError] = useState('')
@@ -124,6 +125,7 @@ function FormCliente({ cliente, alCerrar }: { cliente: ClienteCompleto | null; a
         email: vacioANull(f.email), telefono: vacioANull(f.telefono),
         direccion: vacioANull(f.direccion), comuna: vacioANull(f.comuna), ciudad: vacioANull(f.ciudad),
         instrucciones_pago: vacioANull(f.instrucciones_pago),
+        dias_para_demanda: f.dias_para_demanda.trim() === '' ? null : Number(f.dias_para_demanda),
       }
       if (cliente) await api.put(`/clientes/${cliente.id}`, { ...cuerpo, activo: f.activo })
       else await api.post('/clientes/', { ...cuerpo, rut: f.rut })
@@ -161,6 +163,10 @@ function FormCliente({ cliente, alCerrar }: { cliente: ClienteCompleto | null; a
           Datos de transferencia propios (solo si el deudor le paga directo a este {etiqueta('cliente', 'cliente').toLowerCase()})
           <textarea rows={4} {...campo('instrucciones_pago')}
             placeholder={'Banco Estado, cuenta corriente N° 123456\nRUT 76.123.456-7\ncobranza@cliente.cl'} />
+        </label>
+        <label>
+          Sugerir demanda a los … días del ingreso (vacío = sin sugerencia, 0 = de inmediato)
+          <input type="number" min={0} max={3650} {...campo('dias_para_demanda')} placeholder="Ej. 90" />
         </label>
         {cliente && (
           <label className="check">

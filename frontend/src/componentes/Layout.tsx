@@ -62,6 +62,14 @@ export default function Layout() {
           <NavLink to="/clientes">{etiqueta('clientes', 'Clientes')}</NavLink>
           {tiene('calculadora_369') && <NavLink to="/calculadora">Calculadora 3-6-9</NavLink>}
 
+          {tiene('judicial') && (
+            <>
+              <div className="menu-grupo">Judicial</div>
+              <NavLink to="/judicial">Causas y plazos</NavLink>
+              <NavLink to="/gastos">Gastos por cliente</NavLink>
+            </>
+          )}
+
           <div className="menu-grupo">Ingresos</div>
           <NavLink to="/cobranzas/nueva">Ingreso de {etiqueta('cobranza', 'cobranza').toLowerCase()}</NavLink>
           <NavLink to="/abonos">Ingreso de abonos</NavLink>

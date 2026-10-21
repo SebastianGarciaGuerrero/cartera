@@ -33,10 +33,24 @@ Incluye el Word del acuerdo / avenimiento con el formato para aprobación del ma
 
 ## Fase 3: judicial
 
-- Causas con varios hitos (cuaderno, trámite, folio, fecha), litigantes,
-  tribunal y rol; plazos procesales con vencimiento y alertas.
-- Alertas de prescripción por tipo de documento.
-- Escritos desde plantillas (demanda ejecutiva, avenimiento, etc.).
+- ✅ **Ciclo de vida de la cobranza**: ingreso → extrajudicial → para demanda
+  → judicial (demanda, notificación, embargo, excepciones y sentencia, remate
+  y pago) → término con motivo. Barra en la ficha de cada cobranza, historial
+  de etapas, sin vuelta atrás desde judicial. Cada cliente fija a los cuántos
+  días se sugiere demandar.
+- ✅ **Causas** con varias cobranzas del mismo deudor (un rol), tribunales,
+  abogado y procurador; **catálogo de trámites** con plazo de seguimiento,
+  trámite siguiente, gasto y alerta (sacado del flujo procesal del sistema
+  anterior del estudio); bandeja con plazos vencidos, de la semana y riesgo de
+  abandono; plazos en la agenda; **embargos**; término de causa que cierra
+  las cobranzas.
+- ✅ **Gastos** por rendir al mandante, rendiciones por cliente, reembolso
+  masivo y resumen de lo adeudado por cliente.
+- ✅ Aviso de prescripción por tipo de documento antes de demandar
+  (referencial, a confirmar por el abogado).
+- Pendiente: litigantes y cuadernos, escritos desde plantillas (demanda
+  ejecutiva, avenimiento, etc.), estudio corresponsal en pantalla
+  (`cobranzas.estudio_a_cargo` ya existe), módulo judicial en la demo.
 - **PJUD / Oficina Judicial Virtual**: el PJUD no ofrece una API pública. El
   camino es (1) importar lo que el abogado descarga o copia desde la OJV
   ("Mis causas", estado diario) y (2) si hace falta automatizar, contratar un

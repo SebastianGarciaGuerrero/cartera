@@ -23,6 +23,9 @@ import Seguimiento from './paginas/Seguimiento'
 import PortalLayout from './componentes/PortalLayout'
 import { PortalAcuerdos, PortalCartera, PortalFicha, PortalInformes, PortalResumen } from './paginas/Portal'
 import EstadoDeudor from './paginas/EstadoDeudor'
+import Judicial from './paginas/Judicial'
+import Causa from './paginas/Causa'
+import Gastos from './paginas/Gastos'
 
 export default function App() {
   return (
@@ -43,6 +46,9 @@ export default function App() {
             <Route path="/cobranzas" element={<Cobranzas />} />
             <Route path="/cobranzas/nueva" element={<NuevaCobranzaPagina />} />
             <Route path="/cobranzas/:id" element={<CobranzaDetalle />} />
+            <Route path="/judicial" element={<Judicial />} />
+            <Route path="/judicial/causas/:id" element={<Causa />} />
+            <Route path="/gastos" element={<Gastos />} />
             <Route path="/abonos" element={<Abonos />} />
             <Route path="/carga-masiva" element={<CargaMasiva />} />
             <Route path="/deudores" element={<Deudores />} />
