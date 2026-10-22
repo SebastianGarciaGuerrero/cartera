@@ -16,9 +16,11 @@
 
 import type { AxiosAdapter, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import * as calc from './demoCalculos'
+import { etapaDe as etapaJudicial, manejarJudicial, plazosDemo, semillaJudicial } from './demoJudicial'
+import type { BaseDemo, JudicialDemo } from './demoJudicial'
 
 const CLAVE_DB = 'cartera_demo_db'
-const VERSION_SEMILLA = 11
+const VERSION_SEMILLA = 12
 const UF_DEMO = '39841.72'
 const CLAVE_SESION = 'cartera_demo_sesion'
 const PLANTILLA_DEMO = 'Estimado(a) {deudor}:\n\nLe escribimos de {empresa} por la deuda N° {numero} con {cliente}, cuyo saldo a la fecha es de {saldo}.\n\nPuede pagar por transferencia a:\n{datos_pago}\n\nUna vez realizado el pago, envíenos el comprobante por este medio para registrarlo y dar por cerrada su cobranza.\n\nAtentamente,\n{empresa}'
@@ -49,7 +51,7 @@ const ROLES = [
 // En la demo la organización tiene el plan más completo.
 const FUNCIONES_DEMO = [
   'cobranzas', 'deudores', 'gestiones', 'acuerdos', 'pagos', 'informes', 'carga_masiva',
-  'documentos', 'campos_personalizados', 'agenda', 'mensaje_pago',
+  'documentos', 'campos_personalizados', 'agenda', 'mensaje_pago', 'judicial',
   'portal_mandantes', 'portal_deudor', 'recordatorios', 'comunicaciones', 'calculadora_369',
   'envio_automatico', 'pagos_en_linea', 'api',
 ]
@@ -349,7 +351,10 @@ function semilla() {
   const plantilla = ''
   const cobro = { pct_judicial: '10', comision_pct: '2.2491' }
 
-  return { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, recordatorios, plantilla, cobro, gestiones, acuerdos, pagos, enlaces: [] as EnlaceDemo[], proximoNumero: 20004 + casosDemo.cobranzas.length }
+  const base = { version: VERSION_SEMILLA, empresa, usuarios, clientes, filiales, deudores, cobranzas, tiposGestion, campos, etiquetas, recordatorios, plantilla, cobro, gestiones, acuerdos, pagos, enlaces: [] as EnlaceDemo[], proximoNumero: 20004 + casosDemo.cobranzas.length, judicial: undefined as JudicialDemo | undefined }
+  // Causas de ejemplo, plazos, embargos y gastos (módulo judicial).
+  semillaJudicial(base as unknown as BaseDemo, hoy())
+  return base
 }
 
 // ---------- base de datos en localStorage ----------
@@ -480,11 +485,29 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     return ok(config, vistaOrg())
   }
 
+  // ---- módulo judicial y ciclo de vida (demoJudicial.ts) ----
+  const respuestaJudicial = manejarJudicial(db as unknown as BaseDemo, metodo, url, params, {
+    ok: (data, status, headers) => ok(config, data, status, headers),
+    error: (status, detalle) => error(status, detalle),
+    cuerpo: () => cuerpo(config),
+    usuarioId: usuarioDelToken(config, db).id,
+    uid, hoy, ahora,
+    gestion: (cobranzaId, codigo, texto) => gestionAutomatica(db, cobranzaId, usuarioDelToken(config, db).id, codigo, texto),
+  })
+  if (respuestaJudicial !== undefined) {
+    guardarDB(db)
+    return respuestaJudicial as AxiosResponse
+  }
+
   // ---- agenda, recordatorios, UF, calculadora, mensaje de pago ----
-  if (metodo === 'GET' && (url === '/agenda' || url === '/agenda/hoy')) {
+  if (metodo === 'GET' && (url === '/agenda' || url === '/agenda/hoy' || url === '/agenda/avisos')) {
     const hoyIso = hoy()
-    const desde = url === '/agenda/hoy' ? new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10) : (params.desde ?? hoyIso.slice(0, 8) + '01')
-    const hasta = url === '/agenda/hoy' ? hoyIso : (params.hasta ?? sumarMeses(hoyIso, 1))
+    const d1 = new Date()
+    d1.setDate(d1.getDate() + 1)
+    const manana = `${d1.getFullYear()}-${String(d1.getMonth() + 1).padStart(2, '0')}-${String(d1.getDate()).padStart(2, '0')}`
+    const reciente = url !== '/agenda'
+    const desde = reciente ? new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10) : (params.desde ?? hoyIso.slice(0, 8) + '01')
+    const hasta = url === '/agenda/avisos' ? manana : url === '/agenda/hoy' ? hoyIso : (params.hasta ?? sumarMeses(hoyIso, 1))
     const items: Record<string, unknown>[] = []
     const enRango = (f: string) => f >= desde && f <= hasta
     for (const c of db.cobranzas) {
@@ -519,7 +542,12 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
         atrasado: r.fecha < hoyIso, cobranza_id: r.cobranza_id, numero_cobranza: c?.numero ?? null,
         deudor: null, monto: null, responsable_id: r.usuario_id, recordatorio_id: r.id, cuota_id: null })
     }
+    items.push(...plazosDemo(db as unknown as BaseDemo, desde, hasta, hoyIso))
     items.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
+    if (url === '/agenda/avisos') {
+      return ok(config, { atrasados: items.filter((i) => String(i.fecha) < hoyIso), hoy: items.filter((i) => i.fecha === hoyIso),
+        manana: items.filter((i) => i.fecha === manana) })
+    }
     return ok(config, items)
   }
   if (metodo === 'GET' && url === '/recordatorios') {
@@ -859,8 +887,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   // ---- cobranzas ----
   // Etapa del ciclo de vida (en la demo se deduce del estado y las gestiones).
   const TERMINALES = ['pagada', 'archivada', 'castigo']
-  const etapaDe = (c: DB['cobranzas'][number]) => c.estado === 'judicial' ? 'judicial'
-    : db.gestiones.some((g) => g.cobranza_id === c.id) ? 'extrajudicial' : 'ingreso'
+  const etapaDe = (c: DB['cobranzas'][number]) => etapaJudicial(db as unknown as BaseDemo, c as never)
   const conNombres = (c: DB['cobranzas'][number]) => {
     const d = db.deudores.find((x) => x.id === c.deudor_id)
     const cl = db.clientes.find((x) => x.id === c.cliente_id)
@@ -897,33 +924,6 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
         : !TERMINALES.includes(c.estado) && etapaDe(c) === etapa)
       return { etapa, cantidad: de.length, saldo: String(de.reduce((s, c) => s + Number(c.monto_actual), 0)) }
     }))
-  }
-  // Ciclo de vida (solo lectura en la demo: el módulo judicial necesita servidor).
-  if (metodo === 'GET' && /^\/cobranzas\/[^/]+\/ciclo$/.test(url)) {
-    const c = db.cobranzas.find((x) => x.id === url.split('/')[2])
-    if (!c) return error(404, 'Cobranza no encontrada')
-    const etapa = etapaDe(c)
-    const cerrada = ['pagada', 'archivada', 'castigo'].includes(c.estado)
-    const claves: [string, string, string | null][] = [
-      ['ingreso', 'Ingreso', null], ['extrajudicial', 'Extrajudicial', null], ['para_demanda', 'Para demanda', null],
-      ['demanda', 'Demanda', 'judicial'], ['notificacion', 'Notificación', 'judicial'], ['embargo', 'Embargo', 'judicial'],
-      ['defensa', 'Excepciones y sentencia', 'judicial'], ['remate', 'Remate y pago', 'judicial'], ['termino', 'Término', null],
-    ]
-    const actual = cerrada ? 'termino' : etapa === 'judicial' ? 'demanda' : etapa
-    const alcanzado = etapa === 'judicial' ? 'demanda' : etapa
-    const idx = (k: string) => claves.findIndex(([x]) => x === k)
-    const pasos = claves.map(([clave, nombre, grupo]) => ({
-      clave, nombre, grupo,
-      estado: cerrada
-        ? (clave === 'termino' ? 'actual' : idx(clave) <= idx(alcanzado) ? 'hecho' : 'omitido')
-        : clave === actual ? 'actual' : idx(clave) < idx(actual) ? 'hecho' : 'pendiente',
-    }))
-    return ok(config, {
-      cobranza_id: c.id, etapa, etapa_desde: c.fecha_ingreso ?? hoy(), dias_en_etapa: null, paso_actual: actual,
-      pasos, estado: c.estado, motivo_cierre: cerrada ? c.estado : null,
-      motivo_cierre_nombre: cerrada ? { pagada: 'Pagada', archivada: 'Archivada', castigo: 'Castigo' }[c.estado as string] : null,
-      fecha_cierre: null, fecha_prescripcion: null, prescripcion_proxima: false, causas: [], historial: [],
-    })
   }
   if (metodo === 'GET' && /^\/cobranzas\/[^/]+$/.test(url)) {
     const c = db.cobranzas.find((x) => x.id === url.split('/')[2])
