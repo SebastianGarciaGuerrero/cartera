@@ -39,3 +39,6 @@ logs/
 # Logos de las empresas: solo el registro va al repositorio (ver logos/README.md)
 logos/*
 !logos/README.md
+
+# Claves de la organización de simulación (solo en tu PC)
+*.local.txt
