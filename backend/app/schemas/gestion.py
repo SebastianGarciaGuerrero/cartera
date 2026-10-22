@@ -73,6 +73,7 @@ class TerminosAcuerdo(BaseModel):
     """Los términos de un acuerdo, sin la cobranza (va en la gestión)."""
     monto_total_acordado: Decimal = Field(..., gt=0, max_digits=15, decimal_places=2)
     pie: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    fecha_pie: Optional[date] = None  # el pie sale en la agenda ese día
     numero_cuotas: int = Field(1, ge=1, le=120)
     fecha_primera_cuota: date
     dia_pago: Optional[int] = Field(None, ge=1, le=31)
