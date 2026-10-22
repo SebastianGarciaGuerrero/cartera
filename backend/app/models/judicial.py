@@ -239,3 +239,34 @@ class CambioEtapa(TenantMixin, Base):
     @property
     def usuario_nombre(self):
         return self.usuario.nombre if self.usuario else None
+
+
+class DocumentoCobranza(TenantMixin, Base):
+    """Cheque, factura, letra, pagaré… que respalda una cobranza (varios por cobranza)."""
+
+    __tablename__ = "documentos_cobranza"
+
+    id = _uuid_pk()
+    cobranza_id = Column(UUID(as_uuid=True), ForeignKey("cobranzas.id"), nullable=False)
+    tipo = Column(String(20), nullable=False, server_default=text("'pagare'"))
+    numero = Column(String(50))
+    fecha_emision = Column(Date)
+    fecha_vencimiento = Column(Date)
+    monto = Column(Numeric(15, 2))
+    banco = Column(String(80))
+    plaza = Column(String(80))
+    causal_protesto = Column(String(80))
+    fecha_protesto = Column(Date)
+    observaciones = Column(Text)
+    activo = Column(Boolean, nullable=False, server_default=text("true"))
+    creado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
+    created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
+
+    @property
+    def fecha_prescripcion(self):
+        from app.ciclo import prescripcion
+
+        # Cheque: la acción corre desde el protesto; el resto, desde el vencimiento.
+        base = self.fecha_protesto if self.tipo == "cheque" and self.fecha_protesto else self.fecha_vencimiento
+        return prescripcion(self.tipo, base)

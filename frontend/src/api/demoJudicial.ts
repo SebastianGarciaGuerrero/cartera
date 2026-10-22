@@ -42,6 +42,25 @@ export interface JudicialDemo {
   /** Etapa guardada (para_demanda / judicial); si no hay, se deduce. */
   etapas: Record<string, string>
   historial: Record<string, CambioDemo[]>
+  documentos?: DocumentoDemo[]
+}
+
+interface DocumentoDemo {
+  id: string; cobranza_id: string; tipo: string; numero: string | null; fecha_emision: string | null
+  fecha_vencimiento: string | null; monto: string | null; banco: string | null; plaza: string | null
+  causal_protesto: string | null; fecha_protesto: string | null; observaciones: string | null; activo: boolean; created_at: string
+}
+
+const MESES_PRESCRIPCION: Record<string, number> = { cheque: 12, pagare: 12, letra: 12, factura: 12 }
+function conPrescripcion(d: DocumentoDemo) {
+  const base = d.tipo === 'cheque' && d.fecha_protesto ? d.fecha_protesto : d.fecha_vencimiento
+  if (!base) return { ...d, fecha_prescripcion: null }
+  const [a, m, dd] = base.split('-').map(Number)
+  const total = m - 1 + (MESES_PRESCRIPCION[d.tipo] ?? 36)
+  const anio = a + Math.floor(total / 12)
+  const mes = (total % 12) + 1
+  const dia = Math.min(dd, new Date(anio, mes, 0).getDate())
+  return { ...d, fecha_prescripcion: `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}` }
 }
 
 interface CobranzaDemo {
@@ -404,6 +423,34 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
     j.etapas[c.id] = etapa
     registrarCambio(db, a, c.id, anterior, etapa, motivo ?? '')
     return a.ok(cicloDemo(db, c, hoy))
+  }
+
+  // ---- documentos de la cobranza
+  if ((m = /^\/cobranzas\/([^/]+)\/documentos$/.exec(url))) {
+    const c = db.cobranzas.find((x) => x.id === m![1])
+    if (!c) return a.error(404, 'Cobranza no encontrada')
+    j.documentos ??= []
+    if (!j.documentos.some((d) => d.cobranza_id === c.id)) {
+      j.documentos.push({ id: `doc-${c.id}`, cobranza_id: c.id, tipo: c.tipo_documento, numero: c.numero_documento,
+        fecha_emision: null, fecha_vencimiento: c.fecha_vencimiento_documento ?? null, monto: String(c.monto_original),
+        banco: null, plaza: null, causal_protesto: null, fecha_protesto: null, observaciones: null, activo: true, created_at: a.ahora() })
+    }
+    if (metodo === 'POST') {
+      const d = a.cuerpo() as Record<string, string | null>
+      j.documentos.push({ id: a.uid(), cobranza_id: c.id, tipo: d.tipo ?? 'otro', numero: d.numero ?? null,
+        fecha_emision: d.fecha_emision ?? null, fecha_vencimiento: d.fecha_vencimiento ?? null,
+        monto: d.monto != null ? String(d.monto) : null, banco: d.banco ?? null, plaza: d.plaza ?? null,
+        causal_protesto: d.causal_protesto ?? null, fecha_protesto: d.fecha_protesto ?? null, observaciones: null,
+        activo: true, created_at: a.ahora() })
+      return a.ok(conPrescripcion(j.documentos[j.documentos.length - 1]), 201)
+    }
+    return a.ok(j.documentos.filter((d) => d.cobranza_id === c.id && (d.activo || params.todos)).map(conPrescripcion))
+  }
+  if (metodo === 'PUT' && (m = /^\/cobranzas\/documentos\/([^/]+)$/.exec(url))) {
+    const d = (j.documentos ?? []).find((x) => x.id === m![1])
+    if (!d) return a.error(404, 'Documento no encontrado')
+    Object.assign(d, a.cuerpo())
+    return a.ok(conPrescripcion(d))
   }
 
   if (!url.startsWith('/judicial/') && !url.startsWith('/gastos/')) return undefined

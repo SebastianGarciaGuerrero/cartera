@@ -169,3 +169,43 @@ class CobranzaDetalle(CobranzaResponse):
     filial: Optional[FilialResponse] = None
     deudor: Optional[DeudorResponse] = None
     terceros: List[TerceroEnCobranza] = Field(default_factory=list)
+
+
+# ------------------------------------------------------------ documentos
+
+class DocumentoBase(BaseModel):
+    """Cheque, factura, letra, pagaré… de la cobranza (puede haber varios)."""
+    tipo: TipoDocumento = "pagare"
+    numero: Optional[str] = Field(None, max_length=50)
+    fecha_emision: Optional[date] = None
+    fecha_vencimiento: Optional[date] = None
+    monto: Optional[Decimal] = Field(None, ge=0, max_digits=15, decimal_places=2)
+    banco: Optional[str] = Field(None, max_length=80)
+    plaza: Optional[str] = Field(None, max_length=80)
+    causal_protesto: Optional[str] = Field(None, max_length=80)
+    fecha_protesto: Optional[date] = None
+    observaciones: Optional[str] = Field(None, max_length=2000)
+
+
+class DocumentoUpdate(BaseModel):
+    tipo: Optional[TipoDocumento] = None
+    numero: Optional[str] = Field(None, max_length=50)
+    fecha_emision: Optional[date] = None
+    fecha_vencimiento: Optional[date] = None
+    monto: Optional[Decimal] = Field(None, ge=0, max_digits=15, decimal_places=2)
+    banco: Optional[str] = Field(None, max_length=80)
+    plaza: Optional[str] = Field(None, max_length=80)
+    causal_protesto: Optional[str] = Field(None, max_length=80)
+    fecha_protesto: Optional[date] = None
+    observaciones: Optional[str] = Field(None, max_length=2000)
+    activo: Optional[bool] = None  # quitar = marcar inactivo
+
+
+class DocumentoResponse(DocumentoBase):
+    id: UUID
+    cobranza_id: UUID
+    activo: bool
+    fecha_prescripcion: Optional[date] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

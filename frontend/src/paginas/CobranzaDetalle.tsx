@@ -16,6 +16,7 @@ import { fechaLocal } from '../componentes/utiles'
 import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
 import CicloVida from '../componentes/CicloVida'
 import { ResumenDeuda, usePagos } from '../componentes/HistorialPagos'
+import Documentos from '../componentes/Documentos'
 
 // La pantalla más usada del sistema: la ficha de una cobranza con su
 // historial de gestiones y el formulario para registrar la siguiente.
@@ -202,6 +203,7 @@ export default function CobranzaDetalle() {
         </section>
       </div>
 
+      <Documentos cobranzaId={cob.id} />
       <Finanzas cobranza={cob} alPedirAcuerdo={pedirAcuerdo} />
       {mensaje && <MensajePago cobranzaId={cob.id} alCerrar={() => setMensaje(false)} />}
       {enlace && cob.deudor && (

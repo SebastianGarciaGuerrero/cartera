@@ -121,7 +121,7 @@ def _ts(d: date, r: random.Random) -> datetime:
 class Lotes:
     """Filas a insertar, por tabla, en orden de dependencias."""
     filas: dict = field(default_factory=lambda: {t: [] for t in (
-        "clientes", "deudores", "contactos_deudor", "cobranzas", "causas", "causa_cobranzas",
+        "clientes", "deudores", "contactos_deudor", "cobranzas", "documentos_cobranza", "causas", "causa_cobranzas",
         "gestiones", "cambios_etapa", "acuerdos_pago", "cuotas", "pagos", "tramites", "embargos",
         "rendiciones_gastos", "gastos")})
 
@@ -255,6 +255,15 @@ def simular(conexion, anios: int = 5, escala: float = 1.0, semilla: int = 7,
                "estado": "activa", "tipo": "extrajudicial", "etapa": "ingreso", "etapa_desde": fecha_ingreso,
                "motivo_cierre": None, "fecha_cierre": None, "ejecutivo_id": ejecutivo,
                "created_at": _ts(fecha_ingreso, r)}
+
+        # Más documentos de la misma deuda (el principal lo crea un trigger al insertar).
+        # En el sistema anterior: ~2,5 documentos por cobranza.
+        for _ in range(min(9, int(r.expovariate(1 / 1.5)))):
+            lotes.agregar("documentos_cobranza", {
+                "id": str(uuid.uuid4()), "organizacion_id": org, "cobranza_id": cob["id"], "tipo": documento,
+                "numero": str(r.randint(1000, 999999)), "fecha_vencimiento": vencimiento - timedelta(days=r.randint(0, 120)),
+                "monto": _clp(r, 120_000), "banco": r.choice(["Banco Estado", "Santander", "BCI", "Chile", None]),
+                "plaza": r.choice(COMUNAS[:4])})
 
         # ---------------------------------------------- gestiones extrajudiciales
         n_gest = min(60, max(0, int(r.lognormvariate(math.log(10), 0.8))))

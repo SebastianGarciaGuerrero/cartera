@@ -27,6 +27,7 @@ from app.campos import ErrorCampo, validar_datos_extra
 from app.database import get_db
 from app.indicadores import hoy_chile
 from app.schemas.judicial import CambiarEtapa, CicloVida
+from app.models.judicial import DocumentoCobranza
 from app.security import get_current_user, usuario_autorizado
 from app.models.cliente import Cliente
 from app.models.cobranza import Cobranza
@@ -38,6 +39,9 @@ from app.schemas.cobranza import (
     CobranzaUpdate,
     CobranzaResponse,
     CobranzaDetalle,
+    DocumentoBase,
+    DocumentoResponse,
+    DocumentoUpdate,
 )
 
 
@@ -292,3 +296,40 @@ def cambiar_etapa(cobranza_id: UUID, datos: CambiarEtapa, db: Session = Depends(
     db.commit()
     db.refresh(cobranza)
     return ciclo.estado_ciclo(db, cobranza)
+
+
+# ------------------------------------------------------------ documentos
+
+@router.get("/{cobranza_id}/documentos", response_model=List[DocumentoResponse])
+def documentos(cobranza_id: UUID, todos: bool = False, db: Session = Depends(get_db)):
+    """Documentos que respaldan la cobranza (los vigentes; todos=true incluye los quitados)."""
+    if db.get(Cobranza, cobranza_id) is None:
+        raise _404(cobranza_id)
+    q = db.query(DocumentoCobranza).filter(DocumentoCobranza.cobranza_id == cobranza_id)
+    if not todos:
+        q = q.filter(DocumentoCobranza.activo.is_(True))
+    return q.order_by(DocumentoCobranza.fecha_vencimiento.nulls_last(), DocumentoCobranza.created_at).all()
+
+
+@router.post("/{cobranza_id}/documentos", response_model=DocumentoResponse, status_code=status.HTTP_201_CREATED)
+def agregar_documento(cobranza_id: UUID, datos: DocumentoBase, db: Session = Depends(get_db),
+                      usuario: Usuario = Depends(get_current_user)):
+    if db.get(Cobranza, cobranza_id) is None:
+        raise _404(cobranza_id)
+    doc = DocumentoCobranza(**datos.model_dump(), cobranza_id=cobranza_id, creado_por=usuario.id)
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+@router.put("/documentos/{documento_id}", response_model=DocumentoResponse)
+def corregir_documento(documento_id: UUID, datos: DocumentoUpdate, db: Session = Depends(get_db)):
+    doc = db.get(DocumentoCobranza, documento_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    for campo, valor in datos.model_dump(exclude_unset=True).items():
+        setattr(doc, campo, valor)
+    db.commit()
+    db.refresh(doc)
+    return doc

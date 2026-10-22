@@ -326,3 +326,32 @@ def test_simulador_genera_cartera_coherente():
         cur.execute("""SELECT count(*) FROM causas ca JOIN organizaciones o ON o.id = ca.organizacion_id
                        WHERE o.slug = 'simulacion' AND NOT EXISTS (SELECT 1 FROM causa_cobranzas cc WHERE cc.causa_id = ca.id)""")
         assert cur.fetchone()[0] == 0
+
+
+def test_varios_documentos_por_cobranza(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=900_000, n=281)
+    cob = cartera["cobranza_id"]
+    # Toda cobranza nueva trae su documento principal.
+    docs = cliente_http.get(f"/api/cobranzas/{cob}/documentos", headers=h).json()
+    assert len(docs) == 1 and float(docs[0]["monto"]) == 900_000
+
+    hoy = hoy_chile()
+    r = cliente_http.post(f"/api/cobranzas/{cob}/documentos", headers=h, json={
+        "tipo": "cheque", "numero": "7781", "monto": 300_000, "banco": "Banco del Estado", "plaza": "Valparaíso",
+        "fecha_vencimiento": (hoy - timedelta(days=400)).isoformat(),
+        "fecha_protesto": (hoy - timedelta(days=330)).isoformat(), "causal_protesto": "Falta de fondos"})
+    assert r.status_code == 201, r.text
+    cheque = r.json()
+    # Cheque: prescribe al año desde el protesto, y la barra avisa.
+    from app.operaciones import sumar_meses
+    assert cheque["fecha_prescripcion"] == sumar_meses(hoy - timedelta(days=330), 12).isoformat()
+    ciclo = _ciclo(cliente_http, h, cob)
+    assert ciclo["prescripcion_proxima"] is True
+
+    # Quitar es marcar inactivo: ya no cuenta.
+    r = cliente_http.put(f"/api/cobranzas/documentos/{cheque['id']}", headers=h, json={"activo": False})
+    assert r.status_code == 200 and r.json()["activo"] is False
+    assert len(cliente_http.get(f"/api/cobranzas/{cob}/documentos", headers=h).json()) == 1
+    assert len(cliente_http.get(f"/api/cobranzas/{cob}/documentos", params={"todos": True}, headers=h).json()) == 2
+    assert _ciclo(cliente_http, h, cob)["prescripcion_proxima"] is False

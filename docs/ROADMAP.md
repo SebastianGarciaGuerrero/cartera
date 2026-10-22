@@ -88,8 +88,13 @@ gestiones, 2.200 causas, 60 mil trámites, 4.200 pagos, 5.100 gastos) y
 `medir-rendimiento` toma los tiempos. Medido en un PC de escritorio
 (octubre 2026), sin red: listas, fichas y búsquedas entre 7 y 30 ms; bandeja
 judicial 15–35 ms; avisos 32 ms; agenda del mes de todo el equipo ~115 ms;
-panel ~70 ms. Volver a medir con `--anios 20` antes de migrar la cartera
-histórica de un estudio.
+panel ~70 ms.
+
+Con `--anios 20` (el volumen de una migración histórica: 19 mil cobranzas,
+250 mil gestiones, 9 mil causas, 280 mil trámites): listas, fichas,
+búsquedas y bandeja judicial entre 10 y 50 ms; avisos 22 ms; agenda del mes
+de todo el equipo ~190 ms; **panel ~240 ms** (lo siguiente a optimizar:
+agregados precalculados por mes).
 
 ## Fase 5: operación del SaaS
 

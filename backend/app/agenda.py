@@ -66,25 +66,24 @@ def items_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
 
     items: List[ItemAgenda] = []
 
-    # Solo la última gestión de cada cobranza ABIERTA (por índice, sin
-    # recorrer el historial completo de la organización).
+    # Parte de las gestiones con fecha en el rango (índice parcial sobre
+    # fecha_proximo_contacto) y se queda con las que siguen siendo la última
+    # gestión de su cobranza: no recorre ni el historial ni toda la cartera.
     contactos = db.execute(text(f"""
         SELECT c.id AS cobranza_id, u.fecha_proximo_contacto, u.usuario_id, u.descripcion,
                t.codigo AS tipo_codigo, c.numero, c.monto_actual, c.ejecutivo_id,
                d.nombre AS deudor
-        FROM cobranzas c
-        CROSS JOIN LATERAL (
-            SELECT g.fecha_proximo_contacto, g.usuario_id, g.descripcion, g.tipo_id
-            FROM gestiones g
-            WHERE g.organizacion_id = :org AND g.cobranza_id = c.id
-            ORDER BY g.fecha_gestion DESC, g.created_at DESC
-            LIMIT 1
-        ) u
+        FROM gestiones u
+        JOIN cobranzas c ON c.id = u.cobranza_id
         JOIN deudores d ON d.id = c.deudor_id
         LEFT JOIN tipos_gestion t ON t.id = u.tipo_id
-        WHERE c.organizacion_id = :org
-          AND c.estado IN ('activa', 'acuerdo_pago', 'judicial')
+        WHERE u.organizacion_id = :org
           AND u.fecha_proximo_contacto BETWEEN :desde AND :hasta
+          AND c.estado IN ('activa', 'acuerdo_pago', 'judicial')
+          AND NOT EXISTS (
+              SELECT 1 FROM gestiones g2
+              WHERE g2.organizacion_id = :org AND g2.cobranza_id = u.cobranza_id
+                AND (g2.fecha_gestion, g2.created_at) > (u.fecha_gestion, u.created_at))
           {filtro_contacto}
     """), params).mappings().all()
     for r in contactos:

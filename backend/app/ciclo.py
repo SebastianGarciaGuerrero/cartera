@@ -175,7 +175,15 @@ def estado_ciclo(db: Session, cobranza: Cobranza) -> dict:
     """), {"c": cobranza.id}).mappings().all()
 
     hoy = hoy_chile()
-    prescribe = fecha_prescripcion(cobranza) if cobranza.etapa != "judicial" else None
+    prescribe = None
+    if cobranza.etapa != "judicial":
+        # La más próxima entre los documentos vigentes (cheque: desde el protesto).
+        from app.models.judicial import DocumentoCobranza
+
+        fechas = [d.fecha_prescripcion for d in db.query(DocumentoCobranza).filter(
+            DocumentoCobranza.cobranza_id == cobranza.id, DocumentoCobranza.activo.is_(True))]
+        fechas = [f for f in fechas if f] or [fecha_prescripcion(cobranza)]
+        prescribe = min((f for f in fechas if f), default=None)
     return {
         "cobranza_id": cobranza.id,
         "etapa": cobranza.etapa,
