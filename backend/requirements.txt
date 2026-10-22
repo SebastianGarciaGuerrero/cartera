@@ -10,7 +10,7 @@ alembic==1.13.3
 # Validación y configuración
 pydantic[email]==2.9.2
 pydantic-settings==2.5.2
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 # Zona horaria de Chile (Windows no trae la base de zonas horarias)
 tzdata==2025.2
 
