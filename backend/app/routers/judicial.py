@@ -125,29 +125,11 @@ def equipo(db: Session = Depends(get_db)):
 @router.get("/para-demanda", response_model=ParaDemanda)
 def para_demanda(db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
     hoy = hoy_chile()
-    preparacion = (db.query(Cobranza)
-                   .filter(Cobranza.etapa == "para_demanda",
-                           Cobranza.estado.in_(("activa", "acuerdo_pago")))
-                   .order_by(Cobranza.etapa_desde).limit(500).all())
-
-    def fila(c: Cobranza) -> dict:
-        return {
-            "id": c.id, "numero": c.numero, "monto_actual": c.monto_actual,
-            "fecha_ingreso": c.fecha_ingreso, "etapa": c.etapa, "etapa_desde": c.etapa_desde,
-            "tipo_documento": c.tipo_documento,
-            "fecha_vencimiento_documento": c.fecha_vencimiento_documento,
-            "deudor": c.deudor.nombre if c.deudor else "", "deudor_rut": c.deudor.rut if c.deudor else None,
-            "cliente": c.cliente_nombre or "", "dias_para_demanda": c.cliente.dias_para_demanda if c.cliente else None,
-            "dias_en_cartera": (hoy - c.fecha_ingreso).days, "ultima_gestion": None,
-            "fecha_prescripcion": ciclo.fecha_prescripcion(c),
-        }
-
-    sugeridas = []
-    for s in ciclo.sugeridas_para_demanda(db, usuario.organizacion_id, hoy):
-        cob = db.get(Cobranza, s["id"])
-        s["fecha_prescripcion"] = ciclo.fecha_prescripcion(cob) if cob else None
-        sugeridas.append(s)
-    return {"preparacion": [fila(c) for c in preparacion], "sugeridas": sugeridas}
+    org = usuario.organizacion_id
+    return {
+        "preparacion": ciclo.cobranzas_para_demanda(db, org, hoy, preparacion=True),
+        "sugeridas": ciclo.cobranzas_para_demanda(db, org, hoy, preparacion=False, limite=200),
+    }
 
 
 # ------------------------------------------------------------------ causas

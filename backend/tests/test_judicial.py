@@ -280,3 +280,49 @@ def test_cerrar_a_mano_deja_motivo_y_fecha(cliente_http, org_a):
     assert r.json()["motivo_cierre"] is None and r.json()["fecha_cierre"] is None
 
 
+
+
+def test_historial_de_pagos_del_deudor_y_resumen_por_etapa(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=300_000, n=271)
+    otra = _otra_cobranza(cliente_http, h, cartera, monto=100_000, externo="EXT-P")
+    for cob, monto in ((cartera["cobranza_id"], 50_000), (otra, 100_000)):
+        r = cliente_http.post("/api/pagos/", headers=h, json={
+            "cobranza_id": cob, "monto": monto, "capital": monto, "forma_pago": "transferencia",
+            "estado_pago": "abono"})
+        assert r.status_code == 201, r.text
+    pagos = cliente_http.get("/api/pagos/", params={"deudor_id": cartera["deudor_id"]}, headers=h).json()
+    assert len({p["numero_cobranza"] for p in pagos}) == 2 and cartera["numero"] in {p["numero_cobranza"] for p in pagos}
+    assert {float(p["monto"]) for p in pagos} == {50_000, 100_000}
+    assert all(p["usuario_nombre"] for p in pagos)
+
+    # La que quedó en cero se cierra como pagada y cuenta en "término".
+    ciclo = _ciclo(cliente_http, h, otra)
+    assert ciclo["paso_actual"] == "termino" and ciclo["motivo_cierre"] == "pagada"
+    resumen = {f["etapa"]: f for f in cliente_http.get("/api/cobranzas/resumen-etapas", headers=h).json()}
+    # El pago deja una gestión: la otra cobranza pasó sola a extrajudicial.
+    assert resumen["termino"]["cantidad"] >= 1 and resumen["extrajudicial"]["cantidad"] >= 1
+    terminadas = cliente_http.get("/api/cobranzas/", params={"etapa": "termino"}, headers=h).json()
+    assert otra in [c["id"] for c in terminadas]
+    caras = cliente_http.get("/api/cobranzas/", params={"saldo_min": 200_000}, headers=h).json()
+    assert cartera["cobranza_id"] in [c["id"] for c in caras] and otra not in [c["id"] for c in caras]
+
+
+def test_simulador_genera_cartera_coherente():
+    """El simulador a escala chica: inserta todo respetando las reglas de la base."""
+    from app.database import engine
+    from app.simulador import simular
+
+    conexion = engine.raw_connection()
+    try:
+        r = simular(conexion, anios=2, escala=0.05, semilla=3, password="Clave-Simulacion-2026", informar=lambda *_: None)
+    finally:
+        conexion.close()
+    assert r["cobranzas"] == 95 and r["gestiones"] > 300 and r["causas"] > 10 and r["tramites"] > r["causas"]
+    with psycopg2.connect(URL_TEST) as c, c.cursor() as cur:
+        cur.execute("""SELECT count(*) FROM cobranzas c JOIN organizaciones o ON o.id = c.organizacion_id
+                       WHERE o.slug = 'simulacion' AND c.estado = 'pagada' AND c.monto_actual > 0""")
+        assert cur.fetchone()[0] == 0
+        cur.execute("""SELECT count(*) FROM causas ca JOIN organizaciones o ON o.id = ca.organizacion_id
+                       WHERE o.slug = 'simulacion' AND NOT EXISTS (SELECT 1 FROM causa_cobranzas cc WHERE cc.causa_id = ca.id)""")
+        assert cur.fetchone()[0] == 0

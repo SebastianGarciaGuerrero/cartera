@@ -267,15 +267,19 @@ def terminar_causa(db: Session, causa: Causa, resultado: str, fecha: date, usuar
 
 # ------------------------------------------------------------------ consultas
 
+# Último trámite con tipo de cada causa (las observaciones no cuentan), por
+# índice sobre (causa_id, fecha): no recorre los trámites de toda la organización.
 _ULTIMO_TRAMITE = """
-    SELECT DISTINCT ON (tr.causa_id)
-           tr.causa_id, tr.fecha AS ultima_fecha, tr.plazo_fecha, tr.siguiente_id,
-           tt.nombre AS ultimo_tramite, sig.nombre AS siguiente_nombre
-    FROM tramites tr
-    JOIN tipos_tramite tt ON tt.id = tr.tipo_id
-    LEFT JOIN tipos_tramite sig ON sig.id = tr.siguiente_id
-    WHERE tr.organizacion_id = :org AND tr.tipo_id IS NOT NULL
-    ORDER BY tr.causa_id, tr.fecha DESC, tr.created_at DESC
+    LATERAL (
+        SELECT tr.fecha AS ultima_fecha, tr.plazo_fecha, tr.siguiente_id,
+               tt.nombre AS ultimo_tramite, sig.nombre AS siguiente_nombre
+        FROM tramites tr
+        JOIN tipos_tramite tt ON tt.id = tr.tipo_id
+        LEFT JOIN tipos_tramite sig ON sig.id = tr.siguiente_id
+        WHERE tr.causa_id = ca.id AND tr.tipo_id IS NOT NULL
+        ORDER BY tr.fecha DESC, tr.created_at DESC
+        LIMIT 1
+    ) u
 """
 
 
@@ -318,7 +322,6 @@ def listar_causas(db: Session, organizacion_id: UUID, hoy: date, *, estado: Opti
 
     where = " AND ".join(filtros)
     base = f"""
-        WITH u AS ({_ULTIMO_TRAMITE})
         SELECT ca.id, ca.rol, ca.procedimiento, ca.etapa_procesal, ca.estado, ca.resultado,
                ca.fecha_ingreso, ca.fecha_termino, ca.cuantia, ca.caratula,
                t.nombre AS tribunal, d.nombre AS deudor, d.rut AS deudor_rut,
@@ -334,7 +337,7 @@ def listar_causas(db: Session, organizacion_id: UUID, hoy: date, *, estado: Opti
         LEFT JOIN tribunales t ON t.id = ca.tribunal_id
         LEFT JOIN usuarios ab ON ab.id = ca.abogado_id
         LEFT JOIN usuarios pr ON pr.id = ca.procurador_id
-        LEFT JOIN u ON u.causa_id = ca.id
+        LEFT JOIN {_ULTIMO_TRAMITE} ON true
         WHERE {where}
     """
     total = db.execute(text(f"SELECT count(*) FROM ({base}) x"), params).scalar()
@@ -353,14 +356,13 @@ def resumen_judicial(db: Session, organizacion_id: UUID, hoy: date) -> dict:
         WHERE organizacion_id = :org AND estado = 'vigente' GROUP BY etapa_procesal
     """), params).mappings()}
     plazos = db.execute(text(f"""
-        WITH u AS ({_ULTIMO_TRAMITE})
         SELECT
             count(*) FILTER (WHERE u.plazo_fecha < :hoy) AS vencidos,
             count(*) FILTER (WHERE u.plazo_fecha = :hoy) AS hoy,
             count(*) FILTER (WHERE u.plazo_fecha > :hoy AND u.plazo_fecha <= CAST(:hoy AS date) + 7) AS semana,
             count(*) FILTER (WHERE COALESCE(u.ultima_fecha, ca.fecha_ingreso)
                                    <= CAST(:hoy AS date) - :dias_abandono) AS riesgo_abandono
-        FROM causas ca LEFT JOIN u ON u.causa_id = ca.id
+        FROM causas ca LEFT JOIN {_ULTIMO_TRAMITE} ON true
         WHERE ca.organizacion_id = :org AND ca.estado = 'vigente'
     """), params).mappings().one()
     para_demanda = db.execute(text("""
@@ -386,7 +388,6 @@ def plazos_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
     if usuario_id is not None:
         filtro = "AND (ca.abogado_id = :usuario OR ca.procurador_id = :usuario OR ca.creado_por = :usuario)"
     return [dict(r) for r in db.execute(text(f"""
-        WITH u AS ({_ULTIMO_TRAMITE})
         SELECT ca.id AS causa_id, ca.rol, u.plazo_fecha, u.ultimo_tramite, u.siguiente_nombre,
                COALESCE(ca.procurador_id, ca.abogado_id, ca.creado_por) AS responsable_id,
                d.nombre AS deudor, t.nombre AS tribunal,
@@ -395,7 +396,7 @@ def plazos_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
                (SELECT min(c.numero) FROM causa_cobranzas cc JOIN cobranzas c ON c.id = cc.cobranza_id
                 WHERE cc.causa_id = ca.id) AS numero_cobranza
         FROM causas ca
-        JOIN u ON u.causa_id = ca.id
+        JOIN {_ULTIMO_TRAMITE} ON true
         JOIN deudores d ON d.id = ca.deudor_id
         LEFT JOIN tribunales t ON t.id = ca.tribunal_id
         WHERE ca.organizacion_id = :org AND ca.estado = 'vigente'

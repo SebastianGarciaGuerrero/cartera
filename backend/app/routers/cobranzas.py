@@ -18,7 +18,7 @@ de otra organización responde 404, igual que uno inexistente.
 from uuid import UUID
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
-from sqlalchemy import or_, cast, String
+from sqlalchemy import or_, cast, String, text
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
@@ -82,7 +82,9 @@ def listar_cobranzas(
     ejecutivo_id: Optional[UUID] = None,
     deudor_id: Optional[UUID] = None,
     estado: Optional[str] = None,
-    etapa: Optional[str] = None,
+    etapa: Optional[str] = Query(None, pattern="^(ingreso|extrajudicial|para_demanda|judicial|termino)$"),
+    saldo_min: Optional[float] = Query(None, ge=0),
+    saldo_max: Optional[float] = Query(None, ge=0),
     db: Session = Depends(get_db)
 ):
     """
@@ -102,7 +104,15 @@ def listar_cobranzas(
     if estado is not None:
         query = query.filter(Cobranza.estado == estado)
     if etapa is not None:
-        query = query.filter(Cobranza.etapa == etapa)
+        if etapa == "termino":
+            query = query.filter(Cobranza.estado.in_(ciclo.ESTADOS_TERMINALES))
+        else:
+            query = query.filter(Cobranza.etapa == etapa,
+                                 Cobranza.estado.notin_(ciclo.ESTADOS_TERMINALES))
+    if saldo_min is not None:
+        query = query.filter(Cobranza.monto_actual >= saldo_min)
+    if saldo_max is not None:
+        query = query.filter(Cobranza.monto_actual <= saldo_max)
 
     response.headers["X-Total-Count"] = str(query.order_by(None).count())
     return query.order_by(Cobranza.numero).offset(skip).limit(limit).all()
@@ -131,6 +141,27 @@ def buscar_cobranzas(
     ]
 
     return query.filter(or_(*condiciones)).order_by(Cobranza.numero).limit(limit).all()
+
+
+@router.get("/resumen-etapas")
+def resumen_etapas(cliente_id: Optional[UUID] = None, db: Session = Depends(get_db),
+                   usuario: Usuario = Depends(get_current_user)):
+    """
+    La cartera por etapa del ciclo de vida (cantidad y saldo), para el
+    tablero de la lista de cobranzas. Las cerradas van en "termino".
+    """
+    params = {"org": usuario.organizacion_id, "cliente": cliente_id}
+    filtro = "AND cliente_id = :cliente" if cliente_id else ""
+    filas = db.execute(text(f"""
+        SELECT CASE WHEN estado IN ('pagada', 'archivada', 'castigo') THEN 'termino' ELSE etapa END AS etapa,
+               count(*) AS cantidad, COALESCE(sum(monto_actual), 0) AS saldo
+        FROM cobranzas
+        WHERE organizacion_id = :org {filtro}
+        GROUP BY 1
+    """), params).mappings().all()
+    por_etapa = {f["etapa"]: {"cantidad": f["cantidad"], "saldo": f["saldo"]} for f in filas}
+    return [{"etapa": e, **por_etapa.get(e, {"cantidad": 0, "saldo": 0})}
+            for e in (*ciclo.ETAPAS, "termino")]
 
 
 @router.get("/{cobranza_id}", response_model=CobranzaDetalle)

@@ -24,6 +24,13 @@ Desde la carpeta backend, con el venv activo:
       promesas, cuotas y recordatorios, más lo atrasado). Solo para las
       organizaciones con la función "recordatorios". Programarlo una vez al
       día (ej. 7:30) en el hosting (cron) o con el Programador de tareas.
+
+  python -m app.cli simular --anios 5 [--escala 1] [--password ...]
+      SOLO EN BASES DE PRUEBA: crea la organización "simulacion" con N años
+      de cartera ficticia (cobranzas, gestiones, acuerdos, pagos, causas,
+      trámites y gastos) con las proporciones de un estudio real.
+  python -m app.cli medir-rendimiento --password ...
+      Mide los tiempos de respuesta de las pantallas principales con esa cartera.
 """
 
 import argparse
@@ -217,6 +224,35 @@ def enlace_acceso(args) -> None:
         print(enlace)
 
 
+def simular(args) -> None:
+    """Llena la organización 'simulacion' con N años de cartera ficticia (solo bases de prueba)."""
+    from app.database import engine
+    from app.simulador import EMAIL_ADMIN, simular as generar
+
+    if settings.environment == "production" and not args.forzar:
+        sys.exit("ENVIRONMENT=production: el simulador es para bases de prueba (use --forzar si de verdad corresponde).")
+    print(f"Generando {args.anios} año(s) de cartera a escala {args.escala}…")
+    t0 = datetime.now()
+    conexion = engine.raw_connection()
+    try:
+        r = generar(conexion, anios=args.anios, escala=args.escala, semilla=args.semilla, password=args.password)
+    finally:
+        conexion.close()
+    print(f"Listo en {(datetime.now() - t0).total_seconds():.0f} s (inserción: {r['segundos_insercion']} s).")
+    print(f"Entrar como {EMAIL_ADMIN} con la clave: {r['password']}")
+
+
+def medir_rendimiento(args) -> None:
+    """Tiempos de respuesta de las pantallas principales con la cartera simulada."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.simulador import EMAIL_ADMIN, medir
+
+    with TestClient(app) as cliente:
+        medir(cliente, args.email or EMAIL_ADMIN, args.password, repeticiones=args.repeticiones)
+
+
 def main(argv=None) -> None:
     # Consolas de Windows con codificación antigua: que una tilde no corte el
     # comando a la mitad (el resto del texto se imprime igual).
@@ -261,6 +297,20 @@ def main(argv=None) -> None:
     c = sub.add_parser("enlace-acceso")
     c.add_argument("--email", required=True)
     c.set_defaults(func=enlace_acceso)
+
+    c = sub.add_parser("simular", help="cartera ficticia de N años para pruebas de velocidad")
+    c.add_argument("--anios", type=int, default=5)
+    c.add_argument("--escala", type=float, default=1.0, help="1 = ~950 cobranzas nuevas al año")
+    c.add_argument("--semilla", type=int, default=7)
+    c.add_argument("--password", help="clave para los usuarios de la simulación (si no, se genera)")
+    c.add_argument("--forzar", action="store_true")
+    c.set_defaults(func=simular)
+
+    c = sub.add_parser("medir-rendimiento", help="tiempos de respuesta con la cartera simulada")
+    c.add_argument("--email")
+    c.add_argument("--password", required=True)
+    c.add_argument("--repeticiones", type=int, default=5)
+    c.set_defaults(func=medir_rendimiento)
 
     args = p.parse_args(argv)
     args.func(args)

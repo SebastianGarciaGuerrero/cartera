@@ -66,25 +66,25 @@ def items_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
 
     items: List[ItemAgenda] = []
 
+    # Solo la última gestión de cada cobranza ABIERTA (por índice, sin
+    # recorrer el historial completo de la organización).
     contactos = db.execute(text(f"""
-        WITH ultima AS (
-            SELECT DISTINCT ON (g.cobranza_id)
-                   g.cobranza_id, g.fecha_proximo_contacto, g.usuario_id,
-                   g.descripcion, g.tipo_id
-            FROM gestiones g
-            WHERE g.organizacion_id = :org
-            ORDER BY g.cobranza_id, g.fecha_gestion DESC, g.created_at DESC
-        )
-        SELECT u.cobranza_id, u.fecha_proximo_contacto, u.usuario_id, u.descripcion,
+        SELECT c.id AS cobranza_id, u.fecha_proximo_contacto, u.usuario_id, u.descripcion,
                t.codigo AS tipo_codigo, c.numero, c.monto_actual, c.ejecutivo_id,
                d.nombre AS deudor
-        FROM ultima u
-        JOIN cobranzas c ON c.id = u.cobranza_id
+        FROM cobranzas c
+        CROSS JOIN LATERAL (
+            SELECT g.fecha_proximo_contacto, g.usuario_id, g.descripcion, g.tipo_id
+            FROM gestiones g
+            WHERE g.organizacion_id = :org AND g.cobranza_id = c.id
+            ORDER BY g.fecha_gestion DESC, g.created_at DESC
+            LIMIT 1
+        ) u
         JOIN deudores d ON d.id = c.deudor_id
         LEFT JOIN tipos_gestion t ON t.id = u.tipo_id
         WHERE c.organizacion_id = :org
-          AND u.fecha_proximo_contacto BETWEEN :desde AND :hasta
           AND c.estado IN ('activa', 'acuerdo_pago', 'judicial')
+          AND u.fecha_proximo_contacto BETWEEN :desde AND :hasta
           {filtro_contacto}
     """), params).mappings().all()
     for r in contactos:

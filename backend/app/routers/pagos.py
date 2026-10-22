@@ -22,7 +22,7 @@ from uuid import UUID
 from datetime import date
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
@@ -46,6 +46,7 @@ router = APIRouter(
 @router.get("/", response_model=List[PagoResponse])
 def listar_pagos(
     cobranza_id: Optional[UUID] = None,
+    deudor_id: Optional[UUID] = None,
     cuota_id: Optional[UUID] = None,
     desde: Optional[date] = None,
     hasta: Optional[date] = None,
@@ -57,16 +58,20 @@ def listar_pagos(
     Lista pagos con filtros. El rango de fechas (desde/hasta) sirve para armar
     el recupero mensual.
     """
-    query = db.query(Pago)
+    query = db.query(Pago).options(joinedload(Pago.cobranza), joinedload(Pago.cuota),
+                                   joinedload(Pago.usuario))
     if cobranza_id is not None:
         query = query.filter(Pago.cobranza_id == cobranza_id)
+    if deudor_id is not None:
+        # Historial de pagos del deudor en todas sus cobranzas.
+        query = query.join(Cobranza, Cobranza.id == Pago.cobranza_id).filter(Cobranza.deudor_id == deudor_id)
     if cuota_id is not None:
         query = query.filter(Pago.cuota_id == cuota_id)
     if desde is not None:
         query = query.filter(Pago.fecha_pago >= desde)
     if hasta is not None:
         query = query.filter(Pago.fecha_pago <= hasta)
-    return query.order_by(Pago.fecha_pago.desc()).offset(skip).limit(limit).all()
+    return query.order_by(Pago.fecha_pago.desc(), Pago.created_at.desc()).offset(skip).limit(limit).all()
 
 
 @router.get("/{pago_id}", response_model=PagoResponse)

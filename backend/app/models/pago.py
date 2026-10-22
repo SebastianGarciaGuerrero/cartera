@@ -56,6 +56,20 @@ class Pago(TenantMixin, Base):
     # Navegación. backref crea cobranza.pagos y cuota.pagos.
     cobranza = relationship("Cobranza", backref="pagos")
     cuota = relationship("Cuota", backref="pagos")
+    usuario = relationship("Usuario")
+
+    # Para el historial de pagos (ficha del deudor y de la cobranza).
+    @property
+    def numero_cobranza(self):
+        return self.cobranza.numero if self.cobranza else None
+
+    @property
+    def numero_cuota(self):
+        return self.cuota.numero_cuota if self.cuota else None
+
+    @property
+    def usuario_nombre(self):
+        return self.usuario.nombre if self.usuario else None
 
     def __repr__(self):
         return f"<Pago(cobranza_id={self.cobranza_id}, monto={self.monto})>"

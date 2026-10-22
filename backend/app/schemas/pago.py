@@ -67,5 +67,9 @@ class PagoResponse(PagoBase):
     usuario_id: UUID  # quién lo registró (vino del token al crearlo)
     fecha_pago: date
     created_at: datetime
+    # Para el historial: a qué cobranza y cuota fue, y quién lo registró.
+    numero_cobranza: Optional[int] = None
+    numero_cuota: Optional[int] = None
+    usuario_nombre: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

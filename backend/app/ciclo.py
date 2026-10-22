@@ -84,12 +84,14 @@ class ErrorEtapa(ValueError):
     """Cambio de etapa que no corresponde (se responde 400)."""
 
 
-def fecha_prescripcion(cobranza: Cobranza) -> Optional[date]:
-    base = cobranza.fecha_vencimiento_documento
-    if base is None:
+def prescripcion(tipo_documento: Optional[str], vencimiento: Optional[date]) -> Optional[date]:
+    if vencimiento is None:
         return None
-    meses = MESES_PRESCRIPCION.get(cobranza.tipo_documento or "", MESES_PRESCRIPCION_OTROS)
-    return sumar_meses(base, meses)
+    return sumar_meses(vencimiento, MESES_PRESCRIPCION.get(tipo_documento or "", MESES_PRESCRIPCION_OTROS))
+
+
+def fecha_prescripcion(cobranza: Cobranza) -> Optional[date]:
+    return prescripcion(cobranza.tipo_documento, cobranza.fecha_vencimiento_documento)
 
 
 def fijar_contexto(db: Session, usuario_id: Optional[UUID], motivo: Optional[str]) -> None:
@@ -195,30 +197,37 @@ def estado_ciclo(db: Session, cobranza: Cobranza) -> dict:
     }
 
 
-def sugeridas_para_demanda(db: Session, organizacion_id: UUID, hoy: date,
-                           limite: int = 200) -> List[dict]:
+def cobranzas_para_demanda(db: Session, organizacion_id: UUID, hoy: date, *,
+                           preparacion: bool, limite: int = 500) -> List[dict]:
     """
-    Cobranzas que según la regla de su cliente ya deberían prepararse para
-    demanda: activas (sin acuerdo vigente), en ingreso o extrajudicial, y
-    con más días desde el ingreso que `clientes.dias_para_demanda`.
+    preparacion=True: las que el equipo ya pasó a 'para demanda'.
+    preparacion=False: las que según la regla de su cliente ya deberían
+    prepararse: activas (sin acuerdo vigente), en ingreso o extrajudicial y
+    con más días desde el ingreso que los de clientes.dias_para_demanda.
     """
-    return [dict(r) for r in db.execute(text("""
+    if preparacion:
+        filtro = "c.etapa = 'para_demanda' AND c.estado IN ('activa', 'acuerdo_pago')"
+        orden = "c.etapa_desde"
+    else:
+        filtro = """c.estado = 'activa' AND c.etapa IN ('ingreso', 'extrajudicial')
+          AND cl.dias_para_demanda IS NOT NULL
+          AND c.fecha_ingreso + cl.dias_para_demanda <= :hoy"""
+        orden = "c.fecha_ingreso"
+    filas = db.execute(text(f"""
         SELECT c.id, c.numero, c.monto_actual, c.fecha_ingreso, c.etapa, c.etapa_desde,
                c.tipo_documento, c.fecha_vencimiento_documento,
                d.nombre AS deudor, d.rut AS deudor_rut,
                COALESCE(cl.nombre_fantasia, cl.razon_social) AS cliente,
                cl.dias_para_demanda,
                (:hoy - c.fecha_ingreso) AS dias_en_cartera,
-               (SELECT max(g.fecha_gestion)::date FROM gestiones g WHERE g.cobranza_id = c.id)
-                   AS ultima_gestion
+               (SELECT max(g.fecha_gestion)::date FROM gestiones g
+                WHERE g.organizacion_id = c.organizacion_id AND g.cobranza_id = c.id) AS ultima_gestion
         FROM cobranzas c
         JOIN clientes cl ON cl.id = c.cliente_id
         JOIN deudores d ON d.id = c.deudor_id
-        WHERE c.organizacion_id = :org
-          AND c.estado = 'activa'
-          AND c.etapa IN ('ingreso', 'extrajudicial')
-          AND cl.dias_para_demanda IS NOT NULL
-          AND c.fecha_ingreso + cl.dias_para_demanda <= :hoy
-        ORDER BY c.fecha_ingreso
+        WHERE c.organizacion_id = :org AND {filtro}
+        ORDER BY {orden}
         LIMIT :lim
-    """), {"org": organizacion_id, "hoy": hoy, "lim": limite}).mappings().all()]
+    """), {"org": organizacion_id, "hoy": hoy, "lim": limite}).mappings().all()
+    return [{**f, "fecha_prescripcion": prescripcion(f["tipo_documento"], f["fecha_vencimiento_documento"])}
+            for f in filas]
