@@ -7,6 +7,9 @@ services:
   - type: web
     name: cartera
     runtime: docker
+    # Misma región que la base de Supabase (us-east-2, Ohio): cada consulta
+    # cruzando a Oregon sumaba ~0,7 s por pantalla.
+    region: ohio
     plan: free
     branch: main
     autoDeploy: true
