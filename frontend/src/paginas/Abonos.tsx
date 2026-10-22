@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../auth'
@@ -18,8 +18,10 @@ import type { Acuerdo, AcuerdoDetalle, Cobranza, CobranzaDetalle, Cuota, Pago } 
 export default function Abonos() {
   const qc = useQueryClient()
   const { etiqueta } = useAuth()
-  const [busqueda, setBusqueda] = useState('')
-  const [seleccionada, setSeleccionada] = useState<string | null>(null)
+  // Desde la ficha del deudor: ?cobranza=<id> abre esa cobranza; ?q= deja la búsqueda hecha.
+  const [params] = useSearchParams()
+  const [busqueda, setBusqueda] = useState(params.get('q') ?? '')
+  const [seleccionada, setSeleccionada] = useState<string | null>(params.get('cobranza'))
   const [cuotaElegida, setCuotaElegida] = useState<string | 'libre' | null>(null)
   const [comprobante, setComprobante] = useState<PagoRegistrado | null>(null)
 
@@ -71,7 +73,7 @@ export default function Abonos() {
     setComprobante(pago)
     setCuotaElegida(null)
     for (const k of [['cobranza', seleccionada], ['pagos', seleccionada], ['acuerdos', seleccionada],
-      ['acuerdo'], ['cobranzas'], ['agenda'], ['agenda-hoy'], ['panel']]) {
+      ['acuerdo'], ['cobranzas'], ['agenda'], ['agenda-hoy'], ['panel'], ['pagos-deudor'], ['avisos']]) {
       qc.invalidateQueries({ queryKey: k })
     }
   }

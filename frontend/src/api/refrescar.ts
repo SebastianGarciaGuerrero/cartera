@@ -8,7 +8,7 @@ import type { QueryClient } from '@tanstack/react-query'
 export function refrescarCaso(qc: QueryClient, cobranzaId: string) {
   const claves = [
     ['cobranza', cobranzaId], ['cobranzas'], ['gestiones', cobranzaId], ['acuerdos', cobranzaId],
-    ['acuerdo'], ['pagos', cobranzaId], ['agenda'], ['agenda-hoy'], ['avisos'], ['seguimiento'], ['panel'],
+    ['acuerdo'], ['pagos', cobranzaId], ['agenda'], ['agenda-hoy'], ['avisos'], ['seguimiento'], ['panel'], ['pagos-deudor'], ['ciclo', cobranzaId],
   ]
   for (const queryKey of claves) qc.invalidateQueries({ queryKey })
 }

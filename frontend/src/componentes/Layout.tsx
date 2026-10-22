@@ -3,17 +3,20 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { Empresa } from '../api/tipos'
 import { LogoEmpresa } from './Logo'
-import Avisos, { useAvisos } from './Avisos'
+import { useAvisos } from './Avisos'
+import BarraSuperior from './BarraSuperior'
+import RecordatorioDelDia from './RecordatorioDelDia'
 import { useAuth } from '../auth'
 import { MARCA } from '../marca'
 
-// Estructura general: barra lateral de navegación + contenido.
+// Estructura general: barra lateral con el menú de módulos, barra superior
+// (buscador, la semana de la persona, avisos y perfil) y el contenido.
 // Si no hay sesión, redirige al login (esto protege todas las rutas hijas).
 // Si la contraseña es temporal, obliga a pasar por Mi cuenta. El rol
 // mandante va a su propio portal (PortalLayout).
 
 export default function Layout() {
-  const { usuario, cargando, logout, esAdmin, etiqueta, tiene } = useAuth()
+  const { usuario, cargando, esAdmin, etiqueta, tiene } = useAuth()
   const ubicacion = useLocation()
 
   const { data: empresa } = useQuery({
@@ -45,7 +48,6 @@ export default function Layout() {
             <div className="marca-nombre">{MARCA.nombre}</div>
             <div className="marca-sub">{usuario.organizacion.nombre}</div>
           </div>
-          <Avisos datos={avisos} />
         </div>
         <LogoEmpresa tieneLogo={empresa?.tiene_logo} version={empresa?.logo_actualizado_at}
           alt={usuario.organizacion.nombre} className="sidebar-logo-empresa" />
@@ -89,25 +91,21 @@ export default function Layout() {
             </>
           )}
         </nav>
-
-        <div className="sidebar-pie">
-          <NavLink to="/mi-cuenta" className="usuario-nombre">{usuario.nombre}</NavLink>
-          <div className="usuario-email">{usuario.email}</div>
-          <button className="btn btn-secundario btn-chico" onClick={() => logout()}>
-            Cerrar sesión
-          </button>
-        </div>
       </aside>
 
-      <main className="contenido">
-        <Outlet />
-        <footer className="pie-firma">
-          Creado por{' '}
-          <a href="https://sebastiangarcia.cl" target="_blank" rel="noreferrer">
-            sebastiangarcia.cl
-          </a>
-        </footer>
-      </main>
+      <div className="principal">
+        <BarraSuperior avisos={avisos} />
+        <main className="contenido">
+          <Outlet />
+          <footer className="pie-firma">
+            Creado por{' '}
+            <a href="https://sebastiangarcia.cl" target="_blank" rel="noreferrer">
+              sebastiangarcia.cl
+            </a>
+          </footer>
+        </main>
+      </div>
+      <RecordatorioDelDia usuarioId={usuario.id} nombre={usuario.nombre} avisos={avisos} />
     </div>
   )
 }

@@ -1,0 +1,149 @@
+/* Barra superior, resumen de deuda e historial de pagos, acuerdo calculado
+   y tablero de la cartera por etapa. */
+
+/* ---------- Barra superior ---------- */
+.principal { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.principal .contenido { flex: 1; width: 100%; }
+.barra-superior {
+  position: sticky; top: 0; z-index: 40; display: flex; align-items: center; gap: 16px;
+  padding: 10px 36px; background: var(--tarjeta); border-bottom: 1px solid var(--borde);
+}
+.barra-superior-derecha { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.barra-boton {
+  font: inherit; display: flex; align-items: center; gap: 8px; background: none; border: 1px solid transparent;
+  color: var(--texto); padding: 6px 10px; border-radius: 10px; cursor: pointer; font-size: 14px;
+}
+.barra-boton:hover, .barra-boton[aria-expanded="true"] { background: var(--fondo); border-color: var(--borde); }
+.barra-contador { background: var(--rojo); color: #fff; border-radius: 10px; font-size: 11px; font-weight: 700; padding: 1px 7px; }
+.barra-superior .avisos { margin-left: 0; }
+.barra-superior .avisos-boton { color: var(--texto); }
+.barra-superior .avisos-boton:hover { background: var(--fondo); color: var(--texto); }
+.barra-superior .avisos-panel { left: auto; right: 0; }
+
+.buscador-global { position: relative; flex: 1; max-width: 520px; }
+.buscador-global input { width: 100%; background: var(--fondo); }
+.buscador-resultados, .mi-semana-panel, .perfil-panel {
+  position: absolute; top: calc(100% + 6px); z-index: 60; background: var(--tarjeta); color: var(--texto);
+  border: 1px solid var(--borde); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+.buscador-resultados { left: 0; right: 0; padding: 6px; max-height: 60vh; overflow-y: auto; }
+.buscador-resultados > p { margin: 8px; }
+.buscador-resultados button {
+  font: inherit; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; text-align: left;
+  background: none; border: none; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: inherit;
+}
+.buscador-resultados button:hover { background: var(--fondo); }
+.buscador-resultados .suave { grid-column: 1; }
+.buscador-derecha { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 8px; }
+
+.mi-semana, .menu-perfil { position: relative; }
+.mi-semana-panel { right: 0; width: min(420px, calc(100vw - 32px)); padding: 12px 14px; }
+.semana-dias { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 10px; }
+.semana-dia {
+  font: inherit; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 0;
+  border: 1px solid var(--borde); border-radius: 8px; background: var(--tarjeta); cursor: pointer; color: var(--texto);
+}
+.semana-dia span { font-size: 11px; color: var(--texto-suave); }
+.semana-dia small { font-size: 11px; font-weight: 700; color: var(--acento); }
+.semana-dia.hoy { border-color: var(--acento); }
+.semana-dia.elegido { background: var(--acento); color: #fff; border-color: var(--acento); }
+.semana-dia.elegido span, .semana-dia.elegido small { color: #fff; }
+.mi-semana-pie { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--borde); font-size: 13px; }
+.lista-pendientes { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.lista-pendientes a { display: flex; gap: 8px; padding: 7px 4px; border-radius: 6px; color: inherit; text-decoration: none; }
+.lista-pendientes a:hover { background: var(--fondo); }
+.lista-pendientes-texto { display: flex; flex-direction: column; font-size: 13px; }
+
+.perfil-boton { padding: 4px 8px; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--acento); color: #fff; font-weight: 700;
+  font-size: 13px; display: flex; align-items: center; justify-content: center; flex: none;
+}
+.perfil-texto { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.perfil-texto small { color: var(--texto-suave); font-size: 11px; }
+.perfil-panel { right: 0; width: 240px; padding: 6px; display: flex; flex-direction: column; }
+.perfil-cabecera {
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--borde); margin-bottom: 4px;
+}
+.perfil-panel a, .perfil-panel button {
+  font: inherit; font-size: 14px; text-align: left; padding: 8px 10px; border-radius: 8px; color: var(--texto);
+  text-decoration: none; background: none; border: none; cursor: pointer;
+}
+.perfil-panel a:hover, .perfil-panel button:hover { background: var(--fondo); }
+.recordatorio-dia h3 { font-size: 18px; }
+
+/* ---------- Resumen de la deuda e historial de pagos ---------- */
+.resumen-deuda {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; background: var(--tarjeta);
+  border: 1px solid var(--borde); border-radius: 12px; padding: 14px 18px; margin-bottom: 20px;
+}
+.ficha-deudor .resumen-deuda { margin: 16px 0 4px; background: var(--fondo); }
+.resumen-deuda-cifra { display: flex; flex-direction: column; gap: 2px; }
+.resumen-deuda-cifra strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.resumen-deuda-cifra .suave { font-size: 12px; }
+.resumen-deuda-acciones { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.texto-verde { color: var(--verde); }
+.texto-rojo-fuerte { color: var(--rojo); }
+.historial-pagos {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px;
+  max-height: 60vh; overflow-y: auto;
+}
+.historial-pagos li { border: 1px solid var(--borde); border-radius: 10px; }
+.historial-pagos li.abierto { border-color: var(--acento-claro); }
+.historial-pago {
+  font: inherit; display: grid; grid-template-columns: 100px 1fr auto; gap: 10px; align-items: center; width: 100%;
+  text-align: left; background: none; border: none; padding: 10px 12px; cursor: pointer; color: inherit; border-radius: 10px;
+}
+.historial-pago:hover { background: var(--fondo); }
+.historial-fecha { font-weight: 600; font-size: 13px; }
+.historial-detalle { font-size: 13px; color: var(--texto-suave); }
+.historial-monto { font-size: 16px; color: var(--verde); }
+.historial-desglose { padding: 4px 14px 12px; }
+.lista-cobranzas-estado { display: flex; gap: 6px; align-items: center; justify-self: end; }
+
+/* ---------- Acuerdo calculado (3-6-9) ---------- */
+.segmentos { display: inline-flex; border: 1px solid var(--borde); border-radius: 10px; overflow: hidden; align-self: flex-start; }
+.segmentos button {
+  font: inherit; font-size: 13px; padding: 7px 14px; border: none; background: var(--tarjeta);
+  cursor: pointer; color: var(--texto-suave);
+}
+.segmentos button + button { border-left: 1px solid var(--borde); }
+.segmentos button.activo { background: var(--acento); color: #fff; }
+.acuerdo-calculado { display: flex; flex-direction: column; gap: 10px; }
+.acuerdo-calculado .fila label { flex: 1; min-width: 120px; }
+.acuerdo-calculado .fila input, .acuerdo-calculado .fila select { width: 100%; }
+.plan-calculado { background: var(--fondo); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.plan-cifras { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+.plan-cifras > div { display: flex; flex-direction: column; }
+.plan-cifras .suave { font-size: 12px; }
+.plan-cifras strong { font-size: 17px; }
+
+/* ---------- Tablero de la cartera por etapa ---------- */
+.tablero-etapas { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 18px; }
+.tablero-etapa {
+  font: inherit; text-align: left; cursor: pointer; background: var(--tarjeta); color: var(--texto);
+  border: none; padding: 12px 14px 12px 24px; display: flex; flex-direction: column; gap: 2px;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%);
+  margin-left: -8px; box-shadow: inset 0 0 0 1px var(--borde);
+}
+.tablero-etapa:first-child {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+  margin-left: 0; padding-left: 14px; border-radius: 10px 0 0 10px;
+}
+.tablero-etapa:hover { background: var(--fondo); }
+.tablero-etapa.elegida { background: var(--acento); color: #fff; }
+.tablero-etapa.elegida .suave { color: #e4e4e7; }
+.tablero-etapa strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.tablero-etapa .suave { font-size: 12px; }
+.filtro-saldo { display: flex; gap: 6px; align-items: center; }
+.filtro-saldo input { width: 120px; }
+
+@media (max-width: 760px) {
+  .barra-superior { padding: 8px 12px; gap: 8px; flex-wrap: wrap; position: static; }
+  .buscador-global { order: 2; flex-basis: 100%; max-width: none; }
+  .perfil-texto, .mi-semana .barra-boton > span:not(.barra-contador) { display: none; }
+  .tablero-etapas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .tablero-etapa, .tablero-etapa:first-child { clip-path: none; margin-left: 0; border-radius: 10px; padding-left: 14px; }
+  .resumen-deuda-acciones { margin-left: 0; }
+}

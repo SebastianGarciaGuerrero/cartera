@@ -251,6 +251,12 @@ export interface Pago {
   forma_pago: FormaPago | null
   numero_comprobante: string | null
   estado_pago: 'pagado' | 'abono' | 'cuota' | 'bonificacion'
+  observaciones?: string | null
+  created_at?: string
+  // Para el historial
+  numero_cobranza?: number | null
+  numero_cuota?: number | null
+  usuario_nombre?: string | null
 }
 
 export interface ReporteUsuario {

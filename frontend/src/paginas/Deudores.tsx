@@ -8,6 +8,7 @@ import type { Cobranza, Contacto, DeudorBusqueda, DeudorDetalle } from '../api/t
 import NuevoDeudor from '../componentes/NuevoDeudor'
 import { EtiquetaEstado, Plata, rutConPuntos } from '../componentes/utiles'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
+import { ResumenDeuda, usePagos } from '../componentes/HistorialPagos'
 
 // Deudores: búsqueda por RUT o nombre (con miles de deudores no se lista
 // todo) y una ficha con sus contactos, sus cobranzas y sus datos.
@@ -93,6 +94,7 @@ function FichaDeudor({ id }: { id: string }) {
     queryFn: async () => (await api.get<Cobranza[]>('/cobranzas/', { params: { deudor_id: id, limit: 100 } })).data,
   })
   const { data: campos } = useCampos('deudor')
+  const { data: pagos } = usePagos({ deudor_id: id })
   const quitar = useMutation({
     mutationFn: (contactoId: string) => api.delete(`/deudores/contactos/${contactoId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['deudor', id] }),
@@ -101,6 +103,9 @@ function FichaDeudor({ id }: { id: string }) {
   if (!d) return <section className="tarjeta"><div className="pantalla-carga">Cargando…</div></section>
 
   const contactos = d.contactos.filter((c) => c.activo)
+  const abiertas = (cobranzas ?? []).filter((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado))
+  const original = (cobranzas ?? []).reduce((s, c) => s + Number(c.monto_original), 0)
+  const saldo = abiertas.reduce((s, c) => s + Number(c.monto_actual), 0)
   const celular = contactos.find((c) => ['whatsapp', 'celular', 'telefono'].includes(c.tipo))
   const correo = contactos.find((c) => c.tipo === 'email')
   const datos: [string, string | null | undefined][] = [
@@ -129,6 +134,9 @@ function FichaDeudor({ id }: { id: string }) {
         </div>
       </div>
 
+      <ResumenDeuda original={original} saldo={saldo} pagos={pagos} deudorId={d.id}
+        enlaceAbonar={abiertas.length === 1 ? `/abonos?cobranza=${abiertas[0].id}` : abiertas.length > 1 ? `/abonos?q=${d.rut}` : undefined} />
+
       <h3 className="subtitulo">Contactos</h3>
       <ul className="lista-contactos">
         {contactos.map((c: Contacto) => (
@@ -151,7 +159,12 @@ function FichaDeudor({ id }: { id: string }) {
             <Link to={`/cobranzas/${c.id}`} className="negrita">N° {c.numero}</Link>
             <strong><Plata valor={c.monto_actual} /></strong>
             <span className="suave">{c.cliente_nombre}</span>
-            <EtiquetaEstado estado={c.estado} />
+            <span className="lista-cobranzas-estado">
+              <EtiquetaEstado estado={c.estado} />
+              {['activa', 'acuerdo_pago', 'judicial'].includes(c.estado) && (
+                <Link className="btn btn-chico btn-secundario" to={`/abonos?cobranza=${c.id}`}>Abonar</Link>
+              )}
+            </span>
           </li>
         ))}
       </ul>

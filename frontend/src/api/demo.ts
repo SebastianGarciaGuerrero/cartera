@@ -857,10 +857,14 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   }
 
   // ---- cobranzas ----
+  // Etapa del ciclo de vida (en la demo se deduce del estado y las gestiones).
+  const TERMINALES = ['pagada', 'archivada', 'castigo']
+  const etapaDe = (c: DB['cobranzas'][number]) => c.estado === 'judicial' ? 'judicial'
+    : db.gestiones.some((g) => g.cobranza_id === c.id) ? 'extrajudicial' : 'ingreso'
   const conNombres = (c: DB['cobranzas'][number]) => {
     const d = db.deudores.find((x) => x.id === c.deudor_id)
     const cl = db.clientes.find((x) => x.id === c.cliente_id)
-    return { ...c, deudor_nombre: d?.nombre ?? null, deudor_rut: d?.rut ?? null,
+    return { ...c, etapa: etapaDe(c), deudor_nombre: d?.nombre ?? null, deudor_rut: d?.rut ?? null,
       cliente_nombre: cl ? (cl.nombre_fantasia ?? cl.razon_social) : null }
   }
   if (metodo === 'GET' && url === '/cobranzas/buscar') {
@@ -877,17 +881,28 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     if (params.estado) lista = lista.filter((c) => c.estado === params.estado)
     if (params.cliente_id) lista = lista.filter((c) => c.cliente_id === params.cliente_id)
     if (params.deudor_id) lista = lista.filter((c) => c.deudor_id === params.deudor_id)
+    if (params.etapa === 'termino') lista = lista.filter((c) => TERMINALES.includes(c.estado))
+    else if (params.etapa) lista = lista.filter((c) => !TERMINALES.includes(c.estado) && etapaDe(c) === params.etapa)
+    if (params.saldo_min) lista = lista.filter((c) => Number(c.monto_actual) >= Number(params.saldo_min))
+    if (params.saldo_max) lista = lista.filter((c) => Number(c.monto_actual) <= Number(params.saldo_max))
     const skip = Number(params.skip) || 0
     const limit = Number(params.limit) || 100
     const pagina = lista.slice(skip, skip + limit).map(conNombres)
     return ok(config, pagina, 200, { 'x-total-count': String(lista.length) })
   }
+  if (metodo === 'GET' && url === '/cobranzas/resumen-etapas') {
+    const lista = db.cobranzas.filter((c) => !params.cliente_id || c.cliente_id === params.cliente_id)
+    return ok(config, ['ingreso', 'extrajudicial', 'para_demanda', 'judicial', 'termino'].map((etapa) => {
+      const de = lista.filter((c) => etapa === 'termino' ? TERMINALES.includes(c.estado)
+        : !TERMINALES.includes(c.estado) && etapaDe(c) === etapa)
+      return { etapa, cantidad: de.length, saldo: String(de.reduce((s, c) => s + Number(c.monto_actual), 0)) }
+    }))
+  }
   // Ciclo de vida (solo lectura en la demo: el módulo judicial necesita servidor).
   if (metodo === 'GET' && /^\/cobranzas\/[^/]+\/ciclo$/.test(url)) {
     const c = db.cobranzas.find((x) => x.id === url.split('/')[2])
     if (!c) return error(404, 'Cobranza no encontrada')
-    const conGestiones = db.gestiones.some((g) => g.cobranza_id === c.id)
-    const etapa = c.estado === 'judicial' ? 'judicial' : conGestiones ? 'extrajudicial' : 'ingreso'
+    const etapa = etapaDe(c)
     const cerrada = ['pagada', 'archivada', 'castigo'].includes(c.estado)
     const claves: [string, string, string | null][] = [
       ['ingreso', 'Ingreso', null], ['extrajudicial', 'Extrajudicial', null], ['para_demanda', 'Para demanda', null],
@@ -1014,7 +1029,15 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
 
   // ---- pagos (con la cascada del backend real) ----
   if (metodo === 'GET' && url === '/pagos/') {
-    return ok(config, db.pagos.filter((p) => !params.cobranza_id || p.cobranza_id === params.cobranza_id))
+    // Con N° de cobranza, cuota y quién lo registró (historial de pagos del deudor).
+    const delDeudor = params.deudor_id ? new Set(db.cobranzas.filter((c) => c.deudor_id === params.deudor_id).map((c) => c.id)) : null
+    const cuotas = new Map(db.acuerdos.flatMap((a) => a.cuotas.map((q) => [q.id, q.numero_cuota] as const)))
+    return ok(config, db.pagos
+      .filter((p) => (!params.cobranza_id || p.cobranza_id === params.cobranza_id) && (!delDeudor || delDeudor.has(p.cobranza_id)))
+      .sort((a, b) => b.fecha_pago.localeCompare(a.fecha_pago))
+      .map((p) => ({ ...p, numero_cobranza: db.cobranzas.find((c) => c.id === p.cobranza_id)?.numero ?? null,
+        numero_cuota: p.cuota_id ? cuotas.get(p.cuota_id) ?? null : null,
+        usuario_nombre: db.usuarios.find((x) => x.id === p.usuario_id)?.nombre ?? null })))
   }
   if (metodo === 'POST' && url === '/pagos/') {
     const datos = cuerpo(config) as Record<string, string | null>

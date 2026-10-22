@@ -6,6 +6,9 @@ import { refrescarCaso } from '../api/refrescar'
 import type { Acuerdo, AcuerdoDetalle, CobranzaDetalle, TipoGestion } from '../api/tipos'
 import { FormPago } from './Finanzas'
 import { Plata, clp, enDias, fechaLegible, fechaLocal, sumarMeses } from './utiles'
+import { useAuth } from '../auth'
+import AcuerdoCalculado from './AcuerdoCalculado'
+import type { CuerpoAcuerdo } from './AcuerdoCalculado'
 
 // Registrar gestión en un paso: qué pasó y cuál fue el resultado.
 //   - Gestión: tipo + comentario (+ próximo contacto, opcional).
@@ -42,6 +45,13 @@ function repartir(total: number, pie: number, n: number, primera: string): Cuota
   }))
 }
 
+function proximoViernes(): string {
+  const d = new Date()
+  const faltan = ((5 - d.getDay() + 7) % 7) || 7
+  d.setDate(d.getDate() + faltan)
+  return fechaLocal(d)
+}
+
 function finDeMes(): string {
   const d = new Date()
   return fechaLocal(new Date(d.getFullYear(), d.getMonth() + 1, 0))
@@ -49,7 +59,7 @@ function finDeMes(): string {
 
 const ATAJOS_FECHA: [string, () => string][] = [
   ['Mañana', () => enDias(1)], ['En 3 días', () => enDias(3)],
-  ['En una semana', () => enDias(7)], ['Fin de mes', finDeMes],
+  ['Próximo viernes', proximoViernes], ['En una semana', () => enDias(7)], ['Fin de mes', finDeMes],
 ]
 
 export default function RegistrarGestion({ cobranza, resultado, setResultado }: {
@@ -58,6 +68,10 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
   setResultado: (r: ResultadoGestion) => void
 }) {
   const qc = useQueryClient()
+  const { tiene } = useAuth()
+  const conCalculadora = tiene('calculadora_369')
+  const [modoAcuerdo, setModoAcuerdo] = useState<'calculado' | 'manual'>(conCalculadora ? 'calculado' : 'manual')
+  const [cuerpoCalculado, setCuerpoCalculado] = useState<CuerpoAcuerdo | null>(null)
   const [tipoId, setTipoId] = useState<number | null>(null)
   const [descripcion, setDescripcion] = useState('')
   const [proximo, setProximo] = useState('')
@@ -121,6 +135,13 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
       }
       if (resultado === 'gestion') cuerpo.fecha_proximo_contacto = proximo || null
       if (resultado === 'promesa') cuerpo.promesa = { fecha: promesaFecha, monto: Number(promesaMonto) || null }
+      if (resultado === 'acuerdo' && modoAcuerdo === 'calculado' && cuerpoCalculado) {
+        // Mismo cálculo de la calculadora 3-6-9; deja el acuerdo y su gestión.
+        const canal = tipos?.find((t) => t.id === tipoId)?.nombre
+        const observaciones = [canal ? `Vía: ${canal}.` : '', descripcion.trim()].filter(Boolean).join(' ')
+        await api.post('/calculadora/acuerdo/crear', { ...cuerpoCalculado, cobranza_id: cobranza.id, observaciones: observaciones || null })
+        return
+      }
       if (resultado === 'acuerdo') {
         cuerpo.acuerdo = {
           monto_total_acordado: Number(total), pie: Number(pie) || 0, numero_cuotas: cuotas.length,
@@ -224,7 +245,20 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
               Esta cobranza ya tiene un acuerdo vigente. Para renegociar, márcalo como renegociado en
               "Acuerdo de pago y pagos" y vuelve a registrar el nuevo.
             </div>
-          ) : (
+          ) : (<>
+            {conCalculadora && (
+              <div className="segmentos" role="group" aria-label="Cómo armar el acuerdo">
+                <button type="button" className={modoAcuerdo === 'calculado' ? 'activo' : ''} onClick={() => setModoAcuerdo('calculado')}>
+                  Calculado (3-6-9)
+                </button>
+                <button type="button" className={modoAcuerdo === 'manual' ? 'activo' : ''} onClick={() => setModoAcuerdo('manual')}>
+                  Montos a mano
+                </button>
+              </div>
+            )}
+            {modoAcuerdo === 'calculado' ? (
+              <AcuerdoCalculado cobranza={cobranza} alCambiar={setCuerpoCalculado} />
+            ) : (
             <div className="acuerdo-manual">
               <div className="fila">
                 <label>Monto total *<input type="number" min="1" value={total} required
@@ -269,7 +303,8 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
                 </>
               )}
             </div>
-          ))}
+            )}
+          </>))}
 
           <textarea
             rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required={resultado === 'gestion'}
@@ -293,7 +328,8 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
 
           {error && <div className="alerta-error">{error}</div>}
           <button className="btn btn-primario"
-            disabled={guardar.isPending || (resultado === 'acuerdo' && (Boolean(vigente) || !cuadra))}>
+            disabled={guardar.isPending || (resultado === 'acuerdo' && (Boolean(vigente)
+              || (modoAcuerdo === 'calculado' ? !cuerpoCalculado : !cuadra)))}>
             {guardar.isPending ? 'Guardando…' : textoBoton}
           </button>
           <p className="nota">

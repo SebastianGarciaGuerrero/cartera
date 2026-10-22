@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './estilos.css'
+import './estilos-trabajo.css'
 import App from './App.tsx'
 import { adaptadorListo } from './api/client'
 

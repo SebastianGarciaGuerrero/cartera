@@ -15,6 +15,7 @@ import { NuevoRecordatorio } from './Agenda'
 import { fechaLocal } from '../componentes/utiles'
 import { NOMBRE_DOCUMENTO } from '../componentes/utiles'
 import CicloVida from '../componentes/CicloVida'
+import { ResumenDeuda, usePagos } from '../componentes/HistorialPagos'
 
 // La pantalla más usada del sistema: la ficha de una cobranza con su
 // historial de gestiones y el formulario para registrar la siguiente.
@@ -47,6 +48,11 @@ export default function CobranzaDetalle() {
     setResultado('acuerdo')
     document.getElementById('registrar-gestion')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+  function pedirAbono() {
+    setResultado('pago')
+    document.getElementById('registrar-gestion')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const { data: pagos } = usePagos({ cobranza_id: id })
 
   const { data: campos } = useCampos('cobranza', cob?.cliente_id)
 
@@ -72,6 +78,8 @@ export default function CobranzaDetalle() {
       </header>
 
       <CicloVida cobranza={cob} />
+      <ResumenDeuda original={Number(cob.monto_original)} saldo={Number(cob.monto_actual)} pagos={pagos}
+        cobranzaId={cob.id} alAbonar={pedirAbono} />
 
       <div className="ficha-grilla">
         {/* Columna izquierda: datos del caso */}
