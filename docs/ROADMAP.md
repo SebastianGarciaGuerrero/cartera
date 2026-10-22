@@ -80,6 +80,17 @@ Incluye el Word del acuerdo / avenimiento con el formato para aprobación del ma
 - **Envío automático** de recordatorios de cuota y **pagos en línea**
   (Flow / Khipu / Webpay) con conciliación automática: premium.
 
+## Rendimiento (simulador)
+
+`python -m app.cli simular --anios 5` llena una base de prueba con 5 años de
+cartera con las proporciones de un estudio real (4.750 cobranzas, 60 mil
+gestiones, 2.200 causas, 60 mil trámites, 4.200 pagos, 5.100 gastos) y
+`medir-rendimiento` toma los tiempos. Medido en un PC de escritorio
+(octubre 2026), sin red: listas, fichas y búsquedas entre 7 y 30 ms; bandeja
+judicial 15–35 ms; avisos 32 ms; agenda del mes de todo el equipo ~115 ms;
+panel ~70 ms. Volver a medir con `--anios 20` antes de migrar la cartera
+histórica de un estudio.
+
 ## Fase 5: operación del SaaS
 
 - Panel de plataforma (organizaciones, planes, uso) y facturación.

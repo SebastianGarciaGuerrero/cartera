@@ -17,6 +17,8 @@ python -m app.cli crear-organizacion --nombre ... --slug ... --admin-nombre ... 
 python -m app.cli -h                 # listar-organizaciones, cambiar-plan, cambiar-estado, enlace-acceso
 uvicorn app.main:app --reload        # API en :8000, /docs solo fuera de producción
 pytest                               # tests contra Postgres real (TEST_DATABASE_URL o pgserver portátil)
+python -m app.cli simular --anios 5 --password ...   # SOLO base de prueba: org "simulacion" con 5 años de cartera
+python -m app.cli medir-rendimiento --password ...   # tiempos de las pantallas principales con esa cartera
 npm run dev --prefix frontend        # :5173, proxy /api → :8000
 npm run build --prefix frontend      # tsc -b + vite build
 npm run lint --prefix frontend       # oxlint
