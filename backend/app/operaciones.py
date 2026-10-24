@@ -185,6 +185,12 @@ def registrar_pago(db: Session, cobranza: Cobranza, datos: PagoCreate, usuario: 
             raise HTTPException(status_code=404, detail=f"Cuota con id {datos.cuota_id} no encontrada")
         if cuota.acuerdo.cobranza_id != cobranza.id:
             raise HTTPException(status_code=400, detail="La cuota indicada no pertenece a esta cobranza.")
+    if Decimal(datos.capital) > Decimal(cobranza.monto_actual):
+        raise HTTPException(
+            status_code=400,
+            detail=(f"El monto es mayor que la deuda: el capital del pago ({clp(datos.capital)}) "
+                    f"supera el saldo capital de {clp(cobranza.monto_actual)}."),
+        )
 
     pago = Pago(**datos.model_dump(), usuario_id=usuario.id)
     if pago.fecha_pago is None:

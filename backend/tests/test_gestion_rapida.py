@@ -38,6 +38,7 @@ def test_gestion_con_acuerdo_manual_en_un_paso(cliente_http, org_a):
     r = _completa(cliente_http, h, cobranza_id=cartera["cobranza_id"], resultado="acuerdo", tipo_id=llamada,
                   descripcion="Acepta pagar en tres partes, la última más chica.",
                   acuerdo={"monto_total_acordado": 450000, "pie": 50000, "numero_cuotas": 1,
+                           "fecha_pie": (hoy + timedelta(days=3)).isoformat(),
                            "fecha_primera_cuota": cuotas[0]["fecha_vencimiento"], "cuotas": cuotas})
     assert r.status_code == 201, r.text
     texto = r.json()["descripcion"]
@@ -46,7 +47,10 @@ def test_gestion_con_acuerdo_manual_en_un_paso(cliente_http, org_a):
 
     acuerdo = cliente_http.get("/api/acuerdos/", params={"cobranza_id": cartera["cobranza_id"]}, headers=h).json()[0]
     detalle = cliente_http.get(f"/api/acuerdos/{acuerdo['id']}", headers=h).json()
-    assert [float(c["monto"]) for c in detalle["cuotas"]] == [150000, 150000, 100000]
+    # El pie va como cuota 0, en su fecha.
+    assert [float(c["monto"]) for c in detalle["cuotas"]] == [50000, 150000, 150000, 100000]
+    assert detalle["cuotas"][0]["numero_cuota"] == 0
+    assert detalle["cuotas"][0]["fecha_vencimiento"] == (hoy + timedelta(days=3)).isoformat()
     assert detalle["numero_cuotas"] == 3
     assert cliente_http.get(f"/api/cobranzas/{cartera['cobranza_id']}", headers=h).json()["estado"] == "acuerdo_pago"
     assert len(_historial(cliente_http, h, cartera["cobranza_id"])) == 1  # una sola gestión

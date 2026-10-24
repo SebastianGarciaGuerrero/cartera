@@ -68,10 +68,16 @@ def test_acuerdo_asistido_crea_cuotas_con_desglose(cliente_http, org_a):
     r = cliente_http.post("/api/calculadora/acuerdo/crear", headers=h, json=cuerpo)
     assert r.status_code == 201, r.text
     acuerdo = r.json()
-    assert len(acuerdo["cuotas"]) == 4
+    # El pie queda como cuota 0 (sale en la agenda) + las 4 cuotas.
+    assert [c["numero_cuota"] for c in acuerdo["cuotas"]] == [0, 1, 2, 3, 4]
+    pie = acuerdo["cuotas"][0]
+    assert float(pie["monto"]) == 100000
+    assert pie["fecha_vencimiento"] == hoy_chile().isoformat()
+    assert sum(float(c["monto"]) for c in acuerdo["cuotas"]) == float(acuerdo["monto_total_acordado"])
     assert float(acuerdo["monto_total_acordado"]) == float(simulado["gran_total"])
-    cuota = acuerdo["cuotas"][0]
-    assert float(cuota["capital"]) + float(cuota["intereses"]) + float(cuota["honorarios"]) == float(cuota["monto"])
+    for cuota in acuerdo["cuotas"]:
+        assert (float(cuota["capital"]) + float(cuota["intereses"]) + float(cuota["honorarios"])
+                == float(cuota["monto"]))
 
     cob = cliente_http.get(f"/api/cobranzas/{cartera['cobranza_id']}", headers=h).json()
     assert cob["estado"] == "acuerdo_pago"
@@ -131,6 +137,35 @@ def test_agenda_contactos_cuotas_y_recordatorios(cliente_http, org_a):
     mes = cliente_http.get("/api/agenda", headers=h, params={
         "desde": hoy.replace(day=1).isoformat(), "hasta": (hoy + timedelta(days=70)).isoformat()}).json()
     assert sum(1 for i in mes if i["tipo"] == "cuota") >= 2
+
+
+def test_pie_del_acuerdo_sale_en_la_agenda(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=300_000, n=42)
+    hoy = hoy_chile()
+    r = cliente_http.post("/api/acuerdos/", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "monto_total_acordado": 300000, "pie": 60000,
+        "fecha_pie": hoy.isoformat(), "numero_cuotas": 3,
+        "fecha_primera_cuota": (hoy + timedelta(days=30)).isoformat()})
+    assert r.status_code == 201, r.text
+    acuerdo = r.json()
+    assert [(c["numero_cuota"], float(c["monto"])) for c in acuerdo["cuotas"]] == [
+        (0, 60000), (1, 80000), (2, 80000), (3, 80000)]
+
+    items = cliente_http.get("/api/agenda/hoy", headers=h).json()
+    pie = [i for i in items if i["tipo"] == "cuota" and i["cobranza_id"] == cartera["cobranza_id"]]
+    assert len(pie) == 1 and pie[0]["titulo"].startswith("Pie del acuerdo")
+
+    # Pagado el pie, sale de la agenda y el acuerdo sigue vigente.
+    cuota_pie = acuerdo["cuotas"][0]
+    r = cliente_http.post("/api/pagos/", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "cuota_id": cuota_pie["id"],
+        "monto": 60000, "capital": 60000})
+    assert r.status_code == 201, r.text
+    items = cliente_http.get("/api/agenda/hoy", headers=h).json()
+    assert not any(i["tipo"] == "cuota" and i["cobranza_id"] == cartera["cobranza_id"] for i in items)
+    detalle = cliente_http.get(f"/api/acuerdos/{acuerdo['id']}", headers=h).json()
+    assert detalle["estado"] == "vigente"
 
 
 def test_operador_solo_ve_su_agenda(cliente_http, org_a):
