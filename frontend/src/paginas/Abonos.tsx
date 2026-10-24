@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../auth'
-import { EtiquetaEstado, fechaLegible, fechaLocal, Plata, rutConPuntos } from '../componentes/utiles'
+import { EtiquetaEstado, fechaLegible, fechaLocal, nombreCuota, Plata, rutConPuntos } from '../componentes/utiles'
 import { FormPago } from '../componentes/Finanzas'
 import type { PagoRegistrado } from '../componentes/Finanzas'
 import type { Acuerdo, AcuerdoDetalle, Cobranza, CobranzaDetalle, Cuota, Pago } from '../api/tipos'
@@ -165,7 +165,7 @@ export default function Abonos() {
                     {pendientes.map((c) => (
                       <label key={c.id} className={`opcion ${idCuota === c.id ? 'elegida' : ''}`}>
                         <input type="radio" name="cuota" checked={idCuota === c.id} onChange={() => setCuotaElegida(c.id)} />
-                        <span>Cuota {c.numero_cuota}/{acuerdo?.numero_cuotas}</span>
+                        <span>{nombreCuota(c.numero_cuota, acuerdo?.numero_cuotas, 'Cuota ')}</span>
                         <span className={c.fecha_vencimiento < hoy ? 'texto-rojo' : 'suave'}>
                           vence {fechaLegible(c.fecha_vencimiento)}
                         </span>
@@ -183,6 +183,7 @@ export default function Abonos() {
               <FormPago
                 key={idCuota}
                 cobranzaId={cob.id}
+                saldo={cob.monto_actual}
                 modalidad={cob.tipo}
                 cuota={cuota}
                 alTerminar={alRegistrar}

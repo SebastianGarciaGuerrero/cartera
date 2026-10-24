@@ -5,7 +5,7 @@ import { api, mensajeDeError } from '../api/client'
 import { refrescarCaso } from '../api/refrescar'
 import type { Acuerdo, AcuerdoDetalle, CobranzaDetalle, TipoGestion } from '../api/tipos'
 import { FormPago } from './Finanzas'
-import { Plata, clp, enDias, fechaLegible, fechaLocal, sumarMeses } from './utiles'
+import { Plata, clp, enDias, fechaLegible, fechaLocal, nombreCuota, sumarMeses } from './utiles'
 import { useAuth } from '../auth'
 import AcuerdoCalculado from './AcuerdoCalculado'
 import type { CuerpoAcuerdo } from './AcuerdoCalculado'
@@ -83,6 +83,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
   // Acuerdo
   const [total, setTotal] = useState(String(Math.round(Number(cobranza.monto_actual))))
   const [pie, setPie] = useState('0')
+  const [fechaPie, setFechaPie] = useState(fechaLocal())
   const [nCuotas, setNCuotas] = useState('6')
   const [primera, setPrimera] = useState(() => sumarMeses(fechaLocal(), 1))
   const [cuotasEditadas, setCuotasEditadas] = useState<CuotaEditable[] | null>(null)
@@ -145,6 +146,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
       if (resultado === 'acuerdo') {
         cuerpo.acuerdo = {
           monto_total_acordado: Number(total), pie: Number(pie) || 0, numero_cuotas: cuotas.length,
+          fecha_pie: Number(pie) > 0 ? fechaPie : null,
           fecha_primera_cuota: cuotas[0].fecha,
           cuotas: cuotas.map((c) => ({ fecha_vencimiento: c.fecha, monto: Number(c.monto) })),
         }
@@ -153,7 +155,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
     },
     onSuccess: () => terminar(
       resultado === 'promesa' ? `Promesa registrada: te aparecerá en la agenda el ${fechaLegible(promesaFecha)}.`
-        : resultado === 'acuerdo' ? 'Acuerdo registrado. Cada cuota te aparecerá en la agenda y en los avisos (el día antes y el día que vence).'
+        : resultado === 'acuerdo' ? 'Acuerdo registrado. El pie y cada cuota te aparecerán en la agenda y en los avisos (el día antes y el día que vence).'
           : proximo ? `Gestión registrada. Próximo contacto el ${fechaLegible(proximo)}.` : 'Gestión registrada.',
     ),
     onError: (e) => setError(mensajeDeError(e)),
@@ -188,7 +190,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
               {pendientes.map((c) => (
                 <label key={c.id} className={`opcion ${idCuota === c.id ? 'elegida' : ''}`}>
                   <input type="radio" name="cuota-gestion" checked={idCuota === c.id} onChange={() => setCuotaElegida(c.id)} />
-                  <span>Cuota {c.numero_cuota}/{vigente?.numero_cuotas}</span>
+                  <span>{nombreCuota(c.numero_cuota, vigente?.numero_cuotas, 'Cuota ')}</span>
                   <span className={c.fecha_vencimiento < fechaLocal() ? 'texto-rojo' : 'suave'}>
                     vence {fechaLegible(c.fecha_vencimiento)}
                   </span>
@@ -202,8 +204,9 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
               </label>
             </div>
           )}
-          <FormPago key={idCuota} cobranzaId={cobranza.id} modalidad={cobranza.tipo} cuota={cuotaPago}
-            alTerminar={(p) => terminar(`Pago de ${clp(p.monto)} registrado${p.cuota ? ` (cuota ${p.cuota})` : ''}.`)}
+          <FormPago key={idCuota} cobranzaId={cobranza.id} saldo={cobranza.monto_actual} modalidad={cobranza.tipo}
+            cuota={cuotaPago}
+            alTerminar={(p) => terminar(`Pago de ${clp(p.monto)} registrado${p.cuota != null ? ` (${nombreCuota(p.cuota, null, 'cuota ')})` : ''}.`)}
             alCancelar={() => setResultado('gestion')} />
         </>
       ) : (
@@ -265,6 +268,10 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
                   onChange={(e) => { setTotal(e.target.value); setCuotasEditadas(null) }} /></label>
                 <label>Pie<input type="number" min="0" value={pie}
                   onChange={(e) => { setPie(e.target.value); setCuotasEditadas(null) }} /></label>
+                {Number(pie) > 0 && (
+                  <label>Fecha del pie *<input type="date" value={fechaPie} required
+                    onChange={(e) => setFechaPie(e.target.value)} /></label>
+                )}
                 <label>N° de cuotas *<input type="number" min="1" max="120" value={nCuotas} required
                   onChange={(e) => { setNCuotas(e.target.value); setCuotasEditadas(null) }} /></label>
                 <label>Primera cuota *<input type="date" value={primera} required

@@ -94,6 +94,12 @@ export function sumarMeses(iso: string, meses: number): string {
   return `${anio}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
 }
 
+/** "3/6" (o "Cuota 3/6" con prefijo); la cuota 0 es el pie del acuerdo. */
+export function nombreCuota(numero: number, total?: number | null, prefijo = ''): string {
+  if (numero === 0) return 'Pie'
+  return `${prefijo}${numero}${total ? `/${total}` : ''}`
+}
+
 /** Fecha local de hoy + N días (AAAA-MM-DD). */
 export function enDias(n: number): string {
   const d = new Date()

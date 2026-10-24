@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { CuotaDeudor, DeudaDeudor, EstadoCuotaDeudor, EstadoDeudorPublico } from '../api/tipos'
-import { clp, fechaLegible } from '../componentes/utiles'
+import { clp, fechaLegible, nombreCuota } from '../componentes/utiles'
 
 // Portal del deudor: página pública que se abre con el enlace personal que
 // envía el estudio (/estado#t=TOKEN). El token va en el fragmento (#), que
@@ -195,7 +195,7 @@ function Convenio({ c }: { c: NonNullable<DeudaDeudor['convenio']> }) {
           <tbody>
             {c.cuotas.map((q) => (
               <tr key={q.numero}>
-                <td>{q.numero}</td>
+                <td>{nombreCuota(q.numero)}</td>
                 <td>{fechaLegible(q.vence)}</td>
                 <td className="der">{clp(Number(q.monto))}</td>
                 <td><span className={`etiqueta ${CLASE_CUOTA[q.estado]}`}>{NOMBRE_CUOTA[q.estado]}</span></td>
@@ -212,7 +212,7 @@ function Proxima({ cuota }: { cuota: CuotaDeudor }) {
   const falta = Number(cuota.monto) - Number(cuota.pagado)
   return (
     <div className="publico-proxima">
-      <span className="suave">Próxima cuota (N° {cuota.numero})</span>
+      <span className="suave">{cuota.numero === 0 ? 'Pie del acuerdo' : `Próxima cuota (N° ${cuota.numero})`}</span>
       <strong>{clp(falta)}</strong>
       <span>vence el {fechaLegible(cuota.vence)}</span>
     </div>

@@ -260,7 +260,7 @@ function semilla() {
     {
       id: 'g-1', cobranza_id: 'cob-1', usuario_id: 'u-operador', tipo_id: 1 as number | null,
       descripcion: 'Primera llamada a don Pedro. Contesta. Reconoce la deuda y pide unos días para revisar su situación.',
-      fecha_gestion: '2026-06-02T10:30:00', fecha_proximo_contacto: null,
+      fecha_gestion: '2026-06-02T10:30:00', fecha_proximo_contacto: null as string | null,
     },
     {
       id: 'g-2', cobranza_id: 'cob-1', usuario_id: 'u-operador', tipo_id: 4,
@@ -408,12 +408,83 @@ function usuarioDelToken(config: InternalAxiosRequestConfig, db: DB) {
   return db.usuarios.find((u) => u.id === id) ?? db.usuarios[0]
 }
 
-function gestionAutomatica(db: DB, cobranza_id: string, usuario_id: string, codigoTipo: string, descripcion: string) {
+function gestionAutomatica(db: DB, cobranza_id: string, usuario_id: string, codigoTipo: string, descripcion: string,
+                           fecha_proximo_contacto: string | null = null) {
   const tipo = db.tiposGestion.find((t) => t.codigo === codigoTipo)
-  db.gestiones.push({
+  const gestion = {
     id: uid(), cobranza_id, usuario_id, tipo_id: tipo?.id ?? null,
-    descripcion, fecha_gestion: ahora(), fecha_proximo_contacto: null,
+    descripcion, fecha_gestion: ahora(), fecha_proximo_contacto,
+  }
+  db.gestiones.push(gestion)
+  return gestion
+}
+
+/** Texto automático + por dónde fue el contacto + el comentario (como el backend). */
+function conNota(texto: string, nota?: string | null, canal?: string | null): string {
+  return [texto, canal ? `Vía: ${canal}.` : '', (nota ?? '').trim()].filter(Boolean).join('\n')
+}
+
+const ddmmaaaa = (iso: string) => iso.split('-').reverse().join('-')
+
+interface TerminosDemo {
+  monto_total_acordado: number | string
+  pie?: number | string
+  fecha_pie?: string | null
+  numero_cuotas: number | string
+  fecha_primera_cuota: string
+  dia_pago?: number | null
+  cuotas?: { fecha_vencimiento: string; monto: number | string }[] | null
+}
+
+/**
+ * Crea el acuerdo como el backend: cuotas iguales (o las escritas a mano) y
+ * el pie como "cuota 0" en su fecha, para que salga en la agenda ese día.
+ * Devuelve el texto del error si no se puede.
+ */
+function crearAcuerdoDemo(db: DB, cob: DB['cobranzas'][number], datos: TerminosDemo, usuarioId: string,
+                          nota?: string | null, canal?: string | null, proximo: string | null = null) {
+  if (db.acuerdos.some((a) => a.cobranza_id === cob.id && a.estado === 'vigente')) {
+    return 'La cobranza ya tiene un acuerdo vigente.'
+  }
+  const total = Number(datos.monto_total_acordado)
+  const pie = Number(datos.pie ?? 0)
+  if (pie > total) return 'El pie no puede ser mayor que el monto total acordado.'
+  const acuerdoId = uid()
+  const cuota = (numero: number, monto: number, fecha: string) => ({
+    id: uid(), acuerdo_id: acuerdoId, numero_cuota: numero, monto: String(monto),
+    fecha_vencimiento: fecha, monto_pagado: '0', estado: 'pendiente' as const,
   })
+  let cuotas
+  if (datos.cuotas?.length) {
+    const suma = datos.cuotas.reduce((s, c) => s + Number(c.monto), 0)
+    if (Math.round(suma) !== Math.round(total - pie)) {
+      return `Las cuotas suman ${clp(suma)} y deben sumar ${clp(total - pie)} (monto total menos el pie).`
+    }
+    cuotas = datos.cuotas.map((c, i) => cuota(i + 1, Number(c.monto), c.fecha_vencimiento))
+  } else {
+    const n = Number(datos.numero_cuotas)
+    const base = Math.round((total - pie) / n)
+    cuotas = Array.from({ length: n }, (_, i) =>
+      cuota(i + 1, i === n - 1 ? total - pie - base * (n - 1) : base, sumarMeses(datos.fecha_primera_cuota, i)))
+  }
+  const fechaPie = datos.fecha_pie || hoy()
+  const nuevo = {
+    id: acuerdoId, cobranza_id: cob.id, estado: 'vigente', fecha_acuerdo: hoy(),
+    fecha_termino: cuotas[cuotas.length - 1].fecha_vencimiento,
+    pie: String(pie), monto_total_acordado: String(total), numero_cuotas: cuotas.length,
+    dia_pago: datos.dia_pago ?? null, fecha_primera_cuota: cuotas[0].fecha_vencimiento,
+    usuario_id: usuarioId, firma_cliente: 'sin_firmar', observaciones: null,
+    cuotas: [...(pie > 0 ? [cuota(0, pie, fechaPie)] : []), ...cuotas],
+  }
+  db.acuerdos.push(nuevo as never)
+  cob.estado = 'acuerdo_pago'
+  const iguales = new Set(cuotas.map((c) => c.monto)).size === 1
+  let texto = `ACUERDO DE PAGO: ${clp(total)} en ${cuotas.length} cuota(s)` +
+    (iguales ? ` de ${clp(Number(cuotas[0].monto))}` : ' de montos distintos')
+  if (pie > 0) texto += `, pie de ${clp(pie)} el ${ddmmaaaa(fechaPie)}`
+  texto += `. Primera cuota vence el ${ddmmaaaa(cuotas[0].fecha_vencimiento)}, última el ${ddmmaaaa(nuevo.fecha_termino)}.`
+  const gestion = gestionAutomatica(db, cob.id, usuarioId, 'acuerdo', conNota(texto, nota, canal), proximo)
+  return { acuerdo: nuevo, gestion }
 }
 
 // ---------- el adaptador ----------
@@ -531,7 +602,8 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
         if (cu.estado === 'pagada' || !enRango(cu.fecha_vencimiento)) continue
         const saldo = Number(cu.monto) - Number(cu.monto_pagado)
         items.push({ tipo: 'cuota', fecha: cu.fecha_vencimiento, hora: null,
-          titulo: `Cuota ${cu.numero_cuota}/${a.numero_cuotas}: ${d?.nombre}`, detalle: `Por pagar ${clp(saldo)}`,
+          titulo: cu.numero_cuota === 0 ? `Pie del acuerdo: ${d?.nombre}` : `Cuota ${cu.numero_cuota}/${a.numero_cuotas}: ${d?.nombre}`,
+          detalle: `Por pagar ${clp(saldo)}`,
           atrasado: cu.fecha_vencimiento < hoyIso, cobranza_id: c?.id, numero_cobranza: c?.numero, deudor: d?.nombre,
           monto: saldo, responsable_id: a.usuario_id, recordatorio_id: null, cuota_id: cu.id })
       }
@@ -601,9 +673,16 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
           fecha_termino: plan.cuotas[plan.cuotas.length - 1].fecha, pie: plan.abono_inicial,
           monto_total_acordado: plan.gran_total, numero_cuotas: plan.numero_cuotas, dia_pago: null,
           fecha_primera_cuota: String(d.fecha_primera_cuota), usuario_id: u.id, firma_cliente: 'sin_firmar', observaciones: null,
-          cuotas: plan.cuotas.map((f) => ({ id: uid(), acuerdo_id: acuerdoId, numero_cuota: f.numero, monto: f.total,
-            fecha_vencimiento: String(f.fecha), monto_pagado: '0', estado: 'pendiente', capital: f.capital,
-            intereses: f.intereses, honorarios: f.honorarios, gastos_judiciales: f.gastos_judiciales, comision: f.comision })),
+          cuotas: [
+            // El pie como cuota 0 (sale en la agenda el día que se paga).
+            ...(Number(plan.abono_inicial) > 0 ? [{ id: uid(), acuerdo_id: acuerdoId, numero_cuota: 0,
+              monto: plan.abono_inicial, fecha_vencimiento: String(d.fecha_pie || hoy()), monto_pagado: '0',
+              estado: 'pendiente', capital: plan.capital_pie, intereses: '0', honorarios: plan.honorarios_pie,
+              gastos_judiciales: '0', comision: '0' }] : []),
+            ...plan.cuotas.map((f) => ({ id: uid(), acuerdo_id: acuerdoId, numero_cuota: f.numero, monto: f.total,
+              fecha_vencimiento: String(f.fecha), monto_pagado: '0', estado: 'pendiente', capital: f.capital,
+              intereses: f.intereses, honorarios: f.honorarios, gastos_judiciales: f.gastos_judiciales, comision: f.comision })),
+          ],
         }
         db.acuerdos.push(nuevo as never)
         cob.estado = 'acuerdo_pago'
@@ -982,6 +1061,42 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     guardarDB(db)
     return ok(config, nueva, 201)
   }
+  if (metodo === 'POST' && url === '/gestiones/completa') {
+    // Gestión en un paso: solo gestión, promesa de pago o acuerdo (como el backend).
+    const datos = cuerpo(config) as {
+      cobranza_id: string; resultado?: 'gestion' | 'promesa' | 'acuerdo'; tipo_id?: number | null
+      descripcion?: string | null; fecha_proximo_contacto?: string | null
+      promesa?: { fecha: string; monto?: number | null } | null; acuerdo?: TerminosDemo | null
+    }
+    const cob = db.cobranzas.find((c) => c.id === datos.cobranza_id)
+    if (!cob) return error(404, 'Cobranza no encontrada')
+    const u = usuarioDelToken(config, db)
+    const canal = datos.tipo_id != null ? db.tiposGestion.find((t) => t.id === datos.tipo_id)?.nombre ?? null : null
+    const nota = (datos.descripcion ?? '').trim() || null
+    const resultado = datos.resultado ?? 'gestion'
+    let gestion
+    if (resultado === 'gestion') {
+      if (!nota) return error(422, 'Escribe qué pasó en la gestión.')
+      gestion = {
+        id: uid(), cobranza_id: cob.id, usuario_id: u.id, tipo_id: datos.tipo_id ?? null,
+        descripcion: nota, fecha_gestion: ahora(), fecha_proximo_contacto: datos.fecha_proximo_contacto ?? null,
+      }
+      db.gestiones.push(gestion)
+    } else if (resultado === 'promesa') {
+      const p = datos.promesa
+      if (!p?.fecha) return error(422, 'Indica la fecha de la promesa de pago.')
+      if (p.fecha < hoy()) return error(422, 'La fecha de la promesa no puede ser anterior a hoy.')
+      const texto = `PROMESA DE PAGO${p.monto ? ` de ${clp(Number(p.monto))}` : ''} para el ${ddmmaaaa(p.fecha)}.`
+      gestion = gestionAutomatica(db, cob.id, u.id, 'promesa_pago', conNota(texto, nota, canal), p.fecha)
+    } else {
+      if (!datos.acuerdo) return error(422, 'Faltan los términos del acuerdo.')
+      const creado = crearAcuerdoDemo(db, cob, datos.acuerdo, u.id, nota, canal, datos.fecha_proximo_contacto ?? null)
+      if (typeof creado === 'string') return error(400, creado)
+      gestion = creado.gestion
+    }
+    guardarDB(db)
+    return ok(config, gestion, 201)
+  }
 
   // ---- acuerdos ----
   if (metodo === 'GET' && url === '/acuerdos/') {
@@ -992,39 +1107,13 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     return a ? ok(config, a) : error(404, 'Acuerdo no encontrado')
   }
   if (metodo === 'POST' && url === '/acuerdos/') {
-    const datos = cuerpo(config) as Record<string, string | number>
+    const datos = cuerpo(config) as unknown as TerminosDemo & { cobranza_id: string; observaciones?: string | null }
     const cob = db.cobranzas.find((c) => c.id === datos.cobranza_id)
     if (!cob) return error(404, 'Cobranza no encontrada')
-    if (db.acuerdos.some((a) => a.cobranza_id === cob.id && a.estado === 'vigente')) {
-      return error(400, 'La cobranza ya tiene un acuerdo vigente.')
-    }
-    const u = usuarioDelToken(config, db)
-    const n = Number(datos.numero_cuotas)
-    const total = Number(datos.monto_total_acordado)
-    const pie = Number(datos.pie ?? 0)
-    const base = Math.round((total - pie) / n)
-    const acuerdoId = uid()
-    const cuotasNuevas = Array.from({ length: n }, (_, i) => ({
-      id: uid(), acuerdo_id: acuerdoId, numero_cuota: i + 1,
-      monto: String(i === n - 1 ? total - pie - base * (n - 1) : base),
-      fecha_vencimiento: sumarMeses(String(datos.fecha_primera_cuota), i),
-      monto_pagado: '0', estado: 'pendiente',
-    }))
-    const nuevo = {
-      id: acuerdoId, cobranza_id: cob.id, estado: 'vigente', fecha_acuerdo: hoy(),
-      fecha_termino: cuotasNuevas[n - 1].fecha_vencimiento,
-      pie: String(pie), monto_total_acordado: String(total), numero_cuotas: n,
-      dia_pago: (datos.dia_pago as number) ?? null,
-      fecha_primera_cuota: String(datos.fecha_primera_cuota),
-      usuario_id: u.id, cuotas: cuotasNuevas, firma_cliente: 'sin_firmar', observaciones: null,
-    }
-    db.acuerdos.push(nuevo as never)
-    cob.estado = 'acuerdo_pago'
-    gestionAutomatica(db, cob.id, u.id, 'acuerdo',
-      `ACUERDO DE PAGO: ${clp(total)} en ${n} cuota(s) de ${clp(base)}. ` +
-      `Primera cuota vence el ${cuotasNuevas[0].fecha_vencimiento}, última el ${nuevo.fecha_termino}.`)
+    const creado = crearAcuerdoDemo(db, cob, datos, usuarioDelToken(config, db).id, datos.observaciones)
+    if (typeof creado === 'string') return error(400, creado)
     guardarDB(db)
-    return ok(config, nuevo, 201)
+    return ok(config, creado.acuerdo, 201)
   }
 
   // ---- pagos (con la cascada del backend real) ----
@@ -1046,10 +1135,14 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const u = usuarioDelToken(config, db)
     const monto = Number(datos.monto)
     const capital = Number(datos.capital ?? 0)
+    if (capital > Number(cob.monto_actual)) {
+      return error(400, `El monto es mayor que la deuda: el capital del pago (${clp(capital)}) ` +
+        `supera el saldo capital de ${clp(Number(cob.monto_actual))}.`)
+    }
 
     const nuevo = {
       id: uid(), cobranza_id: cob.id, cuota_id: datos.cuota_id ?? null,
-      fecha_pago: hoy(), monto: String(monto),
+      fecha_pago: datos.fecha_pago || hoy(), monto: String(monto),
       capital: String(capital),
       honorarios: String(datos.honorarios ?? 0),
       intereses: String(datos.intereses ?? 0),
@@ -1087,12 +1180,12 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     if (Number(nuevo.honorarios) > 0) desglose.push(`Honorarios: ${clp(Number(nuevo.honorarios))}`)
     if (Number(nuevo.intereses) > 0) desglose.push(`Interés: ${clp(Number(nuevo.intereses))}`)
     if (Number(nuevo.gastos_judiciales) > 0) desglose.push(`Gastos judiciales: ${clp(Number(nuevo.gastos_judiciales))}`)
-    const encabezado = numeroCuota
-      ? `Pago de cuota ${numeroCuota} por un total de ${clp(monto)}`
+    const encabezado = numeroCuota != null
+      ? `Pago de ${numeroCuota === 0 ? 'pie' : `cuota ${numeroCuota}`} por un total de ${clp(monto)}`
       : `Se realizó un abono por un total de ${clp(monto)}`
     const detalle = desglose.length ? ` Desglose: ${desglose.join(' · ')}.` : ''
     gestionAutomatica(db, cob.id, u.id, 'abono',
-      `${encabezado}.${detalle} Saldo capital restante: ${clp(Number(cob.monto_actual))}.`)
+      conNota(`${encabezado}.${detalle} Saldo capital restante: ${clp(Number(cob.monto_actual))}.`, datos.observaciones))
     if (cob.estado === 'pagada') {
       gestionAutomatica(db, cob.id, u.id, 'pagado', 'CUENTA SALDADA. La cobranza queda en estado pagada.')
     }
@@ -1234,7 +1327,8 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
         const atrasadas = impagas.filter((q) => q.estado === 'atrasada')
         convenio = {
           estado: a.estado, fecha: a.fecha_acuerdo, total: a.monto_total_acordado, pie: a.pie,
-          numero_cuotas: a.numero_cuotas, cuotas_pagadas: cuotas.length - impagas.length,
+          // El pie (cuota 0) no cuenta como una de las N cuotas.
+          numero_cuotas: a.numero_cuotas, cuotas_pagadas: cuotas.filter((q) => q.numero > 0 && q.estado === 'pagada').length,
           pagado: String(cuotas.reduce((s, q) => s + Number(q.pagado), 0)),
           por_pagar: String(impagas.reduce((s, q) => s + resta(q), 0)),
           cuotas_atrasadas: atrasadas.length, monto_atrasado: String(atrasadas.reduce((s, q) => s + resta(q), 0)),

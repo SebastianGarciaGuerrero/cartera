@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { Pago } from '../api/tipos'
-import { Plata, fechaHoraLegible, fechaLegible } from './utiles'
+import { Plata, fechaHoraLegible, fechaLegible, nombreCuota } from './utiles'
 import { NOMBRE_FORMA } from './Finanzas'
 
 // Cuánto debía al llegar, cuánto ha pagado y cuánto debe hoy, con el
@@ -92,7 +92,7 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
                     onClick={() => setAbierto(abiertoEste ? null : p.id)}>
                     <span className="historial-fecha">{fechaLegible(p.fecha_pago)}</span>
                     <span className="historial-detalle">
-                      {p.numero_cuota ? `Cuota ${p.numero_cuota}` : p.estado_pago === 'abono' ? 'Abono' : 'Pago'}
+                      {p.numero_cuota != null ? nombreCuota(p.numero_cuota, null, 'Cuota ') : p.estado_pago === 'abono' ? 'Abono' : 'Pago'}
                       {deudorId && p.numero_cobranza && ` · Cobranza N° ${p.numero_cobranza}`}
                       {p.forma_pago && ` · ${NOMBRE_FORMA[p.forma_pago] ?? p.forma_pago}`}
                     </span>

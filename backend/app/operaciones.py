@@ -235,7 +235,7 @@ def registrar_pago(db: Session, cobranza: Cobranza, datos: PagoCreate, usuario: 
     if datos.gastos_judiciales > 0:
         desglose.append(f"Gastos judiciales: {clp(datos.gastos_judiciales)}")
     encabezado = (
-        f"Pago de cuota {cuota.numero_cuota} por un total de {clp(monto)}"
+        f"Pago de {'pie' if cuota.numero_cuota == 0 else f'cuota {cuota.numero_cuota}'} por un total de {clp(monto)}"
         if cuota is not None
         else f"Se realizó un abono por un total de {clp(monto)}"
     )

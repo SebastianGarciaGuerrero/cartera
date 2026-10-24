@@ -6,7 +6,7 @@ import { refrescarCaso } from '../api/refrescar'
 import type {
   Cobranza, Acuerdo, AcuerdoDetalle, Cuota, Pago, EstadoCuota,
 } from '../api/tipos'
-import { Plata, fechaLegible, fechaLocal } from './utiles'
+import { Plata, fechaLegible, fechaLocal, nombreCuota } from './utiles'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useUF } from './UF'
@@ -113,7 +113,7 @@ export default function Finanzas({ cobranza, alPedirAcuerdo }: {
             <tbody>
               {acuerdoDetalle.cuotas.map((c) => (
                 <tr key={c.id}>
-                  <td className="mono">{c.numero_cuota}/{acuerdoDetalle.numero_cuotas}</td>
+                  <td className="mono">{nombreCuota(c.numero_cuota, acuerdoDetalle.numero_cuotas)}</td>
                   <td>{fechaLegible(c.fecha_vencimiento)}</td>
                   <td className="der"><Plata valor={c.monto} /></td>
                   <td className="der"><Plata valor={c.monto_pagado} /></td>
@@ -150,6 +150,7 @@ export default function Finanzas({ cobranza, alPedirAcuerdo }: {
       {pagando && (
         <FormPago
           cobranzaId={cobranzaId}
+          saldo={cobranza.monto_actual}
           modalidad={cobranza.tipo}
           cuota={pagando === 'directo' ? null : pagando}
           alTerminar={() => { setPagando(null); refrescarTodo() }}
@@ -234,9 +235,11 @@ export interface PagoRegistrado {
   cuota: number | null
 }
 
-export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTerminar, alCancelar }: {
+export function FormPago({ cobranzaId, cuota, saldo, modalidad = 'extrajudicial', alTerminar, alCancelar }: {
   cobranzaId: string
   cuota: Cuota | null
+  /** Saldo capital de la cobranza: el capital del pago no puede superarlo. */
+  saldo?: string | number
   modalidad?: Modalidad
   alTerminar: (pago: PagoRegistrado) => void
   alCancelar: () => void
@@ -293,6 +296,8 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
   const monto = Number(total) || 0
   const suma = (Number(capital) || 0) + (Number(honorarios) || 0) + (Number(interes) || 0) + (Number(gastos) || 0)
   const cuadra = Math.round(suma) === Math.round(monto)
+  const saldoCapital = saldo == null ? null : Number(saldo)
+  const excede = saldoCapital != null && Math.round(Number(capital) || 0) > Math.round(saldoCapital)
 
   const pagar = useMutation({
     mutationFn: async () => {
@@ -323,12 +328,13 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
     e.preventDefault()
     setError('')
     if (!cuadra) { setError('El desglose debe sumar exactamente el monto recibido.'); return }
+    if (excede) { setError('El monto es mayor que la deuda.'); return }
     pagar.mutate()
   }
 
   return (
     <form className="form-finanzas form-pago" onSubmit={alEnviar}>
-      <h3>{cuota ? `Pago de la cuota ${cuota.numero_cuota}` : 'Abono'}</h3>
+      <h3>{!cuota ? 'Abono' : cuota.numero_cuota === 0 ? 'Pago del pie' : `Pago de la cuota ${cuota.numero_cuota}`}</h3>
       <div className="fila">
         <label className="campo-destacado">
           Monto recibido *
@@ -380,6 +386,12 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
               {' '}(diferencia <Plata valor={monto - suma} />).
             </div>
           )}
+          {cuadra && excede && (
+            <div className="alerta-error">
+              El monto es mayor que la deuda: el capital de este pago (<Plata valor={capital} />)
+              {' '}supera el saldo capital de <Plata valor={saldoCapital!} />.
+            </div>
+          )}
         </div>
       )}
 
@@ -394,7 +406,7 @@ export function FormPago({ cobranzaId, cuota, modalidad = 'extrajudicial', alTer
       </p>
       {error && <div className="alerta-error">{error}</div>}
       <div className="fila">
-        <button className="btn btn-primario" disabled={pagar.isPending || monto <= 0 || !cuadra}>
+        <button className="btn btn-primario" disabled={pagar.isPending || monto <= 0 || !cuadra || excede}>
           {pagar.isPending ? 'Registrando…' : `Registrar ${cuota ? 'pago' : 'abono'} de ${monto > 0 ? '$' + Math.round(monto).toLocaleString('es-CL') : ''}`}
         </button>
         <button type="button" className="btn btn-secundario" onClick={alCancelar}>Cancelar</button>

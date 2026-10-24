@@ -36,6 +36,7 @@ export default function AcuerdoCalculado({ cobranza, alCambiar }: {
   const [cuotas, setCuotas] = useState('6')
   const [tasa, setTasa] = useState('0')
   const [pie, setPie] = useState('')
+  const [fechaPie, setFechaPie] = useState(fechaLocal())
   const [primera, setPrimera] = useState(() => sumarMeses(fechaLocal(), 1))
   const [dia, setDia] = useState('')
   const [redondeo, setRedondeo] = useState<'' | 'arriba' | 'abajo'>('')
@@ -55,9 +56,9 @@ export default function AcuerdoCalculado({ cobranza, alCambiar }: {
       uf: modalidad === 'extrajudicial' ? uf : null, modalidad,
       abono_inicial: pie || '0', gastos_judiciales: modalidad === 'judicial' ? (gastos || '0') : '0',
       con_comision: comision, redondeo: redondeo || null,
-      fecha_primera_cuota: primera, dia_siguientes: dia ? Number(dia) : null, fecha_pie: pie ? fechaLocal() : null,
+      fecha_primera_cuota: primera, dia_siguientes: dia ? Number(dia) : null, fecha_pie: Number(pie) > 0 ? fechaPie || fechaLocal() : null,
     }
-  }, [capital, cuotas, tasa, uf, modalidad, pie, gastos, comision, redondeo, primera, dia])
+  }, [capital, cuotas, tasa, uf, modalidad, pie, fechaPie, gastos, comision, redondeo, primera, dia])
 
   // Cálculo en el servidor un momento después de dejar de escribir.
   const clave = JSON.stringify(cuerpo)
@@ -101,9 +102,14 @@ export default function AcuerdoCalculado({ cobranza, alCambiar }: {
         </label>
       </div>
       <div className="fila">
-        <label>Pie hoy
+        <label>Pie
           <input type="number" min="0" value={pie} placeholder="opcional" onChange={(e) => setPie(e.target.value)} />
         </label>
+        {Number(pie) > 0 && (
+          <label>Fecha del pie
+            <input type="date" value={fechaPie} onChange={(e) => setFechaPie(e.target.value)} />
+          </label>
+        )}
         <div className="chips atajos">
           {[20, 30, 50].map((p) => (
             <button key={p} type="button" className="chip" disabled={!(Number(capital) > 0)}
