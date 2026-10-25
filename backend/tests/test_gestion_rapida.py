@@ -150,3 +150,15 @@ def test_mi_seguimiento(cliente_http, org_a):
                             ).status_code == 403
     otro = cliente_http.get("/api/seguimiento", headers=h, params={"usuario_id": s["usuario_id"]})
     assert otro.status_code == 200 and otro.json()["hoy"]["gestiones"] == 4
+
+
+def test_gestiones_del_deudor_en_su_ficha(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    una = crear_cartera(cliente_http, h, n=74)
+    otra = crear_cartera(cliente_http, h, n=75)
+    for cartera in (una, otra):
+        assert _completa(cliente_http, h, cobranza_id=cartera["cobranza_id"],
+                         descripcion="Llamada sin respuesta").status_code == 201
+    r = cliente_http.get("/api/gestiones/", headers=h, params={"deudor_id": una["deudor_id"]})
+    assert r.status_code == 200
+    assert {g["cobranza_id"] for g in r.json()} == {una["cobranza_id"]}

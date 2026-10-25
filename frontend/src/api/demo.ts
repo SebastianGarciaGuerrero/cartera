@@ -1039,8 +1039,10 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
 
   // ---- gestiones ----
   if (metodo === 'GET' && url === '/gestiones/') {
+    const delDeudor = params.deudor_id
+      ? new Set(db.cobranzas.filter((c) => c.deudor_id === params.deudor_id).map((c) => c.id)) : null
     const lista = db.gestiones
-      .filter((g) => !params.cobranza_id || g.cobranza_id === params.cobranza_id)
+      .filter((g) => (!params.cobranza_id || g.cobranza_id === params.cobranza_id) && (!delDeudor || delDeudor.has(g.cobranza_id)))
       .sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion))
       .map((g) => ({
         ...g,

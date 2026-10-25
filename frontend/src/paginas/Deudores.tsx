@@ -4,14 +4,16 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
-import type { Cobranza, Contacto, DeudorBusqueda, DeudorDetalle } from '../api/tipos'
+import type { Cobranza, Contacto, DeudorBusqueda, DeudorDetalle, Gestion } from '../api/tipos'
 import NuevoDeudor from '../componentes/NuevoDeudor'
 import { EtiquetaEstado, Plata, rutConPuntos } from '../componentes/utiles'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { ResumenDeuda, usePagos } from '../componentes/HistorialPagos'
+import LineaTiempo from '../componentes/LineaTiempo'
 
 // Deudores: búsqueda por RUT o nombre (con miles de deudores no se lista
-// todo) y una ficha con sus contactos, sus cobranzas y sus datos.
+// todo) y una ficha: resumen de la deuda arriba y, en pestañas, sus
+// cobranzas, sus gestiones, sus contactos y sus datos.
 
 const NOMBRE_CONTACTO: Record<string, string> = {
   telefono: 'Teléfono', celular: 'Celular', email: 'Correo', whatsapp: 'WhatsApp', otro: 'Otro',
@@ -82,9 +84,16 @@ export default function Deudores() {
   )
 }
 
+type PestanaFicha = 'cobranzas' | 'gestiones' | 'contactos' | 'datos'
+
+function iniciales(nombre: string) {
+  return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase()
+}
+
 function FichaDeudor({ id }: { id: string }) {
   const { etiqueta } = useAuth()
   const qc = useQueryClient()
+  const [pestana, setPestana] = useState<PestanaFicha>('cobranzas')
   const { data: d } = useQuery({
     queryKey: ['deudor', id],
     queryFn: async () => (await api.get<DeudorDetalle>(`/deudores/${id}`)).data,
@@ -92,6 +101,11 @@ function FichaDeudor({ id }: { id: string }) {
   const { data: cobranzas } = useQuery({
     queryKey: ['cobranzas', 'deudor', id],
     queryFn: async () => (await api.get<Cobranza[]>('/cobranzas/', { params: { deudor_id: id, limit: 100 } })).data,
+  })
+  const { data: gestiones } = useQuery({
+    queryKey: ['gestiones', 'deudor', id],
+    enabled: pestana === 'gestiones',
+    queryFn: async () => (await api.get<Gestion[]>('/gestiones/', { params: { deudor_id: id, limit: 200 } })).data,
   })
   const { data: campos } = useCampos('deudor')
   const { data: pagos } = usePagos({ deudor_id: id })
@@ -108,6 +122,7 @@ function FichaDeudor({ id }: { id: string }) {
   const saldo = abiertas.reduce((s, c) => s + Number(c.monto_actual), 0)
   const celular = contactos.find((c) => ['whatsapp', 'celular', 'telefono'].includes(c.tipo))
   const correo = contactos.find((c) => c.tipo === 'email')
+  const numeros = new Map((cobranzas ?? []).map((c) => [c.id, c.numero]))
   const datos: [string, string | null | undefined][] = [
     ['Tipo', d.tipo === 'natural' ? 'Persona natural' : 'Persona jurídica'],
     ['Dirección', [d.direccion, d.departamento].filter(Boolean).join(', ') || null],
@@ -118,65 +133,101 @@ function FichaDeudor({ id }: { id: string }) {
       ? `${d.contacto_alt_nombre}${d.contacto_alt_relacion ? ` (${d.contacto_alt_relacion})` : ''}${d.contacto_alt_telefono ? ` · ${d.contacto_alt_telefono}` : ''}`
       : null],
   ]
+  const pestanas: [PestanaFicha, string, number | null][] = [
+    ['cobranzas', etiqueta('cobranzas', 'Cobranzas'), cobranzas?.length ?? null],
+    ['gestiones', 'Gestiones', gestiones?.length ?? null],
+    ['contactos', 'Contactos', contactos.length],
+    ['datos', 'Datos', null],
+  ]
 
   return (
     <section className="tarjeta ficha-deudor">
-      <div className="ficha-deudor-cabecera">
-        <div>
-          <h2 className="resumen-titulo">{d.nombre}</h2>
-          <span className="mono suave">{rutConPuntos(d.rut)}</span>
-          {d.en_boletin_comercial && <span className="etiqueta etiqueta-castigo">DICOM</span>}
+      <header className="ficha-deudor-cabecera">
+        <div className="ficha-deudor-identidad">
+          <span className="iniciales" aria-hidden="true">{iniciales(d.nombre)}</span>
+          <div>
+            <h2>
+              {d.nombre}
+              {d.en_boletin_comercial && <span className="etiqueta etiqueta-castigo">DICOM</span>}
+            </h2>
+            <span className="ficha-deudor-meta">
+              <span className="mono">{rutConPuntos(d.rut)}</span>
+              {' · '}{d.tipo === 'natural' ? 'Persona natural' : 'Persona jurídica'}
+              {d.comuna && ` · ${d.comuna}`}
+            </span>
+          </div>
         </div>
         <div className="acciones">
           {celular && <a className="btn btn-chico btn-secundario" href={`tel:${celular.valor.replace(/\s/g, '')}`}>Llamar</a>}
           {celular && <a className="btn btn-chico btn-secundario" href={`https://wa.me/${soloDigitos(celular.valor)}`} target="_blank" rel="noreferrer">WhatsApp</a>}
           {correo && <a className="btn btn-chico btn-secundario" href={`mailto:${correo.valor}`}>Correo</a>}
         </div>
-      </div>
+      </header>
 
       <ResumenDeuda original={original} saldo={saldo} pagos={pagos} deudorId={d.id}
         enlaceAbonar={abiertas.length === 1 ? `/abonos?cobranza=${abiertas[0].id}` : abiertas.length > 1 ? `/abonos?q=${d.rut}` : undefined} />
 
-      <h3 className="subtitulo">Contactos</h3>
-      <ul className="lista-contactos">
-        {contactos.map((c: Contacto) => (
-          <li key={c.id}>
-            <span className="suave">{NOMBRE_CONTACTO[c.tipo] ?? c.tipo}</span>
-            <span className="mono">{c.valor}</span>
-            <button className="btn-texto" title="Quitar contacto" onClick={() => {
-              if (confirm(`¿Quitar ${c.valor}?`)) quitar.mutate(c.id)
-            }}>Quitar</button>
-          </li>
+      <nav className="pestanas pestanas-ficha" aria-label="Secciones de la ficha">
+        {pestanas.map(([clave, nombre, cantidad]) => (
+          <button key={clave} className={`pestana ${pestana === clave ? 'activa' : ''}`}
+            aria-current={pestana === clave ? 'page' : undefined} onClick={() => setPestana(clave)}>
+            {nombre}{cantidad != null && <span className="pestana-cantidad">{cantidad}</span>}
+          </button>
         ))}
-        {contactos.length === 0 && <li className="suave">Sin contactos registrados.</li>}
-      </ul>
-      <NuevoContacto deudorId={d.id} />
+      </nav>
 
-      <h3 className="subtitulo">{etiqueta('cobranzas', 'Cobranzas')} ({cobranzas?.length ?? 0})</h3>
-      <ul className="lista-cobranzas">
-        {cobranzas?.map((c) => (
-          <li key={c.id}>
-            <Link to={`/cobranzas/${c.id}`} className="negrita">N° {c.numero}</Link>
-            <strong><Plata valor={c.monto_actual} /></strong>
-            <span className="suave">{c.cliente_nombre}</span>
-            <span className="lista-cobranzas-estado">
-              <EtiquetaEstado estado={c.estado} />
-              {['activa', 'acuerdo_pago', 'judicial'].includes(c.estado) && (
-                <Link className="btn btn-chico btn-secundario" to={`/abonos?cobranza=${c.id}`}>Abonar</Link>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {pestana === 'cobranzas' && (
+        <ul className="lista-cobranzas">
+          {cobranzas?.map((c) => (
+            <li key={c.id}>
+              <Link to={`/cobranzas/${c.id}`} className="negrita">N° {c.numero}</Link>
+              <strong><Plata valor={c.monto_actual} /></strong>
+              <span className="suave">{c.cliente_nombre}</span>
+              <span className="lista-cobranzas-estado">
+                <EtiquetaEstado estado={c.estado} />
+                {['activa', 'acuerdo_pago', 'judicial'].includes(c.estado) && (
+                  <Link className="btn btn-chico btn-secundario" to={`/abonos?cobranza=${c.id}`}>Abonar</Link>
+                )}
+              </span>
+            </li>
+          ))}
+          {cobranzas?.length === 0 && <li className="vacio">Sin cobranzas.</li>}
+        </ul>
+      )}
 
-      <h3 className="subtitulo">Datos</h3>
-      <dl className="datos">
-        {datos.filter(([, v]) => v).map(([k, v]) => (
-          <div key={k} className="contents"><dt>{k}</dt><dd>{v}</dd></div>
-        ))}
-        <VistaCamposExtra campos={campos} valores={d.datos_extra} />
-      </dl>
-      {d.observaciones && <p className="observaciones">{d.observaciones}</p>}
+      {pestana === 'gestiones' && (
+        gestiones ? <LineaTiempo gestiones={gestiones} cobranzas={numeros} /> : <p className="suave">Cargando…</p>
+      )}
+
+      {pestana === 'contactos' && (
+        <>
+          <ul className="lista-contactos">
+            {contactos.map((c: Contacto) => (
+              <li key={c.id}>
+                <span className="suave">{NOMBRE_CONTACTO[c.tipo] ?? c.tipo}</span>
+                <span className="mono">{c.valor}</span>
+                <button className="btn-texto" title="Quitar contacto" onClick={() => {
+                  if (confirm(`¿Quitar ${c.valor}?`)) quitar.mutate(c.id)
+                }}>Quitar</button>
+              </li>
+            ))}
+            {contactos.length === 0 && <li className="suave">Sin contactos registrados.</li>}
+          </ul>
+          <div className="separado"><NuevoContacto deudorId={d.id} /></div>
+        </>
+      )}
+
+      {pestana === 'datos' && (
+        <>
+          <dl className="datos">
+            {datos.filter(([, v]) => v).map(([k, v]) => (
+              <div key={k} className="contents"><dt>{k}</dt><dd>{v}</dd></div>
+            ))}
+            <VistaCamposExtra campos={campos} valores={d.datos_extra} />
+          </dl>
+          {d.observaciones && <p className="observaciones">{d.observaciones}</p>}
+        </>
+      )}
     </section>
   )
 }

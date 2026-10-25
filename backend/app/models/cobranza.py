@@ -55,7 +55,7 @@ class Cobranza(TenantMixin, Base):
 
     # --- Fechas ---
     fecha_origen = Column(Date)  # operación/prestación que originó la deuda
-    fecha_ingreso = Column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    fecha_ingreso = Column(Date, nullable=False, server_default=text("fecha_chile()"))  # hora de Chile (0012)
     fecha_traspaso = Column(Date)  # cuando el cliente la derivó a judicial
 
     # --- Documento que respalda la deuda (pagaré, factura, letra...) ---
