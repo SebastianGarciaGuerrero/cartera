@@ -50,6 +50,9 @@ class AcuerdoBase(BaseModel):
 
     fecha_acuerdo: Optional[date] = None
     pie: Decimal = Field(Decimal("0"), ge=0, max_digits=15, decimal_places=2)
+    # Cuándo se paga el pie (queda como "cuota 0": sale en la agenda y se
+    # paga como cualquier cuota). Si no se indica, el día del acuerdo.
+    fecha_pie: Optional[date] = None
     monto_total_acordado: Decimal = Field(..., gt=0, max_digits=15, decimal_places=2)
     numero_cuotas: int = Field(1, ge=1, le=120)
     dia_pago: Optional[int] = Field(None, ge=1, le=31)

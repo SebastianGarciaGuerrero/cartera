@@ -57,6 +57,14 @@ def test_solo_el_capital_descuenta_saldo(cliente_http, org_a):
     cob = cliente_http.get(f"/api/cobranzas/{cartera['cobranza_id']}", headers=h).json()
     assert float(cob["monto_actual"]) == 60000 and cob["estado"] == "activa"
 
+    # Un abono con más capital que la deuda se rechaza y no toca el saldo.
+    r = cliente_http.post("/api/pagos/", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "monto": 70000, "capital": 70000,
+    })
+    assert r.status_code == 400 and "mayor que la deuda" in r.json()["detail"]
+    cob = cliente_http.get(f"/api/cobranzas/{cartera['cobranza_id']}", headers=h).json()
+    assert float(cob["monto_actual"]) == 60000
+
 
 def test_rut_invalido_se_rechaza(cliente_http, org_a):
     h = login(cliente_http, org_a["email"])

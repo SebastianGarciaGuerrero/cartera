@@ -8,6 +8,7 @@ import type {
 } from '../api/tipos'
 import {
   EtiquetaEstado, MESES, MESES_CORTOS, NOMBRE_ESTADO, Plata, clp, compacto, fechaLegible, rutConPuntos,
+  nombreCuota,
 } from '../componentes/utiles'
 import { CLASE_CUOTA, NOMBRE_CUOTA, NOMBRE_FORMA } from '../componentes/Finanzas'
 
@@ -294,7 +295,7 @@ export function PortalFicha() {
                   <tbody>
                     {a.cuotas.map((c) => (
                       <tr key={c.id}>
-                        <td className="mono">{c.numero_cuota}/{a.numero_cuotas}</td>
+                        <td className="mono">{nombreCuota(c.numero_cuota, a.numero_cuotas)}</td>
                         <td>{fechaLegible(c.fecha_vencimiento)}</td>
                         <td className="der"><Plata valor={c.monto} /></td>
                         <td className="der"><Plata valor={c.monto_pagado} /></td>

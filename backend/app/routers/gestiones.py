@@ -102,17 +102,21 @@ def editar_tipo_gestion(tipo_id: int, datos: TipoGestionEntrada, db: Session = D
 @router.get("/", response_model=List[GestionResponse])
 def listar_gestiones(
     cobranza_id: Optional[UUID] = None,
+    deudor_id: Optional[UUID] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
     """
-    Lista gestiones, normalmente filtradas por cobranza (su historial).
+    Lista gestiones, normalmente filtradas por cobranza (su historial) o por
+    deudor (las de todas sus cobranzas, para su ficha).
     Ordena de la más reciente a la más antigua.
     """
     query = db.query(Gestion)
     if cobranza_id is not None:
         query = query.filter(Gestion.cobranza_id == cobranza_id)
+    if deudor_id is not None:
+        query = query.join(Cobranza, Cobranza.id == Gestion.cobranza_id).filter(Cobranza.deudor_id == deudor_id)
     return (
         query.order_by(Gestion.fecha_gestion.desc())
         .offset(skip)

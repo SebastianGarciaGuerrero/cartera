@@ -120,6 +120,15 @@ def generar_cuotas(acuerdo: AcuerdoPago) -> List[Cuota]:
     return cuotas
 
 
+def cuota_pie(monto: Decimal, fecha: date, **desglose) -> Cuota:
+    """
+    El pie del acuerdo como "cuota 0": aparece en la agenda y en los avisos el
+    día que se paga, se registra su pago como el de cualquier cuota y cuenta
+    para dar el acuerdo por cumplido.
+    """
+    return Cuota(numero_cuota=0, monto=monto, fecha_vencimiento=fecha, **desglose)
+
+
 def crear_acuerdo(db: Session, cobranza: Cobranza, datos: AcuerdoCreate, usuario: Usuario, *,
                   nota: Optional[str] = None, canal: Optional[TipoGestion] = None,
                   fecha_proximo_contacto: Optional[date] = None) -> tuple[AcuerdoPago, Gestion]:
@@ -131,22 +140,25 @@ def crear_acuerdo(db: Session, cobranza: Cobranza, datos: AcuerdoCreate, usuario
     """
     validar_sin_acuerdo_vigente(db, cobranza.id)
 
-    acuerdo = AcuerdoPago(**datos.model_dump(exclude={"cuotas"}), usuario_id=usuario.id)
+    acuerdo = AcuerdoPago(**datos.model_dump(exclude={"cuotas", "fecha_pie"}), usuario_id=usuario.id)
     if datos.cuotas:
-        acuerdo.cuotas = [Cuota(numero_cuota=i, monto=c.monto, fecha_vencimiento=c.fecha_vencimiento)
-                          for i, c in enumerate(datos.cuotas, start=1)]
+        cuotas = [Cuota(numero_cuota=i, monto=c.monto, fecha_vencimiento=c.fecha_vencimiento)
+                  for i, c in enumerate(datos.cuotas, start=1)]
     else:
-        acuerdo.cuotas = generar_cuotas(acuerdo)
-    acuerdo.fecha_termino = acuerdo.cuotas[-1].fecha_vencimiento
+        cuotas = generar_cuotas(acuerdo)
+    pie = Decimal(acuerdo.pie or 0)
+    fecha_pie = datos.fecha_pie or acuerdo.fecha_acuerdo or hoy_chile()
+    acuerdo.cuotas = ([cuota_pie(pie, fecha_pie)] if pie > 0 else []) + cuotas
+    acuerdo.fecha_termino = cuotas[-1].fecha_vencimiento
     cobranza.estado = "acuerdo_pago"
 
-    montos = {c.monto for c in acuerdo.cuotas}
+    montos = {c.monto for c in cuotas}
     texto = f"ACUERDO DE PAGO: {clp(acuerdo.monto_total_acordado)} en {acuerdo.numero_cuotas} cuota(s)"
-    texto += f" de {clp(acuerdo.cuotas[0].monto)}" if len(montos) == 1 else " de montos distintos"
-    if Decimal(acuerdo.pie or 0) > 0:
-        texto += f", pie de {clp(acuerdo.pie)}"
+    texto += f" de {clp(cuotas[0].monto)}" if len(montos) == 1 else " de montos distintos"
+    if pie > 0:
+        texto += f", pie de {clp(pie)} el {fecha_pie.strftime('%d-%m-%Y')}"
     texto += (
-        f". Primera cuota vence el {acuerdo.cuotas[0].fecha_vencimiento.strftime('%d-%m-%Y')}"
+        f". Primera cuota vence el {cuotas[0].fecha_vencimiento.strftime('%d-%m-%Y')}"
         f", última el {acuerdo.fecha_termino.strftime('%d-%m-%Y')}."
     )
     gestion = gestion_automatica(db, cobranza.id, usuario.id, "acuerdo", con_nota(texto, nota, canal),
@@ -173,6 +185,12 @@ def registrar_pago(db: Session, cobranza: Cobranza, datos: PagoCreate, usuario: 
             raise HTTPException(status_code=404, detail=f"Cuota con id {datos.cuota_id} no encontrada")
         if cuota.acuerdo.cobranza_id != cobranza.id:
             raise HTTPException(status_code=400, detail="La cuota indicada no pertenece a esta cobranza.")
+    if Decimal(datos.capital) > Decimal(cobranza.monto_actual):
+        raise HTTPException(
+            status_code=400,
+            detail=(f"El monto es mayor que la deuda: el capital del pago ({clp(datos.capital)}) "
+                    f"supera el saldo capital de {clp(cobranza.monto_actual)}."),
+        )
 
     pago = Pago(**datos.model_dump(), usuario_id=usuario.id)
     if pago.fecha_pago is None:
@@ -217,7 +235,7 @@ def registrar_pago(db: Session, cobranza: Cobranza, datos: PagoCreate, usuario: 
     if datos.gastos_judiciales > 0:
         desglose.append(f"Gastos judiciales: {clp(datos.gastos_judiciales)}")
     encabezado = (
-        f"Pago de cuota {cuota.numero_cuota} por un total de {clp(monto)}"
+        f"Pago de {'pie' if cuota.numero_cuota == 0 else f'cuota {cuota.numero_cuota}'} por un total de {clp(monto)}"
         if cuota is not None
         else f"Se realizó un abono por un total de {clp(monto)}"
     )

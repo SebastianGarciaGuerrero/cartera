@@ -118,7 +118,8 @@ def items_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
         items.append(ItemAgenda(
             tipo="cuota",
             fecha=r["fecha_vencimiento"],
-            titulo=f"Cuota {r['numero_cuota']}/{r['numero_cuotas']}: {r['deudor']}",
+            titulo=(f"Pie del acuerdo: {r['deudor']}" if r["numero_cuota"] == 0
+                    else f"Cuota {r['numero_cuota']}/{r['numero_cuotas']}: {r['deudor']}"),
             detalle=f"Por pagar {_clp(saldo)}",
             atrasado=r["fecha_vencimiento"] < hoy,
             cobranza_id=r["cobranza_id"], numero_cobranza=r["numero"], deudor=r["deudor"],

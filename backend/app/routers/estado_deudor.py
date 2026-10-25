@@ -249,7 +249,8 @@ def _convenio(cob: Cobranza, hoy: date) -> Optional[ConvenioDeudor]:
     return ConvenioDeudor(
         estado=acuerdo.estado, fecha=acuerdo.fecha_acuerdo, total=acuerdo.monto_total_acordado,
         pie=acuerdo.pie or 0, numero_cuotas=acuerdo.numero_cuotas,
-        cuotas_pagadas=len(cuotas) - len(impagas),
+        # El pie (cuota 0) no cuenta como una de las N cuotas.
+        cuotas_pagadas=len([c for c in cuotas if c.numero > 0 and c.estado == "pagada"]),
         pagado=sum((c.pagado for c in cuotas), Decimal(0)),
         por_pagar=sum((c.monto - c.pagado for c in impagas), Decimal(0)),
         cuotas_atrasadas=len(atrasadas),

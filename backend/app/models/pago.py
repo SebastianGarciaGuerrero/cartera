@@ -32,7 +32,7 @@ class Pago(TenantMixin, Base):
     # cuota_id es opcional: NULL si es un pago directo sin acuerdo formal.
     cuota_id = Column(UUID(as_uuid=True), ForeignKey("cuotas.id"))
 
-    fecha_pago = Column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    fecha_pago = Column(Date, nullable=False, server_default=text("fecha_chile()"))  # hora de Chile (0012)
     monto = Column(Numeric(15, 2), nullable=False)
 
     # Desglose para el cuadro de rendición. El CAPITAL es la guía: es lo

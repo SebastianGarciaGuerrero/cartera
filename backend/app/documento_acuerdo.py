@@ -184,7 +184,7 @@ def _bloque_pago(doc, instrucciones: str) -> None:
 
 
 def _tabla_cuotas(doc, acuerdo: AcuerdoPago, cuotas: List[Cuota], judicial: bool,
-                  nombre_mandante: str) -> None:
+                  nombre_mandante: str, pie_cuota: Optional[Cuota] = None) -> None:
     con_desglose = all(c.capital is not None for c in cuotas)
     pie = Decimal(acuerdo.pie or 0)
     if con_desglose:
@@ -211,13 +211,17 @@ def _tabla_cuotas(doc, acuerdo: AcuerdoPago, cuotas: List[Cuota], judicial: bool
             _celda(celdas[i], v, negrita=(negrita_total and i == len(valores) - 1) or i == 0 and v == "PIE")
 
     if pie > 0:
+        fecha_pie = _fecha_tabla(pie_cuota.fecha_vencimiento) if pie_cuota else ""
         if con_desglose:
-            hon_pie = Decimal(acuerdo.honorarios or 0) - sum((Decimal(c.honorarios or 0) for c in cuotas), CERO)
-            cap_pie = pie - hon_pie
-            fila(["PIE", "", _miles(cap_pie), "0", _miles(hon_pie)]
+            if pie_cuota is not None and pie_cuota.capital is not None:
+                cap_pie, hon_pie = Decimal(pie_cuota.capital), Decimal(pie_cuota.honorarios or 0)
+            else:
+                hon_pie = Decimal(acuerdo.honorarios or 0) - sum((Decimal(c.honorarios or 0) for c in cuotas), CERO)
+                cap_pie = pie - hon_pie
+            fila(["PIE", fecha_pie, _miles(cap_pie), "0", _miles(hon_pie)]
                  + (["0"] if con_gastos else []) + (["0"] if con_comision else []) + [_miles(pie)])
         else:
-            fila(["PIE", "", _miles(pie)])
+            fila(["PIE", fecha_pie, _miles(pie)])
     for c in cuotas:
         if con_desglose:
             fila([str(c.numero_cuota), _fecha_tabla(c.fecha_vencimiento), _miles(c.capital),
@@ -244,7 +248,9 @@ def generar(acuerdo: AcuerdoPago, cob: Cobranza, emp: Empresa, pagado_antes: Dec
         f"RUT {rut_con_puntos(deudor.rut)}" if deudor and deudor.rut else "",
     ) if x)
     empresa = emp.razon_social
-    cuotas = list(acuerdo.cuotas)
+    # El pie (cuota 0) va en su propia fila de la tabla.
+    pie_cuota = next((c for c in acuerdo.cuotas if c.numero_cuota == 0), None)
+    cuotas = [c for c in acuerdo.cuotas if c.numero_cuota > 0]
 
     doc = Document()
     seccion = doc.sections[0]
@@ -283,7 +289,7 @@ def generar(acuerdo: AcuerdoPago, cob: Cobranza, emp: Empresa, pagado_antes: Dec
     _bloque_pago(doc, instrucciones)
 
     nombre_mandante = (cliente.nombre_fantasia or cliente.razon_social) if cliente else "mandante"
-    _tabla_cuotas(doc, acuerdo, cuotas, judicial, nombre_mandante)
+    _tabla_cuotas(doc, acuerdo, cuotas, judicial, nombre_mandante, pie_cuota)
 
     _parrafo(doc, texto_cierre or CIERRE_DEFECTO, antes=20)
 

@@ -1,4 +1,4 @@
-import { NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { Empresa } from '../api/tipos'
@@ -42,15 +42,18 @@ export default function Layout() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="marca">
-          <img className="marca-logo-img" src="/logo.svg" alt={MARCA.nombre} />
-          <div>
-            <div className="marca-nombre">{MARCA.nombre}</div>
-            <div className="marca-sub">{usuario.organizacion.nombre}</div>
+        {/* El logo lleva al inicio desde cualquier pantalla. */}
+        <Link to="/" className="marca-enlace" title="Ir al inicio">
+          <div className="marca">
+            <img className="marca-logo-img" src="/logo.svg" alt={MARCA.nombre} />
+            <div>
+              <div className="marca-nombre">{MARCA.nombre}</div>
+              <div className="marca-sub">{usuario.organizacion.nombre}</div>
+            </div>
           </div>
-        </div>
-        <LogoEmpresa tieneLogo={empresa?.tiene_logo} version={empresa?.logo_actualizado_at}
-          alt={usuario.organizacion.nombre} className="sidebar-logo-empresa" />
+          <LogoEmpresa tieneLogo={empresa?.tiene_logo} version={empresa?.logo_actualizado_at}
+            alt={usuario.organizacion.nombre} className="sidebar-logo-empresa" />
+        </Link>
 
         <nav className="menu">
           <div className="menu-grupo">Gestión</div>

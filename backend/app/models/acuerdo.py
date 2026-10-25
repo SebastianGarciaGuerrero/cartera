@@ -31,7 +31,7 @@ class AcuerdoPago(TenantMixin, Base):
     cobranza_id = Column(UUID(as_uuid=True), ForeignKey("cobranzas.id"), nullable=False)
 
     # Fechas
-    fecha_acuerdo = Column(Date, nullable=False, server_default=text("CURRENT_DATE"))
+    fecha_acuerdo = Column(Date, nullable=False, server_default=text("fecha_chile()"))  # hora de Chile (0012)
     fecha_termino = Column(Date)  # se calcula al crear (vencimiento de la última cuota)
 
     # Montos del acuerdo

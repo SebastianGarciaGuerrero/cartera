@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../auth'
 import type { Seguimiento as Datos, Usuario } from '../api/tipos'
-import { Plata, clp, fechaHoraLegible, fechaLegible } from '../componentes/utiles'
+import { Plata, clp, fechaHoraLegible, fechaLegible, nombreCuota } from '../componentes/utiles'
 
 // Mi seguimiento: el panel de cada persona. Se actualiza solo con cada
 // gestión, acuerdo o pago que registra (y cada minuto).
@@ -113,7 +113,7 @@ export default function Seguimiento() {
               <ul className="lista-simple">
                 {s.proximas_cuotas.map((c) => (
                   <li key={`${c.cobranza_id}-${c.cuota}`}>
-                    <Link to={`/cobranzas/${c.cobranza_id}`}>{c.deudor} · cuota {c.cuota}/{c.de}</Link>
+                    <Link to={`/cobranzas/${c.cobranza_id}`}>{c.deudor} · {nombreCuota(c.cuota, c.de, 'cuota ')}</Link>
                     <span>{fechaLegible(c.fecha)} · {clp(Number(c.monto))}</span>
                   </li>
                 ))}

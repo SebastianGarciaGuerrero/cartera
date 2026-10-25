@@ -147,3 +147,36 @@
   .tablero-etapa, .tablero-etapa:first-child { clip-path: none; margin-left: 0; border-radius: 10px; padding-left: 14px; }
   .resumen-deuda-acciones { margin-left: 0; }
 }
+
+/* ---------- Historial de gestiones con alto fijo ---------- */
+.linea-tiempo-scroll {
+  max-height: 560px; overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 6px; scrollbar-gutter: stable;
+}
+.gestion-cobranza { margin-left: 8px; font-size: 12px; font-weight: 600; color: var(--texto-suave); }
+
+/* ---------- Ficha del deudor ---------- */
+.ficha-deudor-cabecera { align-items: center; }
+.ficha-deudor-identidad { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.ficha-deudor-identidad h2 { margin: 0; font-size: 19px; line-height: 1.25; }
+.iniciales {
+  flex-shrink: 0; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--fondo); border: 1px solid var(--borde); color: var(--acento); font-weight: 700; font-size: 15px;
+}
+.ficha-deudor-meta { font-size: 13px; color: var(--texto-suave); }
+.ficha-deudor .resumen-deuda { margin: 14px 0 0; }
+.pestanas-ficha { margin: 16px 0 12px; overflow-x: auto; scrollbar-width: none; }
+.pestanas-ficha .pestana { padding: 8px 12px; font-size: 14px; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.pestana-cantidad {
+  font-size: 11px; font-weight: 700; min-width: 20px; padding: 1px 6px; border-radius: 10px;
+  background: var(--fondo); color: var(--texto-suave); text-align: center;
+}
+.pestana.activa .pestana-cantidad { background: var(--acento); color: #fff; }
+.ficha-deudor .linea-tiempo-scroll { max-height: 440px; }
+.ficha-deudor .lista-cobranzas li:last-child { border-bottom: none; }
+
+/* ---------- Logo de la barra lateral: vuelve al inicio ---------- */
+.marca-enlace { display: block; color: inherit; text-decoration: none; border-radius: 10px; }
+.marca-enlace:hover .marca-nombre { text-decoration: underline; }
+.marca-enlace:focus-visible { outline: 2px solid #c3d2e0; outline-offset: 4px; }
+.marca-enlace .sidebar-logo-empresa { margin-top: 20px; }

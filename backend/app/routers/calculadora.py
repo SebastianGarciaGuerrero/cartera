@@ -30,7 +30,7 @@ from app.models.cobranza import Cobranza
 from app.models.gestion import Gestion, tipo_de_sistema
 from app.models.usuario import Usuario
 from app.planes import requiere_funcion
-from app.operaciones import validar_sin_acuerdo_vigente
+from app.operaciones import cuota_pie, validar_sin_acuerdo_vigente
 from app.schemas.acuerdo import AcuerdoDetalle
 from app.security import get_current_user, usuario_autorizado
 
@@ -274,6 +274,11 @@ def crear_acuerdo_asistido(
         )
         for f in plan.cuotas
     ]
+    if plan.abono_inicial > 0:
+        # El pie como cuota 0, con su fecha: sale en la agenda y se paga con su desglose.
+        acuerdo.cuotas.insert(0, cuota_pie(
+            plan.abono_inicial, datos.fecha_pie or hoy_chile(), capital=plan.capital_pie,
+            honorarios=plan.honorarios_pie, intereses=0, gastos_judiciales=0, comision=0))
     db.add(acuerdo)
     cobranza.estado = "acuerdo_pago"
 

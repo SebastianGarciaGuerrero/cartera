@@ -8,6 +8,7 @@ import type {
 } from '../api/tipos'
 import { Plata, fechaLegible } from '../componentes/utiles'
 import { formatoUF, useUF } from '../componentes/UF'
+import { copiarTablaCuotas } from '../componentes/copiarTabla'
 
 // Calculadora de cobranza (plan premium): honorarios 3-6-9, desglose de un
 // abono y plan de acuerdo de pago / avenimiento. Con ?cobranza=<id> se abre
@@ -191,6 +192,7 @@ function Acuerdo({ modalidad, uf, cobranza }: {
 }) {
   const navegar = useNavigate()
   const qc = useQueryClient()
+  const { etiqueta } = useAuth()
   const [capital, setCapital] = useState('')
   const [cuotas, setCuotas] = useState('6')
   const [tasa, setTasa] = useState('0')
@@ -232,19 +234,9 @@ function Acuerdo({ modalidad, uf, cobranza }: {
 
   function copiarTabla() {
     if (!plan) return
-    const cab = ['N°', 'Fecha', 'Capital', 'Interés', 'Honorarios',
-      ...(conGastos ? ['Gastos judiciales'] : []), ...(conComision ? ['Comisión'] : []), 'Total cuota']
-    const filas = plan.cuotas.map((f) => [f.numero, f.fecha ? fechaLegible(f.fecha) : '', f.capital, f.intereses,
-      f.honorarios, ...(conGastos ? [f.gastos_judiciales] : []), ...(conComision ? [f.comision] : []), f.total])
-    if (Number(plan.abono_inicial) > 0) {
-      filas.unshift(['PIE', fechaPie ? fechaLegible(fechaPie) : '', plan.capital_pie, '0', plan.honorarios_pie,
-        ...(conGastos ? ['0'] : []), ...(conComision ? ['0'] : []), plan.abono_inicial])
-    }
-    const tsv = [cab, ...filas, ['TOTAL', '', '', '', '', ...(conGastos ? [''] : []), ...(conComision ? [''] : []), plan.gran_total]]
-      .map((f) => f.map((v) => typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) ? String(Math.round(Number(v))) : String(v)).join('\t'))
-      .join('\n')
-    navigator.clipboard.writeText(tsv)
-    setCopiado('Tabla copiada: pégala en Excel o Word.')
+    copiarTablaCuotas(plan, { fechaPie: fechaPie || null, cliente: etiqueta('cliente', 'cliente') })
+      .then(() => setCopiado('Tabla copiada: pégala en Word, Excel o el correo.'))
+      .catch(() => setCopiado('No se pudo copiar la tabla. Revisa los permisos del navegador.'))
   }
 
   return (

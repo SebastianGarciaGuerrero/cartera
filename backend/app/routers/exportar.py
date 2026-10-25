@@ -228,9 +228,10 @@ def exportar_recupero(
         ws.cell(row=i, column=13, value=r["estado_pago"])
         ws.cell(row=i, column=14, value=r["forma_pago"])
         ws.cell(row=i, column=15, value=r["numero_comprobante"])
-        if r["numero_cuota"]:
+        if r["numero_cuota"] is not None:
             ws.cell(row=i, column=16,
-                    value=f'{r["numero_cuota"]}/{r["total_cuotas_acuerdo"]}')
+                    value="Pie" if r["numero_cuota"] == 0
+                    else f'{r["numero_cuota"]}/{r["total_cuotas_acuerdo"]}')
         ws.cell(row=i, column=17, value=r["registrado_por"])
 
     # Fila de totales al final (suma en Excel, se recalcula sola).
