@@ -44,6 +44,11 @@ from app.schemas.judicial import (
 )
 from app.security import get_current_user, usuario_autorizado
 from app.permisos import requiere_permiso
+from app.operaciones import clp, describir_cambios, registrar_cambio
+
+
+def _cobranzas_de(causa: Causa) -> list:
+    return [v.cobranza_id for v in causa.vinculos]
 
 router = APIRouter(
     prefix="/api/judicial",
@@ -220,14 +225,29 @@ def ficha_causa(causa_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.put("/causas/{causa_id}", response_model=CausaDetalle, dependencies=[Depends(requiere_permiso("judicial_causas"))])
-def corregir_causa(causa_id: UUID, datos: CausaUpdate, db: Session = Depends(get_db)):
+def corregir_causa(causa_id: UUID, datos: CausaUpdate, db: Session = Depends(get_db),
+                   usuario: Usuario = Depends(get_current_user)):
     causa = _causa(db, causa_id)
     cambios = datos.model_dump(exclude_unset=True)
     _validar_usuarios(db, cambios.get("abogado_id"), cambios.get("procurador_id"))
     if "tribunal_id" in cambios:
         _tribunal_nombre(db, cambios["tribunal_id"])
+
+    def legibles() -> dict:
+        # Las personas y el tribunal, por su nombre (no por su id).
+        return {"rol": causa.rol, "tribunal": causa.tribunal.nombre if causa.tribunal else None,
+                "abogado": causa.abogado.nombre if causa.abogado else None,
+                "procurador": causa.procurador.nombre if causa.procurador else None,
+                **{c: getattr(causa, c) for c in cambios if not c.endswith("_id") and c != "rol"}}
+    antes = legibles()
     for campo, valor in cambios.items():
         setattr(causa, campo, valor)
+    db.flush()
+    db.expire(causa, ["tribunal", "abogado", "procurador"])
+    detalle = describir_cambios(antes, legibles(), {"rol": "Rol"})
+    if detalle:
+        registrar_cambio(db, _cobranzas_de(causa), usuario.id, "cambio_datos",
+                         f"DATOS DE LA CAUSA MODIFICADOS: {detalle}.")
     _commit(db, "No se pudo actualizar la causa.")
     return ficha_causa(causa.id, db)
 
@@ -268,6 +288,14 @@ def registrar_tramite(causa_id: UUID, datos: TramiteCreate, db: Session = Depend
         siguiente_id=datos.siguiente_id, gasto=datos.gasto.model_dump() if datos.gasto else None,
         sin_plazo=datos.sin_plazo,
     )
+    texto = f"TRÁMITE JUDICIAL (rol {causa.rol or 'sin rol'}): {tipo.nombre if tipo else 'Observación'}"
+    if datos.descripcion and datos.descripcion.strip():
+        texto += f". {datos.descripcion.strip()}"
+    if tramite.plazo_fecha:
+        texto += f". Plazo: {tramite.plazo_fecha:%d-%m-%Y}"
+    if datos.gasto:
+        texto += f". Gasto: {clp(datos.gasto.monto)}"
+    registrar_cambio(db, _cobranzas_de(causa), usuario.id, "tramite", texto + ".")
     _commit(db, "No se pudo registrar el trámite.")
     db.refresh(tramite)
     gasto = db.query(Gasto.id).filter(Gasto.tramite_id == tramite.id).first()
@@ -298,18 +326,30 @@ def registrar_embargo(causa_id: UUID, datos: EmbargoBase, db: Session = Depends(
     causa = _causa(db, causa_id)
     embargo = Embargo(**datos.model_dump(), causa_id=causa.id, creado_por=usuario.id)
     db.add(embargo)
+    registrar_cambio(db, _cobranzas_de(causa), usuario.id, "embargo",
+                     f"EMBARGO REGISTRADO (rol {causa.rol or 'sin rol'}): "
+                     f"{judicial.TIPOS_BIEN.get(datos.tipo_bien, datos.tipo_bien)} — {datos.descripcion}, "
+                     f"{judicial.ESTADOS_EMBARGO.get(datos.estado, datos.estado).lower()}.")
     _commit(db, "No se pudo registrar el embargo.")
     db.refresh(embargo)
     return embargo
 
 
 @router.put("/embargos/{embargo_id}", response_model=EmbargoResponse, dependencies=[Depends(requiere_permiso("judicial_tramites"))])
-def actualizar_embargo(embargo_id: UUID, datos: EmbargoUpdate, db: Session = Depends(get_db)):
+def actualizar_embargo(embargo_id: UUID, datos: EmbargoUpdate, db: Session = Depends(get_db),
+                       usuario: Usuario = Depends(get_current_user)):
     embargo = db.get(Embargo, embargo_id)
     if embargo is None:
         raise HTTPException(status_code=404, detail="Embargo no encontrado")
-    for campo, valor in datos.model_dump(exclude_unset=True).items():
+    cambios = datos.model_dump(exclude_unset=True)
+    antes = {campo: getattr(embargo, campo) for campo in cambios}
+    for campo, valor in cambios.items():
         setattr(embargo, campo, valor)
+    detalle = describir_cambios(antes, cambios)
+    if detalle:
+        causa = _causa(db, embargo.causa_id)
+        registrar_cambio(db, _cobranzas_de(causa), usuario.id, "embargo",
+                         f"EMBARGO ACTUALIZADO ({embargo.descripcion}): {detalle}.")
     _commit(db, "No se pudo actualizar el embargo.")
     db.refresh(embargo)
     return embargo

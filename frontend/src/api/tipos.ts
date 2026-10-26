@@ -35,6 +35,8 @@ export interface UsuarioActual {
     funciones: string[]
     etiquetas: Record<string, string>
   }
+  /** Lo que su rol puede hacer además de trabajar sus casos. */
+  permisos?: string[]
 }
 
 export interface SesionActiva {

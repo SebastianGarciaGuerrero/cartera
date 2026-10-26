@@ -28,6 +28,7 @@ from app.models.cobranza import Cobranza
 from app.operaciones import crear_acuerdo as crear_acuerdo_en
 from app.operaciones import validar_sin_acuerdo_vigente  # noqa: F401 (lo importan otros módulos)
 from app.models.usuario import Usuario
+from app.operaciones import describir_cambios, registrar_cambio
 from app.schemas.acuerdo import (
     AcuerdoCreate,
     AcuerdoEstadoUpdate,
@@ -113,7 +114,8 @@ def crear_acuerdo(
 def actualizar_estado_acuerdo(
     acuerdo_id: UUID,
     datos: AcuerdoEstadoUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """
     Actualiza SOLO el estado, la firma del cliente y observaciones de un
@@ -126,8 +128,15 @@ def actualizar_estado_acuerdo(
             detail=f"Acuerdo con id {acuerdo_id} no encontrado"
         )
 
-    for campo, valor in datos.model_dump(exclude_unset=True).items():
+    cambios = datos.model_dump(exclude_unset=True)
+    antes = {campo: getattr(acuerdo, campo) for campo in cambios}
+    for campo, valor in cambios.items():
         setattr(acuerdo, campo, valor)
+    detalle = describir_cambios(antes, cambios, {"firma_cliente": "Firma del cliente",
+                                                 "fecha_firma": "Fecha de firma"})
+    if detalle:
+        registrar_cambio(db, [acuerdo.cobranza_id], usuario.id, "cambio_datos",
+                         f"ACUERDO DE PAGO MODIFICADO: {detalle}.")
 
     db.commit()
     db.refresh(acuerdo)

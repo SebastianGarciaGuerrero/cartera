@@ -27,7 +27,12 @@ from sqlalchemy.exc import IntegrityError
 
 from app.campos import ErrorCampo, validar_datos_extra
 from app.database import get_db
-from app.security import usuario_autorizado
+from app.security import get_current_user, usuario_autorizado
+from app.models.usuario import Usuario
+from app.operaciones import cobranzas_del_deudor, describir_cambios, registrar_cambio
+
+NOMBRE_CONTACTO = {"telefono": "teléfono", "celular": "celular", "email": "correo",
+                   "whatsapp": "WhatsApp", "otro": "contacto"}
 from app.models.cobranza import Cobranza
 from app.models.deudor import Deudor, ContactoDeudor
 from app.schemas.deudor import (
@@ -175,7 +180,8 @@ def crear_deudor(deudor_data: DeudorCreate, db: Session = Depends(get_db)):
 def actualizar_deudor(
     deudor_id: UUID,
     deudor_data: DeudorUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """Actualiza los datos de un deudor existente."""
     deudor = db.get(Deudor, deudor_id)
@@ -196,8 +202,13 @@ def actualizar_deudor(
         except ErrorCampo as e:
             raise HTTPException(status_code=422, detail=str(e))
 
+    antes = {campo: getattr(deudor, campo) for campo in datos_actualizados}
     for campo, valor in datos_actualizados.items():
         setattr(deudor, campo, valor)
+    detalle = describir_cambios(antes, datos_actualizados, {"en_boletin_comercial": "En DICOM"})
+    if detalle:
+        registrar_cambio(db, cobranzas_del_deudor(db, deudor.id), usuario.id, "cambio_datos",
+                         f"DATOS DEL DEUDOR MODIFICADOS: {detalle}.")
 
     db.commit()
     db.refresh(deudor)
@@ -216,7 +227,8 @@ def actualizar_deudor(
 def agregar_contacto(
     deudor_id: UUID,
     contacto_data: ContactoCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """Agrega un contacto (teléfono, email, etc.) a un deudor existente."""
     deudor = db.get(Deudor, deudor_id)
@@ -229,13 +241,17 @@ def agregar_contacto(
 
     nuevo_contacto = ContactoDeudor(deudor_id=deudor_id, **contacto_data.model_dump())
     db.add(nuevo_contacto)
+    registrar_cambio(db, cobranzas_del_deudor(db, deudor_id), usuario.id, "cambio_datos",
+                     f"CONTACTO AGREGADO: {NOMBRE_CONTACTO.get(nuevo_contacto.tipo, nuevo_contacto.tipo)} "
+                     f"{nuevo_contacto.valor}.")
     db.commit()
     db.refresh(nuevo_contacto)
     return nuevo_contacto
 
 
 @router.delete("/contactos/{contacto_id}", status_code=status.HTTP_204_NO_CONTENT)
-def eliminar_contacto(contacto_id: UUID, db: Session = Depends(get_db)):
+def eliminar_contacto(contacto_id: UUID, db: Session = Depends(get_db),
+                      usuario: Usuario = Depends(get_current_user)):
     """
     Soft-delete de un contacto: marca activo = False, no lo borra de la DB.
     Así se preserva el historial.
@@ -248,6 +264,9 @@ def eliminar_contacto(contacto_id: UUID, db: Session = Depends(get_db)):
             detail=f"Contacto con id {contacto_id} no encontrado"
         )
 
+    if contacto.activo:
+        registrar_cambio(db, cobranzas_del_deudor(db, contacto.deudor_id), usuario.id, "cambio_datos",
+                         f"CONTACTO QUITADO: {NOMBRE_CONTACTO.get(contacto.tipo, contacto.tipo)} {contacto.valor}.")
     contacto.activo = False
     db.commit()
     return None

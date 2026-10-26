@@ -249,3 +249,62 @@ def registrar_pago(db: Session, cobranza: Cobranza, datos: PagoCreate, usuario: 
         gestion_automatica(db, cobranza.id, usuario.id, "pagado",
                            "CUENTA SALDADA. La cobranza queda en estado pagada.")
     return pago, gestion
+
+
+# ------------------------------------------------------------ cambios
+
+ABIERTAS = ("activa", "acuerdo_pago", "judicial")
+
+
+def registrar_cambio(db: Session, cobranza_ids, usuario_id, codigo_tipo: str, texto: str) -> None:
+    """
+    Todo cambio sobre un caso queda en el historial como gestión de quien lo
+    hizo, en cada cobranza afectada (una causa puede juntar varias).
+    """
+    for cobranza_id in dict.fromkeys(i for i in cobranza_ids if i is not None):
+        gestion_automatica(db, cobranza_id, usuario_id, codigo_tipo, texto)
+
+
+def cobranzas_del_deudor(db: Session, deudor_id) -> list:
+    """Dónde anotar un cambio del deudor: sus cobranzas abiertas (o la última, si no tiene)."""
+    abiertas = [i for (i,) in db.query(Cobranza.id).filter(Cobranza.deudor_id == deudor_id,
+                                                             Cobranza.estado.in_(ABIERTAS))]
+    if abiertas:
+        return abiertas
+    ultima = (db.query(Cobranza.id).filter(Cobranza.deudor_id == deudor_id)
+              .order_by(Cobranza.numero.desc()).first())
+    return [ultima[0]] if ultima else []
+
+
+def _valor(v) -> str:
+    if v is None or v == "":
+        return "—"
+    if isinstance(v, bool):
+        return "sí" if v else "no"
+    if isinstance(v, (Decimal, int, float)):
+        d = Decimal(str(v))
+        return f"{int(d):,}".replace(",", ".") if d == int(d) else str(d)
+    if isinstance(v, date):
+        return v.strftime("%d-%m-%Y")
+    return str(v)
+
+
+def describir_cambios(antes: dict, despues: dict, nombres: Optional[dict] = None) -> str:
+    """'Monto: 1.000 → 2.000; Comuna: — → Viña del Mar' (solo lo que cambió)."""
+    nombres = nombres or {}
+    partes = []
+    for campo, nuevo in despues.items():
+        viejo = antes.get(campo)
+        if isinstance(nuevo, dict) or isinstance(viejo, dict):
+            if (viejo or {}) != (nuevo or {}):
+                partes.append(f"{nombres.get(campo, 'Campos adicionales')} actualizados")
+            continue
+        try:
+            igual = Decimal(str(viejo)) == Decimal(str(nuevo))
+        except Exception:
+            igual = _valor(viejo) == _valor(nuevo)
+        if igual:
+            continue
+        nombre = nombres.get(campo, campo.replace("_", " ").capitalize())
+        partes.append(f"{nombre}: {_valor(viejo)} → {_valor(nuevo)}")
+    return "; ".join(partes)

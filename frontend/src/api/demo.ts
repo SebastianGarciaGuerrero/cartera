@@ -402,6 +402,48 @@ function cuerpo(config: InternalAxiosRequestConfig): Record<string, unknown> {
   return d as Record<string, unknown>
 }
 
+// Permisos por rol, como app/permisos.py del backend (lo que no es para todos).
+const PERMISOS: Record<string, string> = {
+  cobranzas_crear: 'Ingresar cobranzas',
+  carga_masiva: 'Carga masiva de cobranzas',
+  gestiones_masivas: 'Carga masiva de gestiones',
+  clientes_editar: 'Crear y editar clientes',
+  judicial_causas: 'Presentar demandas y cerrar causas',
+  judicial_tramites: 'Registrar trámites y embargos',
+  ver_totales: 'Ver los totales de toda la cartera',
+  gastos_rendir: 'Rendir y reembolsar gastos',
+}
+const ROLES_AJUSTABLES = ['supervisor', 'abogado', 'procurador', 'operador', 'viewer']
+const PERMISOS_DEFECTO: Record<string, string[]> = {
+  supervisor: Object.keys(PERMISOS),
+  abogado: ['cobranzas_crear', 'judicial_causas', 'judicial_tramites'],
+  procurador: ['judicial_tramites'],
+  operador: ['cobranzas_crear'],
+  viewer: [],
+}
+function permisosDe(db: DB, rol: string): string[] {
+  if (rol === 'admin') return Object.keys(PERMISOS).sort()
+  const ajustes = (db as { permisos?: Record<string, string[]> }).permisos ?? {}
+  return [...(ajustes[rol] ?? PERMISOS_DEFECTO[rol] ?? [])].sort()
+}
+const RUTAS_CON_PERMISO: [string, RegExp, string][] = [
+  ['POST', /^\/cobranzas\/$/, 'cobranzas_crear'],
+  ['GET', /^\/cobranzas\/resumen-etapas$/, 'ver_totales'],
+  ['POST', /^\/importar\/cobranzas$/, 'carga_masiva'],
+  ['POST', /^\/importar\/gestiones$/, 'gestiones_masivas'],
+  ['POST', /^\/(clientes|filiales)\/$/, 'clientes_editar'],
+  ['PUT', /^\/(clientes|filiales)\/[^/]+$/, 'clientes_editar'],
+  ['DELETE', /^\/(clientes|filiales)\/[^/]+$/, 'clientes_editar'],
+  ['POST', /^\/judicial\/causas$/, 'judicial_causas'],
+  ['PUT', /^\/judicial\/causas\/[^/]+$/, 'judicial_causas'],
+  ['POST', /^\/judicial\/causas\/[^/]+\/(cobranzas|terminar)$/, 'judicial_causas'],
+  ['POST', /^\/judicial\/causas\/[^/]+\/(tramites|embargos)$/, 'judicial_tramites'],
+  ['PUT', /^\/judicial\/embargos\/[^/]+$/, 'judicial_tramites'],
+  ['GET', /^\/gastos\/resumen$/, 'ver_totales'],
+  ['*', /^\/gastos\/(reembolsar|rendiciones)/, 'gastos_rendir'],
+  ['GET', /^\/exportar\//, 'ver_totales'],
+]
+
 function usuarioDelToken(config: InternalAxiosRequestConfig, db: DB) {
   const auth = String(config.headers?.Authorization ?? '')
   const id = auth.replace('Bearer demo-token-', '')
@@ -508,6 +550,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       id: 'org-demo', nombre: db.empresa.nombre_fantasia ?? 'Organización demo', plan: 'premium',
       estado: 'activa', funciones: FUNCIONES_DEMO, etiquetas: db.etiquetas,
     },
+    permisos: permisosDe(db, ROLES.find((r) => r.id === u.rol_id)?.nombre ?? 'operador'),
   })
   const respuestaToken = (u: DB['usuarios'][number]) => ({
     access_token: `demo-token-${u.id}`, token_type: 'bearer', expira_en: 900, usuario: usuarioActual(u),
@@ -554,6 +597,32 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     if (datos.cobro) db.cobro = datos.cobro
     guardarDB(db)
     return ok(config, vistaOrg())
+  }
+
+  // ---- roles y permisos ----
+  const rolActual = ROLES.find((r) => r.id === usuarioDelToken(config, db).rol_id)?.nombre ?? 'operador'
+  const misPermisos = permisosDe(db, rolActual)
+  const regla = RUTAS_CON_PERMISO.find(([m, r]) => (m === '*' || m === metodo) && r.test(url))
+  if (regla && !misPermisos.includes(regla[2])) {
+    return error(403, `Tu rol no permite: ${PERMISOS[regla[2]].toLowerCase()}. Pídeselo a la administración.`)
+  }
+  if (metodo === 'GET' && url === '/gastos/' && !params.cobranza_id && !params.causa_id && !misPermisos.includes('ver_totales')) {
+    return error(403, 'Los gastos de toda la cartera los ve la administración. Ábrelos desde la cobranza o la causa.')
+  }
+  const vistaPermisos = () => ({
+    permisos: PERMISOS,
+    roles: Object.fromEntries(['admin', ...ROLES_AJUSTABLES].map((r) => [r, permisosDe(db, r)])),
+    por_defecto: PERMISOS_DEFECTO,
+  })
+  if (metodo === 'GET' && url === '/permisos') return ok(config, vistaPermisos())
+  if (metodo === 'PUT' && url === '/permisos') {
+    if (rolActual !== 'admin') return error(403, 'Se requiere rol de administrador para esta operación')
+    const { roles } = cuerpo(config) as { roles: Record<string, string[]> }
+    if (Object.keys(roles).some((r) => !ROLES_AJUSTABLES.includes(r))) return error(422, 'Rol que no se puede ajustar')
+    const base = db as { permisos?: Record<string, string[]> }
+    base.permisos = { ...(base.permisos ?? {}), ...roles }
+    guardarDB(db)
+    return ok(config, vistaPermisos())
   }
 
   // ---- módulo judicial y ciclo de vida (demoJudicial.ts) ----

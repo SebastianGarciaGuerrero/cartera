@@ -40,6 +40,29 @@ from app.schemas.judicial import (
 )
 from app.security import get_current_user, usuario_autorizado
 from app.permisos import requiere_permiso, tiene_permiso
+from app.judicial import TIPOS_GASTO
+from app.operaciones import clp, describir_cambios, registrar_cambio
+
+
+def texto_gasto(gasto: Gasto, rol: Optional[str] = None) -> str:
+    """La gestión que deja un gasto: tipo, concepto, monto, receptor y boleta."""
+    partes = [f"GASTO REGISTRADO: {TIPOS_GASTO.get(gasto.tipo, gasto.tipo)} — {gasto.concepto}, {clp(gasto.monto)}"]
+    if gasto.proveedor:
+        partes.append(gasto.proveedor)
+    if gasto.numero_boleta:
+        partes.append(f"boleta N° {gasto.numero_boleta}")
+    texto = ", ".join(partes)
+    if rol:
+        texto += f" (causa rol {rol})"
+    if gasto.estado == "no_reembolsable":
+        texto += ". No se cobra al cliente"
+    return texto + "."
+
+
+def cobranzas_del_gasto(gasto: Gasto) -> list:
+    if gasto.cobranza_id:
+        return [gasto.cobranza_id]
+    return [v.cobranza_id for v in gasto.causa.vinculos] if gasto.causa else []
 
 router = APIRouter(
     prefix="/api/gastos",
@@ -119,6 +142,7 @@ def registrar(datos: GastoCreate, db: Session = Depends(get_db),
     if datos.causa_id is None and datos.cobranza_id is None:
         raise HTTPException(status_code=422, detail="Indique la causa o la cobranza del gasto.")
     cliente_id = None
+    causa = None
     if datos.causa_id is not None:
         causa = db.get(Causa, datos.causa_id)
         if causa is None:
@@ -135,19 +159,29 @@ def registrar(datos: GastoCreate, db: Session = Depends(get_db),
     campos["fecha"] = campos.get("fecha") or hoy_chile()
     gasto = Gasto(**campos, cliente_id=cliente_id, usuario_id=usuario.id)
     db.add(gasto)
+    # Queda como gestión de quien lo registró, en la cobranza (o en las de la causa).
+    destinos = [datos.cobranza_id] if datos.cobranza_id else [v.cobranza_id for v in causa.vinculos]
+    registrar_cambio(db, destinos, usuario.id, "gasto", texto_gasto(gasto, causa.rol if causa else None))
     db.commit()
     db.refresh(gasto)
     return gasto
 
 
 @router.put("/{gasto_id}", response_model=GastoResponse)
-def corregir(gasto_id: UUID, datos: GastoUpdate, db: Session = Depends(get_db)):
+def corregir(gasto_id: UUID, datos: GastoUpdate, db: Session = Depends(get_db),
+             usuario: Usuario = Depends(get_current_user)):
     gasto = _gasto(db, gasto_id)
     if gasto.estado not in ("por_rendir", "no_reembolsable"):
         raise HTTPException(status_code=400,
                             detail="El gasto ya fue rendido al cliente: anule la rendición para corregirlo.")
-    for campo, valor in datos.model_dump(exclude_unset=True).items():
+    cambios = datos.model_dump(exclude_unset=True)
+    antes = {campo: getattr(gasto, campo) for campo in cambios}
+    for campo, valor in cambios.items():
         setattr(gasto, campo, valor)
+    detalle = describir_cambios(antes, cambios, {"numero_boleta": "N° boleta", "proveedor": "Receptor / proveedor"})
+    if detalle:
+        registrar_cambio(db, cobranzas_del_gasto(gasto), usuario.id, "gasto",
+                         f"GASTO MODIFICADO ({gasto.concepto}): {detalle}.")
     db.commit()
     db.refresh(gasto)
     return gasto

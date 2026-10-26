@@ -29,6 +29,22 @@ from app.indicadores import hoy_chile
 from app.schemas.judicial import CambiarEtapa, CicloVida
 from app.models.judicial import DocumentoCobranza
 from app.security import get_current_user, usuario_autorizado
+from app.operaciones import clp, describir_cambios, registrar_cambio
+
+NOMBRE_DOCUMENTO = {
+    "pagare": "Pagaré", "factura": "Factura", "letra": "Letra", "cheque": "Cheque",
+    "contrato": "Contrato", "boleta": "Boleta", "credito": "Crédito", "otro": "Documento",
+}
+NOMBRE_ETAPA = {clave: nombre for clave, nombre, _ in ciclo.PASOS}
+CAMPOS_COBRANZA = {
+    "id_externo": "ID cliente", "monto_original": "Monto original", "monto_actual": "Saldo",
+    "numero_documento": "N° documento", "fecha_vencimiento_documento": "Vencimiento",
+    "motivo_cierre": "Motivo de cierre", "datos_extra": "Campos adicionales",
+}
+
+
+def _nombre_documento(doc) -> str:
+    return NOMBRE_DOCUMENTO.get(doc.tipo, doc.tipo) + (f" N° {doc.numero}" if doc.numero else "")
 from app.permisos import requiere_permiso
 from app.models.cliente import Cliente
 from app.models.cobranza import Cobranza
@@ -230,7 +246,8 @@ def crear_cobranza(cobranza_data: CobranzaCreate, db: Session = Depends(get_db))
 def actualizar_cobranza(
     cobranza_id: UUID,
     cobranza_data: CobranzaUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """
     Actualiza una cobranza. El N° de cobranza, el cliente y el deudor NO se
@@ -255,8 +272,24 @@ def actualizar_cobranza(
 
     if cambios.get("motivo_cierre") and cambios["motivo_cierre"] not in ciclo.MOTIVOS_CIERRE:
         raise HTTPException(status_code=422, detail="Motivo de cierre desconocido")
+
+    def legibles() -> dict:
+        # El ejecutivo y la filial, por su nombre (no por su id).
+        valores = {c: getattr(cobranza, c) for c in cambios if c not in ("ejecutivo_id", "filial_id")}
+        if "ejecutivo_id" in cambios:
+            u = db.get(Usuario, cobranza.ejecutivo_id) if cobranza.ejecutivo_id else None
+            valores["Ejecutivo"] = u.nombre if u else None
+        if "filial_id" in cambios:
+            f = db.get(Filial, cobranza.filial_id) if cobranza.filial_id else None
+            valores["Filial"] = f.nombre if f else None
+        return valores
+    antes = legibles()
     for campo, valor in cambios.items():
         setattr(cobranza, campo, valor)
+    detalle = describir_cambios(antes, legibles(), CAMPOS_COBRANZA)
+    if detalle:
+        registrar_cambio(db, [cobranza.id], usuario.id, "cambio_datos",
+                         f"DATOS DE LA COBRANZA MODIFICADOS: {detalle}.")
     # Ciclo de vida: al cerrar queda la fecha; al reabrir se limpia el cierre.
     if "estado" in cambios:
         if cobranza.estado in ciclo.ESTADOS_TERMINALES:
@@ -301,11 +334,17 @@ def cambiar_etapa(cobranza_id: UUID, datos: CambiarEtapa, db: Session = Depends(
     cobranza = db.get(Cobranza, cobranza_id)
     if not cobranza:
         raise _404(cobranza_id)
+    anterior = cobranza.etapa
     try:
         ciclo.cambiar_etapa(db, cobranza, datos.etapa, usuario.id, datos.motivo)
     except ciclo.ErrorEtapa as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    if cobranza.etapa != anterior:
+        motivo = f". Motivo: {datos.motivo.strip()}" if datos.motivo and datos.motivo.strip() else ""
+        registrar_cambio(db, [cobranza.id], usuario.id, "etapa",
+                         f"CAMBIO DE ETAPA: {NOMBRE_ETAPA.get(anterior, anterior)} → "
+                         f"{NOMBRE_ETAPA.get(cobranza.etapa, cobranza.etapa)}{motivo}.")
     db.commit()
     db.refresh(cobranza)
     return ciclo.estado_ciclo(db, cobranza)
@@ -331,18 +370,36 @@ def agregar_documento(cobranza_id: UUID, datos: DocumentoBase, db: Session = Dep
         raise _404(cobranza_id)
     doc = DocumentoCobranza(**datos.model_dump(), cobranza_id=cobranza_id, creado_por=usuario.id)
     db.add(doc)
+    texto = f"DOCUMENTO AGREGADO: {_nombre_documento(doc)}"
+    if doc.monto is not None:
+        texto += f", {clp(doc.monto)}"
+    if doc.fecha_vencimiento:
+        texto += f", vence el {doc.fecha_vencimiento:%d-%m-%Y}"
+    registrar_cambio(db, [cobranza_id], usuario.id, "cambio_datos", texto + ".")
     db.commit()
     db.refresh(doc)
     return doc
 
 
 @router.put("/documentos/{documento_id}", response_model=DocumentoResponse)
-def corregir_documento(documento_id: UUID, datos: DocumentoUpdate, db: Session = Depends(get_db)):
+def corregir_documento(documento_id: UUID, datos: DocumentoUpdate, db: Session = Depends(get_db),
+                       usuario: Usuario = Depends(get_current_user)):
     doc = db.get(DocumentoCobranza, documento_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Documento no encontrado")
-    for campo, valor in datos.model_dump(exclude_unset=True).items():
+    cambios = datos.model_dump(exclude_unset=True)
+    nombre = _nombre_documento(doc)
+    antes = {campo: getattr(doc, campo) for campo in cambios}
+    for campo, valor in cambios.items():
         setattr(doc, campo, valor)
+    if cambios.get("activo") is False and antes.get("activo") is not False:
+        texto = f"DOCUMENTO QUITADO: {nombre}."
+    else:
+        detalle = describir_cambios({k: v for k, v in antes.items() if k != "activo"},
+                                    {k: v for k, v in cambios.items() if k != "activo"})
+        texto = f"DOCUMENTO MODIFICADO ({nombre}): {detalle}." if detalle else ""
+    if texto:
+        registrar_cambio(db, [doc.cobranza_id], usuario.id, "cambio_datos", texto)
     db.commit()
     db.refresh(doc)
     return doc

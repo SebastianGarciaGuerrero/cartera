@@ -21,6 +21,8 @@ interface Sesion {
   tiene: (funcion: string) => boolean
   /** Cómo llama esta organización a las cosas (Cliente/Mandante...). */
   etiqueta: (clave: string, porDefecto: string) => string
+  /** ¿Su rol tiene este permiso? (ingresar cobranzas, ver totales…) */
+  puede: (permiso: string) => boolean
 }
 
 const ContextoAuth = createContext<Sesion>(null!)
@@ -76,6 +78,7 @@ export function ProveedorAuth({ children }: { children: ReactNode }) {
 
   const funciones = new Set(usuario?.organizacion.funciones ?? [])
   const etiquetas = usuario?.organizacion.etiquetas ?? {}
+  const permisos = new Set(usuario?.permisos ?? [])
 
   return (
     <ContextoAuth.Provider value={{
@@ -83,6 +86,7 @@ export function ProveedorAuth({ children }: { children: ReactNode }) {
       esAdmin: usuario?.rol === 'admin',
       tiene: (f) => funciones.has(f),
       etiqueta: (clave, porDefecto) => etiquetas[clave] || porDefecto,
+      puede: (p) => permisos.has(p),
     }}>
       {children}
     </ContextoAuth.Provider>
