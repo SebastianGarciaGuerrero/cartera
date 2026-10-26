@@ -11,6 +11,8 @@ Calculadora de cobranza (plan premium: función `calculadora_369`).
 
 Los porcentajes (judicial, comisión de pago en línea) salen de la
 configuración de la organización; los tramos 3-6-9 son los de la ley.
+El % judicial se puede elegir en cada cálculo; si no, se usa el que fijó
+el cliente de la cobranza y, si no fijó ninguno, el general del estudio.
 """
 
 from datetime import date, timedelta
@@ -44,6 +46,19 @@ def parametros_cobro(request: Request) -> dict:
         "pct_judicial": Decimal(str(conf.get("pct_judicial", calculos.PCT_JUDICIAL_DEFECTO))),
         "comision_pct": Decimal(str(conf.get("comision_pct", calculos.COMISION_FLOW_DEFECTO))),
     }
+
+
+def pct_judicial(request: Request, db: Session, pedido: Optional[Decimal] = None,
+                 cobranza_id: Optional[UUID] = None) -> Decimal:
+    """% de honorarios judiciales: el elegido, el del cliente de la cobranza o el general."""
+    if pedido is not None:
+        return Decimal(pedido)
+    if cobranza_id is not None:
+        cobranza = db.get(Cobranza, cobranza_id)
+        if cobranza is not None and cobranza.cliente is not None \
+                and cobranza.cliente.pct_honorarios_judicial is not None:
+            return Decimal(cobranza.cliente.pct_honorarios_judicial)
+    return parametros_cobro(request)["pct_judicial"]
 
 
 # ------------------------------------------------------------ UF
@@ -86,6 +101,7 @@ class HonorariosVista(BaseModel):
     tramos: List[TramoVista]
     total_honorarios: Decimal
     total_deuda: Decimal
+    pct_judicial: Optional[Decimal] = None  # el % aplicado (judicial)
 
 
 def _vista_honorarios(h: calculos.Honorarios) -> HonorariosVista:
@@ -103,37 +119,46 @@ def _vista_honorarios(h: calculos.Honorarios) -> HonorariosVista:
     )
 
 
-class HonorariosEntrada(BaseModel):
+class PctJudicial(BaseModel):
+    # % de honorarios judiciales elegido (si no, el del cliente o el general).
+    pct_judicial: Optional[Decimal] = Field(None, ge=0, le=100)
+    cobranza_id: Optional[UUID] = None
+
+
+class HonorariosEntrada(PctJudicial):
     capital: Decimal = Field(..., gt=0, max_digits=15, decimal_places=2)
     uf: Optional[Decimal] = Field(None, gt=0)
     modalidad: Literal["extrajudicial", "judicial"] = "extrajudicial"
 
 
-class AbonoEntrada(BaseModel):
+class AbonoEntrada(PctJudicial):
     abono: Decimal = Field(..., gt=0, max_digits=15, decimal_places=2)
     uf: Optional[Decimal] = Field(None, gt=0)
     modalidad: Literal["extrajudicial", "judicial"] = "extrajudicial"
 
 
 @router.post("/api/calculadora/honorarios", response_model=HonorariosVista, dependencies=solo_premium)
-def calcular_honorarios(datos: HonorariosEntrada, request: Request):
+def calcular_honorarios(datos: HonorariosEntrada, request: Request, db: Session = Depends(get_db)):
+    pct = pct_judicial(request, db, datos.pct_judicial, datos.cobranza_id)
     try:
-        h = calculos.honorarios(datos.capital, datos.uf, datos.modalidad,
-                                parametros_cobro(request)["pct_judicial"])
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    return _vista_honorarios(h)
-
-
-@router.post("/api/calculadora/abono", response_model=HonorariosVista, dependencies=solo_premium)
-def desglosar_abono(datos: AbonoEntrada, request: Request):
-    """Lo que pagó el deudor → cuánto es capital (para el mandante) y cuánto honorarios."""
-    try:
-        h = calculos.capital_desde_abono(datos.abono, datos.uf, datos.modalidad,
-                                         parametros_cobro(request)["pct_judicial"])
+        h = calculos.honorarios(datos.capital, datos.uf, datos.modalidad, pct)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     vista = _vista_honorarios(h)
+    vista.pct_judicial = pct
+    return vista
+
+
+@router.post("/api/calculadora/abono", response_model=HonorariosVista, dependencies=solo_premium)
+def desglosar_abono(datos: AbonoEntrada, request: Request, db: Session = Depends(get_db)):
+    """Lo que pagó el deudor → cuánto es capital (para el mandante) y cuánto honorarios."""
+    pct = pct_judicial(request, db, datos.pct_judicial, datos.cobranza_id)
+    try:
+        h = calculos.capital_desde_abono(datos.abono, datos.uf, datos.modalidad, pct)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    vista = _vista_honorarios(h)
+    vista.pct_judicial = pct
     # Que capital + honorarios sumen exactamente el abono.
     vista.capital = calculos.redondear(h.capital)
     vista.total_honorarios = calculos.redondear(datos.abono) - vista.capital
@@ -143,7 +168,7 @@ def desglosar_abono(datos: AbonoEntrada, request: Request):
 
 # ------------------------------------------------------------ acuerdo
 
-class AcuerdoEntrada(BaseModel):
+class AcuerdoEntrada(PctJudicial):
     capital: Decimal = Field(..., gt=0, max_digits=15, decimal_places=2)
     numero_cuotas: int = Field(..., ge=1, le=120)
     tasa_mensual: Decimal = Field(Decimal(0), ge=0, le=10)
@@ -193,10 +218,12 @@ class PlanVista(BaseModel):
     gran_total: Decimal
     cuotas: List[FilaVista]
     texto: str
+    pct_judicial: Optional[Decimal] = None  # el % aplicado (judicial)
 
 
-def _plan(datos: AcuerdoEntrada, request: Request) -> calculos.PlanAcuerdo:
+def _plan(datos: AcuerdoEntrada, request: Request, db: Session) -> calculos.PlanAcuerdo:
     p = parametros_cobro(request)
+    p["pct_judicial"] = pct_judicial(request, db, datos.pct_judicial, datos.cobranza_id)
     try:
         return calculos.calcular_acuerdo(
             capital=datos.capital, numero_cuotas=datos.numero_cuotas,
@@ -220,8 +247,11 @@ def _vista_plan(plan: calculos.PlanAcuerdo, datos: AcuerdoEntrada) -> PlanVista:
 
 
 @router.post("/api/calculadora/acuerdo", response_model=PlanVista, dependencies=solo_premium)
-def simular_acuerdo(datos: AcuerdoEntrada, request: Request):
-    return _vista_plan(_plan(datos, request), datos)
+def simular_acuerdo(datos: AcuerdoEntrada, request: Request, db: Session = Depends(get_db)):
+    vista = _vista_plan(_plan(datos, request, db), datos)
+    if datos.modalidad == "judicial":
+        vista.pct_judicial = pct_judicial(request, db, datos.pct_judicial, datos.cobranza_id)
+    return vista
 
 
 class AcuerdoCrear(AcuerdoEntrada):
@@ -247,7 +277,7 @@ def crear_acuerdo_asistido(
         raise HTTPException(status_code=404, detail="Cobranza no encontrada")
     validar_sin_acuerdo_vigente(db, cobranza.id)
 
-    plan = _plan(datos, request)
+    plan = _plan(datos, request, db)
     texto = calculos.texto_acuerdo(plan, datos.fecha_pie, datos.dia_siguientes)
     nombre = "AVENIMIENTO" if plan.modalidad == "judicial" else "ACUERDO DE PAGO"
 

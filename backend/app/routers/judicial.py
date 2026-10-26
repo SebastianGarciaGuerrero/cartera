@@ -43,6 +43,7 @@ from app.schemas.judicial import (
     TribunalCreate, TribunalResponse,
 )
 from app.security import get_current_user, usuario_autorizado
+from app.permisos import requiere_permiso
 
 router = APIRouter(
     prefix="/api/judicial",
@@ -159,7 +160,7 @@ def listar_causas(
     return filas
 
 
-@router.post("/causas", response_model=CausaDetalle, status_code=status.HTTP_201_CREATED)
+@router.post("/causas", response_model=CausaDetalle, status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("judicial_causas"))])
 def presentar_demanda(datos: CausaCreate, db: Session = Depends(get_db),
                       usuario: Usuario = Depends(get_current_user)):
     campos = datos.model_dump(exclude={"cobranza_ids"})
@@ -218,7 +219,7 @@ def ficha_causa(causa_id: UUID, db: Session = Depends(get_db)):
     }
 
 
-@router.put("/causas/{causa_id}", response_model=CausaDetalle)
+@router.put("/causas/{causa_id}", response_model=CausaDetalle, dependencies=[Depends(requiere_permiso("judicial_causas"))])
 def corregir_causa(causa_id: UUID, datos: CausaUpdate, db: Session = Depends(get_db)):
     causa = _causa(db, causa_id)
     cambios = datos.model_dump(exclude_unset=True)
@@ -231,7 +232,7 @@ def corregir_causa(causa_id: UUID, datos: CausaUpdate, db: Session = Depends(get
     return ficha_causa(causa.id, db)
 
 
-@router.post("/causas/{causa_id}/cobranzas", response_model=CausaDetalle)
+@router.post("/causas/{causa_id}/cobranzas", response_model=CausaDetalle, dependencies=[Depends(requiere_permiso("judicial_causas"))])
 def agregar_cobranza(causa_id: UUID, datos: AgregarCobranza, db: Session = Depends(get_db),
                      usuario: Usuario = Depends(get_current_user)):
     causa = _causa(db, causa_id)
@@ -249,7 +250,7 @@ def agregar_cobranza(causa_id: UUID, datos: AgregarCobranza, db: Session = Depen
 
 
 @router.post("/causas/{causa_id}/tramites", response_model=TramiteRegistrado,
-             status_code=status.HTTP_201_CREATED)
+             status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("judicial_tramites"))])
 def registrar_tramite(causa_id: UUID, datos: TramiteCreate, db: Session = Depends(get_db),
                       usuario: Usuario = Depends(get_current_user)):
     causa = _causa(db, causa_id)
@@ -278,7 +279,7 @@ def registrar_tramite(causa_id: UUID, datos: TramiteCreate, db: Session = Depend
     }
 
 
-@router.post("/causas/{causa_id}/terminar", response_model=CausaDetalle)
+@router.post("/causas/{causa_id}/terminar", response_model=CausaDetalle, dependencies=[Depends(requiere_permiso("judicial_causas"))])
 def terminar(causa_id: UUID, datos: TerminarCausa, db: Session = Depends(get_db),
              usuario: Usuario = Depends(get_current_user)):
     causa = _causa(db, causa_id)
@@ -291,7 +292,7 @@ def terminar(causa_id: UUID, datos: TerminarCausa, db: Session = Depends(get_db)
 # ------------------------------------------------------------------ embargos
 
 @router.post("/causas/{causa_id}/embargos", response_model=EmbargoResponse,
-             status_code=status.HTTP_201_CREATED)
+             status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("judicial_tramites"))])
 def registrar_embargo(causa_id: UUID, datos: EmbargoBase, db: Session = Depends(get_db),
                       usuario: Usuario = Depends(get_current_user)):
     causa = _causa(db, causa_id)
@@ -302,7 +303,7 @@ def registrar_embargo(causa_id: UUID, datos: EmbargoBase, db: Session = Depends(
     return embargo
 
 
-@router.put("/embargos/{embargo_id}", response_model=EmbargoResponse)
+@router.put("/embargos/{embargo_id}", response_model=EmbargoResponse, dependencies=[Depends(requiere_permiso("judicial_tramites"))])
 def actualizar_embargo(embargo_id: UUID, datos: EmbargoUpdate, db: Session = Depends(get_db)):
     embargo = db.get(Embargo, embargo_id)
     if embargo is None:
@@ -322,7 +323,7 @@ def tribunales(db: Session = Depends(get_db)):
             .order_by(Tribunal.ciudad, Tribunal.nombre).all())
 
 
-@router.post("/tribunales", response_model=TribunalResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/tribunales", response_model=TribunalResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("judicial_causas"))])
 def crear_tribunal(datos: TribunalCreate, db: Session = Depends(get_db)):
     tribunal = Tribunal(**datos.model_dump())
     db.add(tribunal)
@@ -339,7 +340,7 @@ def tipos_tramite(todos: bool = False, db: Session = Depends(get_db)):
     return q.order_by(TipoTramite.orden, TipoTramite.nombre).all()
 
 
-@router.post("/tipos-tramite", response_model=TipoTramiteResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/tipos-tramite", response_model=TipoTramiteResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("judicial_causas"))])
 def crear_tipo_tramite(datos: TipoTramiteBase, db: Session = Depends(get_db)):
     if datos.siguiente_id is not None:
         _tipo_tramite(db, datos.siguiente_id)
@@ -350,7 +351,7 @@ def crear_tipo_tramite(datos: TipoTramiteBase, db: Session = Depends(get_db)):
     return tipo
 
 
-@router.put("/tipos-tramite/{tipo_id}", response_model=TipoTramiteResponse)
+@router.put("/tipos-tramite/{tipo_id}", response_model=TipoTramiteResponse, dependencies=[Depends(requiere_permiso("judicial_causas"))])
 def editar_tipo_tramite(tipo_id: int, datos: TipoTramiteUpdate, db: Session = Depends(get_db)):
     tipo = _tipo_tramite(db, tipo_id)
     if not tipo.propio:

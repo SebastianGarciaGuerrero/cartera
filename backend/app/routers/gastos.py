@@ -23,7 +23,7 @@ from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -39,6 +39,7 @@ from app.schemas.judicial import (
     RendicionDetalle, RendicionResponse, ResumenGastosCliente,
 )
 from app.security import get_current_user, usuario_autorizado
+from app.permisos import requiere_permiso, tiene_permiso
 
 router = APIRouter(
     prefix="/api/gastos",
@@ -72,6 +73,7 @@ def _gastos_elegidos(db: Session, ids: List[UUID]) -> List[Gasto]:
 @router.get("/", response_model=List[GastoResponse])
 def listar(
     response: Response,
+    request: Request,
     cliente_id: Optional[UUID] = None,
     estado: Optional[str] = Query(None, pattern="^(por_rendir|rendido|reembolsado|no_reembolsable|anulado|adeudado)$"),
     causa_id: Optional[UUID] = None,
@@ -82,7 +84,13 @@ def listar(
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=2000),
     db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
+    # Sin `ver_totales`, los gastos se ven caso a caso (de una cobranza o causa).
+    if not (cobranza_id or causa_id) and not tiene_permiso(request, usuario, "ver_totales"):
+        raise HTTPException(status_code=403,
+                            detail="Los gastos de toda la cartera los ve la administración. "
+                                   "Ábrelos desde la cobranza o la causa.")
     q = db.query(Gasto).options(joinedload(Gasto.cliente), joinedload(Gasto.cobranza),
                                 joinedload(Gasto.causa), joinedload(Gasto.rendicion))
     if cliente_id:
@@ -145,7 +153,7 @@ def corregir(gasto_id: UUID, datos: GastoUpdate, db: Session = Depends(get_db)):
     return gasto
 
 
-@router.get("/resumen", response_model=List[ResumenGastosCliente])
+@router.get("/resumen", response_model=List[ResumenGastosCliente], dependencies=[Depends(requiere_permiso("ver_totales"))])
 def resumen(db: Session = Depends(get_db), usuario: Usuario = Depends(get_current_user)):
     filas = db.execute(text("""
         SELECT g.cliente_id, COALESCE(cl.nombre_fantasia, cl.razon_social) AS cliente,
@@ -162,7 +170,7 @@ def resumen(db: Session = Depends(get_db), usuario: Usuario = Depends(get_curren
     return [{**f, "total_adeudado": Decimal(f["por_rendir"]) + Decimal(f["rendido"])} for f in filas]
 
 
-@router.post("/reembolsar", response_model=List[GastoResponse])
+@router.post("/reembolsar", response_model=List[GastoResponse], dependencies=[Depends(requiere_permiso("gastos_rendir"))])
 def reembolsar(datos: ReembolsoMasivo, db: Session = Depends(get_db)):
     """El cliente devolvió estos gastos (rendidos o no): quedan reembolsados."""
     gastos = _gastos_elegidos(db, datos.gasto_ids)
@@ -197,7 +205,7 @@ def _con_cantidad(r: RendicionGastos) -> dict:
     return datos
 
 
-@router.get("/rendiciones", response_model=List[RendicionResponse])
+@router.get("/rendiciones", response_model=List[RendicionResponse], dependencies=[Depends(requiere_permiso("gastos_rendir"))])
 def rendiciones(cliente_id: Optional[UUID] = None, estado: Optional[str] = None,
                 limit: int = Query(200, ge=1, le=1000), db: Session = Depends(get_db)):
     q = db.query(RendicionGastos).options(joinedload(RendicionGastos.cliente),
@@ -209,7 +217,7 @@ def rendiciones(cliente_id: Optional[UUID] = None, estado: Optional[str] = None,
     return [_con_cantidad(r) for r in q.order_by(RendicionGastos.numero.desc()).limit(limit).all()]
 
 
-@router.post("/rendiciones", response_model=RendicionDetalle, status_code=status.HTTP_201_CREATED)
+@router.post("/rendiciones", response_model=RendicionDetalle, status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("gastos_rendir"))])
 def rendir(datos: RendicionCreate, db: Session = Depends(get_db),
            usuario: Usuario = Depends(get_current_user)):
     gastos = _gastos_elegidos(db, datos.gasto_ids)
@@ -237,7 +245,7 @@ def rendir(datos: RendicionCreate, db: Session = Depends(get_db),
     return detalle_rendicion(rendicion.id, db)
 
 
-@router.get("/rendiciones/{rendicion_id}", response_model=RendicionDetalle)
+@router.get("/rendiciones/{rendicion_id}", response_model=RendicionDetalle, dependencies=[Depends(requiere_permiso("gastos_rendir"))])
 def detalle_rendicion(rendicion_id: UUID, db: Session = Depends(get_db)):
     r = _rendicion(db, rendicion_id)
     datos = _con_cantidad(r)
@@ -245,7 +253,7 @@ def detalle_rendicion(rendicion_id: UUID, db: Session = Depends(get_db)):
     return datos
 
 
-@router.post("/rendiciones/{rendicion_id}/pagada", response_model=RendicionDetalle)
+@router.post("/rendiciones/{rendicion_id}/pagada", response_model=RendicionDetalle, dependencies=[Depends(requiere_permiso("gastos_rendir"))])
 def rendicion_pagada(rendicion_id: UUID, datos: PagoRendicion, db: Session = Depends(get_db)):
     r = _rendicion(db, rendicion_id)
     if r.estado != "enviada":
@@ -261,7 +269,7 @@ def rendicion_pagada(rendicion_id: UUID, datos: PagoRendicion, db: Session = Dep
     return detalle_rendicion(r.id, db)
 
 
-@router.post("/rendiciones/{rendicion_id}/anular", response_model=RendicionDetalle)
+@router.post("/rendiciones/{rendicion_id}/anular", response_model=RendicionDetalle, dependencies=[Depends(requiere_permiso("gastos_rendir"))])
 def anular_rendicion(rendicion_id: UUID, db: Session = Depends(get_db)):
     r = _rendicion(db, rendicion_id)
     if r.estado != "enviada":

@@ -6,7 +6,7 @@ import { api } from '../api/client'
 import type { Avisos as DatosAvisos, Cobranza, ItemAgenda } from '../api/tipos'
 import { useAuth } from '../auth'
 import Avisos from './Avisos'
-import { EtiquetaEstado, Plata, enDias, fechaLocal, rutConPuntos } from './utiles'
+import { EtiquetaEstado, Plata, enDias, fechaLocal } from './utiles'
 import { ESTILO_TIPO } from '../paginas/Agenda'
 
 // Barra de arriba: buscador de casos, la semana de la persona (sus
@@ -47,14 +47,23 @@ export default function BarraSuperior({ avisos }: { avisos: DatosAvisos | undefi
   )
 }
 
+/** Marca la parte del texto que coincide con lo buscado (sin distinguir mayúsculas). */
+function Resaltado({ texto, q }: { texto: string; q: string }) {
+  const i = q ? texto.toLowerCase().indexOf(q.toLowerCase()) : -1
+  if (i < 0) return <>{texto}</>
+  return <>{texto.slice(0, i)}<mark>{texto.slice(i, i + q.length)}</mark>{texto.slice(i + q.length)}</>
+}
+
 function BuscadorGlobal() {
   const navegar = useNavigate()
+  const { etiqueta } = useAuth()
   const [q, setQ] = useState('')
   const [buscado, setBuscado] = useState('')
+  const [activo, setActivo] = useState(0)
   const { abierto, setAbierto, caja } = usePanel()
 
   useEffect(() => {
-    const t = window.setTimeout(() => setBuscado(q.trim()), 250)
+    const t = window.setTimeout(() => setBuscado(q.trim()), 200)
     return () => window.clearTimeout(t)
   }, [q])
 
@@ -63,26 +72,44 @@ function BuscadorGlobal() {
     enabled: buscado.length >= 2,
     queryFn: async () => (await api.get<Cobranza[]>('/cobranzas/buscar', { params: { q: buscado, limit: 8 } })).data,
   })
+  useEffect(() => setActivo(0), [data])
 
   function ir(id: string) {
     setAbierto(false); setQ('')
     navegar(`/cobranzas/${id}`)
   }
 
+  function teclas(e: React.KeyboardEvent) {
+    if (!data?.length) return
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActivo((a) => Math.min(a + 1, data.length - 1)) }
+    if (e.key === 'ArrowUp') { e.preventDefault(); setActivo((a) => Math.max(a - 1, 0)) }
+    if (e.key === 'Enter') ir(data[activo].id)
+  }
+
+  // Lo buscado, como se guarda el RUT (sin puntos), para marcarlo.
+  const qRut = buscado.replace(/\./g, '')
   return (
     <div className="buscador-global" ref={caja}>
-      <input type="search" value={q} placeholder="Buscar N° de cobranza, RUT o nombre del deudor…"
-        aria-label="Buscar casos" onFocus={() => setAbierto(true)}
-        onChange={(e) => { setQ(e.target.value); setAbierto(true) }}
-        onKeyDown={(e) => { if (e.key === 'Enter' && data?.[0]) ir(data[0].id) }} />
+      <input type="search" value={q}
+        placeholder={`Buscar por N° de cobranza, ${etiqueta('id_externo', 'ID cliente')}, RUT o nombre…`}
+        aria-label="Buscar casos" aria-expanded={abierto} aria-controls="buscador-resultados"
+        onFocus={() => setAbierto(true)} onKeyDown={teclas}
+        onChange={(e) => { setQ(e.target.value); setAbierto(true) }} />
       {abierto && buscado.length >= 2 && (
-        <div className="buscador-resultados" role="listbox">
+        <div className="buscador-resultados" id="buscador-resultados" role="listbox">
           {isFetching && !data ? <p className="suave">Buscando…</p> : data?.length === 0 ? (
             <p className="suave">Sin resultados para «{buscado}».</p>
-          ) : data?.map((c) => (
-            <button key={c.id} role="option" aria-selected={false} onClick={() => ir(c.id)}>
-              <span><strong className="mono">N° {c.numero}</strong> {c.deudor_nombre}</span>
-              <span className="suave">{rutConPuntos(c.deudor_rut)} · {c.cliente_nombre}</span>
+          ) : data?.map((c, i) => (
+            <button key={c.id} role="option" aria-selected={i === activo} className={i === activo ? 'activo' : ''}
+              onMouseEnter={() => setActivo(i)} onClick={() => ir(c.id)}>
+              <span className="buscador-linea">
+                <strong className="mono">N° <Resaltado texto={String(c.numero)} q={buscado} /></strong>
+                {c.id_externo && <span className="buscador-id mono"><Resaltado texto={c.id_externo} q={buscado} /></span>}
+                <span><Resaltado texto={c.deudor_nombre ?? ''} q={buscado} /></span>
+              </span>
+              <span className="suave">
+                <span className="mono"><Resaltado texto={c.deudor_rut ?? ''} q={qRut} /></span> · {c.cliente_nombre}
+              </span>
               <span className="buscador-derecha"><Plata valor={c.monto_actual} /> <EtiquetaEstado estado={c.estado} /></span>
             </button>
           ))}

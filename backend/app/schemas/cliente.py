@@ -11,6 +11,7 @@ Por qué tener schemas separados de los modelos:
 
 from uuid import UUID
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
@@ -34,6 +35,8 @@ class ClienteBase(BaseModel):
     instrucciones_pago: Optional[str] = Field(None, max_length=2000)
     # Días desde el ingreso para sugerir preparar la demanda (vacío = sin sugerencia)
     dias_para_demanda: Optional[int] = Field(None, ge=0, le=3650)
+    # % de honorarios judiciales del cliente (vacío = libre, el general del estudio)
+    pct_honorarios_judicial: Optional[Decimal] = Field(None, ge=0, le=100, decimal_places=2)
 
 
 class ClienteCreate(ClienteBase):
@@ -60,6 +63,7 @@ class ClienteUpdate(BaseModel):
     email: Optional[EmailStr] = None
     instrucciones_pago: Optional[str] = Field(None, max_length=2000)
     dias_para_demanda: Optional[int] = Field(None, ge=0, le=3650)
+    pct_honorarios_judicial: Optional[Decimal] = Field(None, ge=0, le=100, decimal_places=2)
     activo: Optional[bool] = None
     # NOTA: el RUT no se puede cambiar. Es identificador.
 

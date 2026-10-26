@@ -38,6 +38,7 @@ from app.config import settings
 from app.database import get_db
 from app.rut import normalizar_rut
 from app.security import usuario_autorizado
+from app.permisos import requiere_permiso
 from app.models.cliente import Cliente
 from app.models.filial import Filial
 from app.models.deudor import Deudor, ContactoDeudor
@@ -173,7 +174,7 @@ class ResultadoImportacion(BaseModel):
     columnas_ignoradas: list = []
 
 
-@router.post("/cobranzas", response_model=ResultadoImportacion)
+@router.post("/cobranzas", response_model=ResultadoImportacion, dependencies=[Depends(requiere_permiso("carga_masiva"))])
 async def importar_cobranzas(
     archivo: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -355,7 +356,7 @@ class ResultadoGestiones(BaseModel):
     errores: list  # [{fila, error}]
 
 
-@router.post("/gestiones", response_model=ResultadoGestiones)
+@router.post("/gestiones", response_model=ResultadoGestiones, dependencies=[Depends(requiere_permiso("gestiones_masivas"))])
 async def importar_gestiones(
     cliente_id: UUID = Form(..., description="Cliente al que pertenecen los ID de la planilla"),
     archivo: UploadFile = File(...),

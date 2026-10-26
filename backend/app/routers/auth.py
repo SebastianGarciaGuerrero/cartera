@@ -36,6 +36,7 @@ from app.database import get_db
 from app.models.organizacion import Organizacion
 from app.models.seguridad import Sesion, TokenUnUso
 from app.models.usuario import Usuario
+from app.permisos import permisos_de
 from app.planes import funciones_de
 from app.schemas.auth import (
     CambiarPassword, CodigosRecuperacion, LoginEntrada, MfaConfirmar, MfaDesactivar,
@@ -82,6 +83,7 @@ def _usuario_actual(usuario: Usuario, org: Organizacion) -> UsuarioActual:
             funciones=sorted(funciones_de(org)),
             etiquetas=(org.configuracion or {}).get("etiquetas") or {},
         ),
+        permisos=sorted(permisos_de(usuario.rol_nombre, org)),
     )
 
 

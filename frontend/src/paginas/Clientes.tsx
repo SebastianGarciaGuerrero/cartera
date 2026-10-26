@@ -108,6 +108,7 @@ function FormCliente({ cliente, alCerrar }: { cliente: ClienteCompleto | null; a
     ciudad: cliente?.ciudad ?? '',
     instrucciones_pago: cliente?.instrucciones_pago ?? '',
     dias_para_demanda: cliente?.dias_para_demanda != null ? String(cliente.dias_para_demanda) : '',
+    pct_honorarios_judicial: cliente?.pct_honorarios_judicial != null ? String(Number(cliente.pct_honorarios_judicial)) : '',
     activo: cliente?.activo ?? true,
   })
   const [error, setError] = useState('')
@@ -126,6 +127,7 @@ function FormCliente({ cliente, alCerrar }: { cliente: ClienteCompleto | null; a
         direccion: vacioANull(f.direccion), comuna: vacioANull(f.comuna), ciudad: vacioANull(f.ciudad),
         instrucciones_pago: vacioANull(f.instrucciones_pago),
         dias_para_demanda: f.dias_para_demanda.trim() === '' ? null : Number(f.dias_para_demanda),
+        pct_honorarios_judicial: f.pct_honorarios_judicial.trim() === '' ? null : Number(f.pct_honorarios_judicial),
       }
       if (cliente) await api.put(`/clientes/${cliente.id}`, { ...cuerpo, activo: f.activo })
       else await api.post('/clientes/', { ...cuerpo, rut: f.rut })
@@ -167,6 +169,10 @@ function FormCliente({ cliente, alCerrar }: { cliente: ClienteCompleto | null; a
         <label>
           Sugerir demanda a los … días del ingreso (vacío = sin sugerencia, 0 = de inmediato)
           <input type="number" min={0} max={3650} {...campo('dias_para_demanda')} placeholder="Ej. 90" />
+        </label>
+        <label>
+          Honorarios judiciales que fija este {etiqueta('cliente', 'cliente').toLowerCase()} (%). Vacío = libre: se usa el general del estudio y se elige en cada abono
+          <input type="number" min={0} max={100} step="0.5" {...campo('pct_honorarios_judicial')} placeholder="Ej. 10" />
         </label>
         {cliente && (
           <label className="check">

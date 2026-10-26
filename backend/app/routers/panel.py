@@ -11,8 +11,9 @@ Devuelve en una sola llamada:
   - recupero mensual de los últimos 12 meses (capital y honorarios)
   - resumen por mandante
 
-Admin y supervisor ven todo (y pueden filtrar por ejecutivo); el resto ve
-solo las cobranzas que tiene asignadas.
+Quien tiene el permiso `ver_totales` (administración) ve toda la cartera
+y puede filtrar por ejecutivo; el resto ve solo las cobranzas que tiene
+asignadas.
 """
 
 from datetime import date, timedelta
@@ -20,7 +21,7 @@ from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.indicadores import hoy_chile
 from app.models.usuario import Usuario
+from app.permisos import tiene_permiso
 from app.security import get_current_user, usuario_autorizado
 
 router = APIRouter(prefix="/api/panel", tags=["Panel"], dependencies=[Depends(usuario_autorizado)])
@@ -91,6 +93,7 @@ def _primer_dia_mes(f: date, meses_atras: int = 0) -> date:
 
 @router.get("", response_model=Panel)
 def panel(
+    request: Request,
     desde: Optional[date] = None,
     hasta: Optional[date] = None,
     cliente_id: Optional[UUID] = None,
@@ -103,7 +106,7 @@ def panel(
     hasta = hasta or hoy
     if hasta < desde or (hasta - desde).days > 366:
         raise HTTPException(status_code=422, detail="El período debe ser de hasta un año.")
-    if usuario.rol_nombre not in ("admin", "supervisor"):
+    if not tiene_permiso(request, usuario, "ver_totales"):
         ejecutivo_id = usuario.id  # cada uno ve lo suyo
 
     largo = (hasta - desde).days + 1

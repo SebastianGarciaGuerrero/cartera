@@ -45,14 +45,14 @@ export default function Deudores() {
       </header>
 
       <div className="filtros">
-        <input className="buscador" placeholder="Buscar por RUT o nombre…" value={busqueda}
+        <input className="buscador" placeholder={`Buscar por RUT, nombre, N° de cobranza o ${etiqueta('id_externo', 'ID cliente')}…`} value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)} autoFocus />
       </div>
 
       <div className="deudores-grilla">
         <div>
           {!hayBusqueda ? (
-            <div className="vacio-busqueda">Escribe un RUT (con o sin puntos) o parte del nombre.</div>
+            <div className="vacio-busqueda">Escribe un RUT (con o sin puntos), parte del nombre, un N° de cobranza o un ID.</div>
           ) : (
             <div className="lista-resultados">
               {deudores?.map((d) => (

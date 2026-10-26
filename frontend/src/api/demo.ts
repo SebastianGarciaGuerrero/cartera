@@ -648,17 +648,19 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
   }
   if (metodo === 'POST' && url.startsWith('/calculadora/')) {
     const d = cuerpo(config) as Record<string, unknown>
-    const pct = Number(db.cobro.pct_judicial)
+    // % judicial: el elegido, el del cliente de la cobranza o el general (como el backend).
+    const clienteDe = db.clientes.find((c) => c.id === db.cobranzas.find((x) => x.id === d.cobranza_id)?.cliente_id) as { pct_honorarios_judicial?: string | null } | undefined
+    const pct = Number(d.pct_judicial ?? clienteDe?.pct_honorarios_judicial ?? db.cobro.pct_judicial)
     try {
       if (url === '/calculadora/honorarios') {
-        return ok(config, calc.aTexto(calc.honorarios(Number(d.capital), d.uf ? Number(d.uf) : null, String(d.modalidad), pct)))
+        return ok(config, { ...calc.aTexto(calc.honorarios(Number(d.capital), d.uf ? Number(d.uf) : null, String(d.modalidad), pct)), pct_judicial: String(pct) })
       }
       if (url === '/calculadora/abono') {
         const h = calc.aTexto(calc.capitalDesdeAbono(Number(d.abono), d.uf ? Number(d.uf) : null, String(d.modalidad), pct))
         const abono = Math.round(Number(d.abono))
-        return ok(config, { ...h, total_honorarios: String(abono - Number(h.capital)), total_deuda: String(abono) })
+        return ok(config, { ...h, total_honorarios: String(abono - Number(h.capital)), total_deuda: String(abono), pct_judicial: String(pct) })
       }
-      const plan = calc.acuerdo(d)
+      const plan = calc.acuerdo({ ...d, pct_judicial: pct })
       if (url === '/calculadora/acuerdo') return ok(config, plan)
       if (url === '/calculadora/acuerdo/crear') {
         const cob = db.cobranzas.find((c) => c.id === d.cobranza_id)
@@ -874,7 +876,10 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const q = (params.q ?? '').toLowerCase()
     const abiertos = ['activa', 'acuerdo_pago', 'judicial']
     return ok(config, db.deudores
-      .filter((d) => d.rut.includes(q.replace(/\./g, '')) || d.nombre.toLowerCase().includes(q))
+      // RUT (con o sin puntos y guion), nombre, o N°/ID de alguna de sus cobranzas.
+      .filter((d) => d.rut.includes(q.replace(/\./g, '')) || d.rut.replace('-', '').includes(q.replace(/[.-]/g, ''))
+        || d.nombre.toLowerCase().includes(q)
+        || db.cobranzas.some((c) => c.deudor_id === d.id && (String(c.numero).includes(q) || (c.id_externo ?? '').toLowerCase().includes(q))))
       .slice(0, 30)
       .map((d) => {
         const suyas = db.cobranzas.filter((c) => c.deudor_id === d.id)
@@ -978,8 +983,13 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const lista = db.cobranzas.filter((c) => {
       const d = db.deudores.find((x) => x.id === c.deudor_id)
       return String(c.numero).includes(q) || (c.id_externo ?? '').toLowerCase().includes(q)
-        || d?.rut.includes(q) || d?.nombre.toLowerCase().includes(q)
+        || d?.rut.includes(q.replace(/\./g, '')) || d?.rut.replace('-', '').includes(q.replace(/[.-]/g, ''))
+        || d?.nombre.toLowerCase().includes(q)
     })
+    // Primero lo exacto y lo que termina en lo escrito (como el backend).
+    const peso = (c: (typeof lista)[number]) => String(c.numero) === q || (c.id_externo ?? '').toLowerCase() === q ? 0
+      : (c.id_externo ?? '').toLowerCase().endsWith(q) ? 1 : 2
+    lista.sort((a, b) => peso(a) - peso(b) || a.numero - b.numero)
     return ok(config, lista.slice(0, Number(params.limit) || 50).map(conNombres))
   }
   if (metodo === 'GET' && url === '/cobranzas/') {

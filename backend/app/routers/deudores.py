@@ -21,7 +21,7 @@ tienen soft-delete ('activo').
 from uuid import UUID
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import func, or_
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -71,7 +71,8 @@ def listar_deudores(
 
 @router.get("/buscar", response_model=List[DeudorBusqueda])
 def buscar_deudores(
-    q: str = Query(..., min_length=1, max_length=100, description="RUT o parte del nombre"),
+    q: str = Query(..., min_length=1, max_length=100,
+                   description="RUT, parte del nombre, N° de cobranza o ID cliente"),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
@@ -79,13 +80,21 @@ def buscar_deudores(
     Busca deudores por RUT o nombre (coincidencia parcial, sin distinguir
     mayúsculas con ILIKE).
 
-    - **q**: texto a buscar. Ej: "garcia" o "12345678".
+    - **q**: texto a buscar. Ej: "garcia", "12345678", "20001" o "SAP-77120".
     """
+    q = q.strip()
     patron = f"%{q}%"
     patron_rut = f"%{q.replace('.', '')}%"  # "12.345" encuentra "12345678-5"
+    rut = q.replace(".", "").replace("-", "")
+    # También por sus cobranzas: N° (parcial) o ID cliente ("77120" → "SAP-77120").
+    por_cobranza = select(Cobranza.deudor_id).where(or_(
+        cast(Cobranza.numero, String).like(f"%{q}%"), Cobranza.id_externo.ilike(patron)))
+    condiciones = [Deudor.rut.ilike(patron_rut), Deudor.nombre.ilike(patron), Deudor.id.in_(por_cobranza)]
+    if rut:
+        condiciones.append(func.replace(Deudor.rut, "-", "").ilike(f"%{rut}%"))
     deudores = (
         db.query(Deudor)
-        .filter(or_(Deudor.rut.ilike(patron_rut), Deudor.nombre.ilike(patron)))
+        .filter(or_(*condiciones))
         .order_by(Deudor.nombre)
         .limit(limit)
         .all()

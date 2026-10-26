@@ -64,6 +64,7 @@ export function acuerdo(d: Record<string, unknown>) {
   const tasa = Number(d.tasa_mensual ?? 0)
   const uf = d.uf ? Number(d.uf) : null
   const modalidad = String(d.modalidad ?? 'extrajudicial')
+  const pctJudicial = Number(d.pct_judicial ?? 10)
   const pie = Number(d.abono_inicial ?? 0)
   const gastos = modalidad === 'judicial' ? Number(d.gastos_judiciales ?? 0) : 0
   const conComision = Boolean(d.con_comision)
@@ -74,13 +75,13 @@ export function acuerdo(d: Record<string, unknown>) {
   let capPie = 0
   let honPie = 0
   if (pie > 0) {
-    capPie = r(capitalDesdeAbono(pie, uf, modalidad).capital)
+    capPie = r(capitalDesdeAbono(pie, uf, modalidad, pctJudicial).capital)
     honPie = r(pie) - capPie
   }
   const capNuevo = r(capital) - capPie
   const cuotaCap = r(capNuevo / n)
   const interesMes = r(capNuevo * tasa / 100)
-  const honMes = r(honorarios(cuotaCap, uf, modalidad).total_honorarios)
+  const honMes = r(honorarios(cuotaCap, uf, modalidad, pctJudicial).total_honorarios)
   const gastosCuota = gastos > 0 ? r(gastos / n) : 0
   const comisionTotal = conComision ? r(capital * 2.2491 / 100) : 0
   const comisionCuota = conComision ? r(comisionTotal / n) : 0

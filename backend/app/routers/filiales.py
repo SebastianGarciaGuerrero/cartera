@@ -13,6 +13,7 @@ from app.models.filial import Filial
 from app.models.cliente import Cliente
 from app.schemas.filial import FilialCreate, FilialUpdate, FilialResponse, FilialConCliente
 from app.security import usuario_autorizado
+from app.permisos import requiere_permiso
 
 
 # dependencies=[...] exige token válido en TODOS los endpoints del router
@@ -76,7 +77,7 @@ def obtener_filial(filial_id: int, db: Session = Depends(get_db)):
     return filial
 
 
-@router.post("/", response_model=FilialResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=FilialResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("clientes_editar"))])
 def crear_filial(filial_data: FilialCreate, db: Session = Depends(get_db)):
     """
     Crea una filial nueva para un cliente existente.
@@ -108,7 +109,7 @@ def crear_filial(filial_data: FilialCreate, db: Session = Depends(get_db)):
     return nueva_filial
 
 
-@router.put("/{filial_id}", response_model=FilialResponse)
+@router.put("/{filial_id}", response_model=FilialResponse, dependencies=[Depends(requiere_permiso("clientes_editar"))])
 def actualizar_filial(
     filial_id: int,
     filial_data: FilialUpdate,
@@ -140,7 +141,7 @@ def actualizar_filial(
     return filial
 
 
-@router.delete("/{filial_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{filial_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(requiere_permiso("clientes_editar"))])
 def desactivar_filial(filial_id: int, db: Session = Depends(get_db)):
     """Desactiva una filial (soft delete)."""
     filial = db.query(Filial).filter(Filial.id == filial_id).first()

@@ -77,6 +77,7 @@ export interface Cliente {
   nombre_fantasia: string | null
   instrucciones_pago?: string | null
   dias_para_demanda?: number | null
+  pct_honorarios_judicial?: string | null
 }
 
 export interface Filial {
@@ -347,6 +348,8 @@ export interface ResultadoHonorarios {
   tramos: TramoHonorarios[]
   total_honorarios: string
   total_deuda: string
+  /** % de honorarios judiciales aplicado */
+  pct_judicial?: string | null
 }
 
 export interface FilaPlan {

@@ -27,6 +27,7 @@ from openpyxl.utils import get_column_letter
 
 from app.database import get_db
 from app.security import get_current_user, usuario_autorizado
+from app.permisos import requiere_permiso
 from app.models.gestion import Gestion, TipoGestion
 from app.models.cobranza import Cobranza
 from app.models.deudor import Deudor
@@ -101,7 +102,7 @@ def _validar_cliente(db: Session, cliente_id: UUID) -> Cliente:
     return cliente
 
 
-@router.get("/gestiones")
+@router.get("/gestiones", dependencies=[Depends(requiere_permiso("ver_totales"))])
 def exportar_gestiones(
     dias: int = Query(15, ge=1, le=365, description="Cuántos días hacia atrás incluir"),
     cliente_id: Optional[UUID] = Query(None, description="Filtrar por cliente"),
@@ -170,7 +171,7 @@ def exportar_gestiones(
     return _responder_xlsx(wb, f"gestiones_{nombre_filtro}_{dias}dias_{hoy}.xlsx")
 
 
-@router.get("/recupero")
+@router.get("/recupero", dependencies=[Depends(requiere_permiso("ver_totales"))])
 def exportar_recupero(
     anio: Optional[int] = Query(None, ge=2000, le=2100, description="Año (default: actual)"),
     mes: Optional[int] = Query(None, ge=1, le=12, description="Mes 1-12 (default: actual)"),
@@ -247,7 +248,7 @@ def exportar_recupero(
     return _responder_xlsx(wb, f"recupero_{nombre_filtro}_{anio}-{mes:02d}.xlsx")
 
 
-@router.get("/rendicion")
+@router.get("/rendicion", dependencies=[Depends(requiere_permiso("ver_totales"))])
 def exportar_rendicion(
     anio: Optional[int] = Query(None, ge=2000, le=2100, description="Año (default: actual)"),
     mes: Optional[int] = Query(None, ge=1, le=12, description="Mes 1-12 (default: actual)"),

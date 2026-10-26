@@ -7,6 +7,8 @@ sin pedir cambios de código.
   GET  /api/campos                  → campos personalizados (filtrables)
   POST /api/campos                  → (admin) crear campo
   PUT  /api/campos/{id}             → (admin) editar / desactivar campo
+  GET  /api/permisos                → qué puede hacer cada rol
+  PUT  /api/permisos                → (admin) ajustar la tabla de permisos
 
 Etiquetas: cómo llama cada estudio a las cosas. Un estudio dice "Mandante"
 donde otro dice "Cliente"; "Sucursal" en vez de "Filial"; "N° operación"
@@ -31,6 +33,7 @@ from app.database import get_db
 from app.models.campo_personalizado import CampoPersonalizado
 from app.models.cliente import Cliente
 from app.models.organizacion import Organizacion
+from app.permisos import PERMISOS, POR_DEFECTO, ROLES_AJUSTABLES, permisos_de
 from app.planes import funciones_de
 from app.security import require_admin, usuario_autorizado
 
@@ -132,6 +135,58 @@ def actualizar_organizacion(
     db.commit()
     db.refresh(org)
     return _vista(org)
+
+
+# ============================================================
+# Roles y permisos
+# ============================================================
+
+class PermisosVista(BaseModel):
+    permisos: dict           # clave → nombre legible
+    roles: dict              # rol → permisos que tiene en esta organización
+    por_defecto: dict        # rol → permisos por defecto
+
+
+class PermisosCambios(BaseModel):
+    roles: dict[str, List[str]]
+
+
+def _vista_permisos(org: Organizacion) -> PermisosVista:
+    return PermisosVista(
+        permisos=PERMISOS,
+        roles={r: sorted(permisos_de(r, org)) for r in ("admin", *ROLES_AJUSTABLES)},
+        por_defecto={r: sorted(POR_DEFECTO[r]) for r in ROLES_AJUSTABLES},
+    )
+
+
+@router.get("/api/permisos", response_model=PermisosVista, dependencies=[Depends(usuario_autorizado)])
+def ver_permisos(request: Request):
+    return _vista_permisos(request.state.organizacion)
+
+
+@router.put("/api/permisos", response_model=PermisosVista)
+def ajustar_permisos(
+    cambios: PermisosCambios,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """El administrador siempre lo puede todo; se ajustan los demás roles."""
+    ajustes = {}
+    for rol, lista in cambios.roles.items():
+        if rol not in ROLES_AJUSTABLES:
+            raise HTTPException(status_code=422, detail=f"Rol que no se puede ajustar: {rol}")
+        desconocidos = set(lista) - set(PERMISOS)
+        if desconocidos:
+            raise HTTPException(status_code=422, detail=f"Permiso desconocido: {', '.join(sorted(desconocidos))}")
+        ajustes[rol] = sorted(set(lista))
+    org = db.get(Organizacion, request.state.organizacion.id)
+    configuracion = dict(org.configuracion or {})
+    configuracion["permisos"] = {**(configuracion.get("permisos") or {}), **ajustes}
+    org.configuracion = configuracion  # reasignar: JSONB no detecta mutaciones
+    db.commit()
+    db.refresh(org)
+    return _vista_permisos(org)
 
 
 # ============================================================

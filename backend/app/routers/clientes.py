@@ -19,6 +19,7 @@ from app.database import get_db
 from app.models.cliente import Cliente
 from app.schemas.cliente import ClienteCreate, ClienteUpdate, ClienteResponse
 from app.security import usuario_autorizado
+from app.permisos import requiere_permiso
 
 
 # Router agrupa endpoints relacionados.
@@ -70,7 +71,7 @@ def obtener_cliente(cliente_id: UUID, db: Session = Depends(get_db)):
     return cliente
 
 
-@router.post("/", response_model=ClienteResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ClienteResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("clientes_editar"))])
 def crear_cliente(cliente_data: ClienteCreate, db: Session = Depends(get_db)):
     """
     Crea un cliente nuevo.
@@ -93,7 +94,7 @@ def crear_cliente(cliente_data: ClienteCreate, db: Session = Depends(get_db)):
     return nuevo_cliente
 
 
-@router.put("/{cliente_id}", response_model=ClienteResponse)
+@router.put("/{cliente_id}", response_model=ClienteResponse, dependencies=[Depends(requiere_permiso("clientes_editar"))])
 def actualizar_cliente(
     cliente_id: UUID,
     cliente_data: ClienteUpdate,
@@ -119,7 +120,7 @@ def actualizar_cliente(
     return cliente
 
 
-@router.delete("/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{cliente_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(requiere_permiso("clientes_editar"))])
 def desactivar_cliente(cliente_id: UUID, db: Session = Depends(get_db)):
     """
     Desactiva un cliente (soft delete).

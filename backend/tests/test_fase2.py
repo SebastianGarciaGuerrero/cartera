@@ -307,3 +307,44 @@ def test_logo_de_la_empresa(cliente_http, org_a, org_b):
     # Cada organización ve solo su logo.
     hb = login(cliente_http, org_b["email"])
     assert cliente_http.get("/api/empresa/logo", headers=hb).status_code == 404
+
+
+def test_pct_judicial_del_cliente_o_elegido(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=1_000_000, n=43)
+    base = {"abono": 115000, "modalidad": "judicial", "cobranza_id": cartera["cobranza_id"]}
+    r = cliente_http.post("/api/calculadora/abono", headers=h, json=base).json()
+    assert float(r["pct_judicial"]) == 10  # el general del estudio
+    # El cliente fija su porcentaje: se usa por defecto.
+    cliente_http.put(f"/api/clientes/{cartera['cliente_id']}", headers=h, json={"pct_honorarios_judicial": 15})
+    r = cliente_http.post("/api/calculadora/abono", headers=h, json=base).json()
+    assert float(r["pct_judicial"]) == 15
+    assert float(r["capital"]) == 100000 and float(r["total_honorarios"]) == 15000
+    # Y en cada abono se puede elegir otro.
+    r = cliente_http.post("/api/calculadora/abono", headers=h, json={**base, "pct_judicial": 20}).json()
+    assert float(r["pct_judicial"]) == 20
+    r = cliente_http.post("/api/calculadora/honorarios", headers=h,
+                          json={"capital": 100000, "modalidad": "judicial", "pct_judicial": 7.5}).json()
+    assert float(r["total_honorarios"]) == 7500
+
+
+def test_buscador_por_id_numero_y_rut(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, n=44)
+    r = cliente_http.post("/api/cobranzas/", headers=h, json={
+        "cliente_id": cartera["cliente_id"], "deudor_id": cartera["deudor_id"],
+        "monto_original": 50000, "id_externo": "SAP-77120"})
+    assert r.status_code == 201, r.text
+    otra = r.json()
+    # Parte del ID: "77120" encuentra "SAP-77120", y va primero.
+    res = cliente_http.get("/api/cobranzas/buscar", headers=h, params={"q": "77120"}).json()
+    assert res[0]["id"] == otra["id"]
+    # El N° de cobranza y el RUT sin puntos ni guion.
+    res = cliente_http.get("/api/cobranzas/buscar", headers=h, params={"q": str(otra["numero"])}).json()
+    assert res[0]["id"] == otra["id"]
+    rut = cliente_http.get(f"/api/deudores/{cartera['deudor_id']}", headers=h).json()["rut"]
+    res = cliente_http.get("/api/cobranzas/buscar", headers=h, params={"q": rut.replace("-", "")}).json()
+    assert {c["id"] for c in res} >= {otra["id"], cartera["cobranza_id"]}
+    # El buscador de deudores también encuentra por ID de cobranza.
+    res = cliente_http.get("/api/deudores/buscar", headers=h, params={"q": "77120"}).json()
+    assert [d["id"] for d in res] == [cartera["deudor_id"]]

@@ -18,7 +18,7 @@ de otra organización responde 404, igual que uno inexistente.
 from uuid import UUID
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
-from sqlalchemy import or_, cast, String, text
+from sqlalchemy import or_, case, cast, func, String, text
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
@@ -29,6 +29,7 @@ from app.indicadores import hoy_chile
 from app.schemas.judicial import CambiarEtapa, CicloVida
 from app.models.judicial import DocumentoCobranza
 from app.security import get_current_user, usuario_autorizado
+from app.permisos import requiere_permiso
 from app.models.cliente import Cliente
 from app.models.cobranza import Cobranza
 from app.models.deudor import Deudor
@@ -131,9 +132,13 @@ def buscar_cobranzas(
 ):
     """
     Busca cobranzas por N° de cobranza (coincidencia parcial: '2000'
-    encuentra la 20001), ID cliente, o RUT/nombre del deudor.
+    encuentra la 20001), ID cliente ('77120' encuentra 'SAP-77120'), RUT
+    (con o sin puntos y guion) o nombre del deudor. Primero lo exacto y lo
+    que termina en lo escrito; después el resto por N°.
     """
+    q = q.strip()
     patron = f"%{q.replace('.', '')}%"
+    rut = q.replace(".", "").replace("-", "")
     query = (db.query(Cobranza).join(Deudor, Cobranza.deudor_id == Deudor.id)
              .options(joinedload(Cobranza.deudor), joinedload(Cobranza.cliente)))
 
@@ -143,11 +148,19 @@ def buscar_cobranzas(
         Deudor.rut.ilike(patron),
         Deudor.nombre.ilike(f"%{q}%"),
     ]
+    if rut:
+        condiciones.append(func.replace(Deudor.rut, "-", "").ilike(f"%{rut}%"))
+    orden = case(
+        (cast(Cobranza.numero, String) == q, 0),
+        (func.lower(Cobranza.id_externo) == q.lower(), 0),
+        (Cobranza.id_externo.ilike(f"%{q}"), 1),
+        (func.replace(Deudor.rut, "-", "").ilike(f"{rut}%"), 1),
+        else_=2,
+    )
+    return query.filter(or_(*condiciones)).order_by(orden, Cobranza.numero).limit(limit).all()
 
-    return query.filter(or_(*condiciones)).order_by(Cobranza.numero).limit(limit).all()
 
-
-@router.get("/resumen-etapas")
+@router.get("/resumen-etapas", dependencies=[Depends(requiere_permiso("ver_totales"))])
 def resumen_etapas(cliente_id: Optional[UUID] = None, db: Session = Depends(get_db),
                    usuario: Usuario = Depends(get_current_user)):
     """
@@ -177,7 +190,7 @@ def obtener_cobranza(cobranza_id: UUID, db: Session = Depends(get_db)):
     return cobranza
 
 
-@router.post("/", response_model=CobranzaResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=CobranzaResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(requiere_permiso("cobranzas_crear"))])
 def crear_cobranza(cobranza_data: CobranzaCreate, db: Session = Depends(get_db)):
     """
     Crea una cobranza nueva.

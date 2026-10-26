@@ -40,6 +40,8 @@ class UsuarioActual(BaseModel):
     mfa_activo: bool
     debe_cambiar_password: bool
     organizacion: OrganizacionActual
+    # Lo que su rol puede hacer además de trabajar sus casos (app/permisos.py).
+    permisos: List[str] = []
 
 
 class TokenRespuesta(BaseModel):
