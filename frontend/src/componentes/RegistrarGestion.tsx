@@ -3,12 +3,13 @@ import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import { refrescarCaso } from '../api/refrescar'
-import type { Acuerdo, AcuerdoDetalle, CobranzaDetalle, TipoGestion } from '../api/tipos'
+import type { Acuerdo, AcuerdoDetalle, CobranzaDetalle, PlanAcuerdo, TipoGestion } from '../api/tipos'
 import { FormPago } from './Finanzas'
 import { Plata, clp, enDias, fechaLegible, fechaLocal, nombreCuota, sumarMeses } from './utiles'
 import { useAuth } from '../auth'
 import AcuerdoCalculado from './AcuerdoCalculado'
 import type { CuerpoAcuerdo } from './AcuerdoCalculado'
+import ConfirmarGestion from './ConfirmarGestion'
 
 // Registrar gestión en un paso: qué pasó y cuál fue el resultado.
 //   - Gestión: tipo + comentario (+ próximo contacto, opcional).
@@ -72,6 +73,8 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
   const conCalculadora = tiene('calculadora_369')
   const [modoAcuerdo, setModoAcuerdo] = useState<'calculado' | 'manual'>(conCalculadora ? 'calculado' : 'manual')
   const [cuerpoCalculado, setCuerpoCalculado] = useState<CuerpoAcuerdo | null>(null)
+  const [planCalculado, setPlanCalculado] = useState<PlanAcuerdo | null>(null)
+  const [confirmando, setConfirmando] = useState(false)
   const [tipoId, setTipoId] = useState<number | null>(null)
   const [descripcion, setDescripcion] = useState('')
   const [proximo, setProximo] = useState('')
@@ -153,13 +156,29 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
       }
       await api.post('/gestiones/completa', cuerpo)
     },
-    onSuccess: () => terminar(
+    onSuccess: () => { setConfirmando(false); terminar(
       resultado === 'promesa' ? `Promesa registrada: te aparecerá en la agenda el ${fechaLegible(promesaFecha)}.`
         : resultado === 'acuerdo' ? 'Acuerdo registrado. El pie y cada cuota te aparecerán en la agenda y en los avisos (el día antes y el día que vence).'
           : proximo ? `Gestión registrada. Próximo contacto el ${fechaLegible(proximo)}.` : 'Gestión registrada.',
-    ),
+    ) },
     onError: (e) => setError(mensajeDeError(e)),
   })
+
+  // El acuerdo se confirma antes de guardarlo, mostrando la gestión que dejará.
+  function textoAcuerdo(): string {
+    const canal = tipos?.find((t) => t.id === tipoId)?.nombre
+    const extras = [canal ? `Vía: ${canal}.` : '', descripcion.trim()].filter(Boolean)
+    if (modoAcuerdo === 'calculado' && planCalculado) {
+      const nombre = planCalculado.modalidad === 'judicial' ? 'AVENIMIENTO' : 'ACUERDO DE PAGO'
+      return [`${nombre}: ${planCalculado.texto}`, ...extras].join('\n')
+    }
+    const iguales = new Set(cuotas.map((c) => Math.round(Number(c.monto)))).size === 1
+    let texto = `ACUERDO DE PAGO: ${clp(Number(total))} en ${cuotas.length} cuota(s)`
+      + (iguales ? ` de ${clp(Number(cuotas[0]?.monto))}` : ' de montos distintos')
+    if (Number(pie) > 0) texto += `, pie de ${clp(Number(pie))} el ${fechaLegible(fechaPie)}`
+    texto += `. Primera cuota vence el ${fechaLegible(cuotas[0]?.fecha ?? null)}, última el ${fechaLegible(cuotas.at(-1)?.fecha ?? null)}.`
+    return [texto, ...extras].join('\n')
+  }
 
   function editarCuota(i: number, campo: keyof CuotaEditable, valor: string) {
     setCuotasEditadas(cuotas.map((c, j) => (j === i ? { ...c, [campo]: valor } : c)))
@@ -210,7 +229,11 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
             alCancelar={() => setResultado('gestion')} />
         </>
       ) : (
-        <form className="form-gestion" onSubmit={(e: FormEvent) => { e.preventDefault(); setError(''); guardar.mutate() }}>
+        <form className="form-gestion" onSubmit={(e: FormEvent) => {
+          e.preventDefault(); setError('')
+          if (resultado === 'acuerdo') setConfirmando(true)
+          else guardar.mutate()
+        }}>
           <div>
             <span className="etiqueta-campo">{resultado === 'gestion' ? 'Tipo' : 'Canal (opcional)'}</span>
             <div className="chips">
@@ -260,7 +283,8 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
               </div>
             )}
             {modoAcuerdo === 'calculado' ? (
-              <AcuerdoCalculado cobranza={cobranza} alCambiar={setCuerpoCalculado} />
+              <AcuerdoCalculado cobranza={cobranza}
+                alCambiar={(c, p) => { setCuerpoCalculado(c); setPlanCalculado(p ?? null) }} />
             ) : (
             <div className="acuerdo-manual">
               <div className="fila">
@@ -339,6 +363,18 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
               || (modoAcuerdo === 'calculado' ? !cuerpoCalculado : !cuadra)))}>
             {guardar.isPending ? 'Guardando…' : textoBoton}
           </button>
+          {confirmando && (
+            <ConfirmarGestion
+              titulo={modoAcuerdo === 'calculado' && planCalculado?.modalidad === 'judicial' ? 'Registrar avenimiento' : 'Registrar acuerdo de pago'}
+              gestion={textoAcuerdo()}
+              detalle={<p className="suave">El pie y cada cuota quedarán en tu agenda y en los avisos.</p>}
+              confirmar="Sí, registrar acuerdo"
+              pendiente={guardar.isPending}
+              error={error}
+              alConfirmar={() => { setError(''); guardar.mutate() }}
+              alCancelar={() => { setConfirmando(false); setError('') }}
+            />
+          )}
           <p className="nota">
             {resultado === 'acuerdo'
               ? 'Se guarda el acuerdo y una sola gestión con sus términos y tu comentario.'

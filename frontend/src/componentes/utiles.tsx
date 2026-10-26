@@ -106,3 +106,19 @@ export function enDias(n: number): string {
   d.setDate(d.getDate() + n)
   return fechaLocal(d)
 }
+
+/** 'Rol: — → C-12-2026; Cuantía: 100.000 → 120.000' (solo lo que cambió). */
+export function describirCambios(antes: Record<string, unknown>, despues: Record<string, unknown>,
+                                 nombres: Record<string, string>): string {
+  const valor = (v: unknown) => {
+    if (v === null || v === undefined || v === '') return '—'
+    const s = String(v)
+    if (/^-?\d+(\.\d+)?$/.test(s)) return Math.round(Number(s)).toLocaleString('es-CL')
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return fechaLegible(s)
+    return s
+  }
+  return Object.keys(despues)
+    .filter((k) => valor(antes[k]) !== valor(despues[k]))
+    .map((k) => `${nombres[k] ?? k}: ${valor(antes[k])} → ${valor(despues[k])}`)
+    .join('; ')
+}

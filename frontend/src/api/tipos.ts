@@ -389,6 +389,8 @@ export interface PlanAcuerdo {
   gran_total: string
   cuotas: FilaPlan[]
   texto: string
+  /** % de honorarios judiciales aplicado */
+  pct_judicial?: string | null
 }
 
 export interface MensajePago {

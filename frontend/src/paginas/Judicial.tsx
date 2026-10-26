@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { CausaFila, CobranzaParaDemanda, EtapaProcesal, ResumenJudicial } from '../api/judicial'
 import { Plata, fechaLegible, rutConPuntos } from '../componentes/utiles'
+import { useConfirmacion } from '../componentes/ConfirmarGestion'
 import { clasePlazo, diasHasta, textoPlazo, useCatalogos } from '../componentes/usarJudicial'
 
 // Bandeja judicial: qué causas hay que mover hoy (plazos vencidos y por
@@ -215,10 +216,13 @@ function ParaDemandar() {
     onError: (e) => setError(mensajeDeError(e)),
   })
 
+  const { pedir, modal } = useConfirmacion()
+
   if (isLoading || !data) return <div className="pantalla-carga">Cargando…</div>
 
   return (
     <>
+      {modal}
       {error && <div className="alerta-error">{error}</div>}
       <section className="tarjeta">
         <h2>En preparación ({data.preparacion.length})</h2>
@@ -236,7 +240,12 @@ function ParaDemandar() {
         </p>
         <TablaDemanda filas={data.sugeridas} accion={(c) => (
           <button className="btn btn-chico btn-secundario" disabled={preparar.isPending}
-            onClick={() => preparar.mutate(c.id)}>Preparar demanda</button>
+            onClick={() => pedir({
+              titulo: `Preparar la demanda de la cobranza N° ${c.numero}`,
+              gestion: `CAMBIO DE ETAPA: ${c.etapa === 'ingreso' ? 'Ingreso' : 'Extrajudicial'} → Para demanda. `
+                + 'Motivo: Cumple el plazo del cliente para demandar.',
+              confirmar: 'Sí, preparar', accion: () => preparar.mutateAsync(c.id),
+            })}>Preparar demanda</button>
         )} />
       </section>
     </>

@@ -67,6 +67,8 @@ const TIPOS_SISTEMA: [string, string, string][] = [
   ['Abono', 'abono', 'pago'], ['Pagado', 'pagado', 'pago'], ['No contesta', 'no_contesta', 'contacto'],
   ['Promesa de pago', 'promesa_pago', 'pago'], ['Negativa de pago', 'negativa_pago', 'negativo'],
   ['SMS enviado', 'sms', 'contacto'],
+  ['Gasto judicial', 'gasto', 'judicial'], ['Trámite judicial', 'tramite', 'judicial'],
+  ['Embargo', 'embargo', 'judicial'], ['Cambio de etapa', 'etapa', 'otro'], ['Cambio de datos', 'cambio_datos', 'otro'],
 ]
 
 // Quita la contraseña antes de devolver un usuario (nunca se expone) y
@@ -366,7 +368,16 @@ function cargarDB(): DB {
     const crudo = localStorage.getItem(CLAVE_DB)
     if (crudo) {
       const db = JSON.parse(crudo)
-      if (db.version === VERSION_SEMILLA) return db
+      if (db.version === VERSION_SEMILLA) {
+        // Tipos de gestión de sistema que se agregaron después (sin perder los datos).
+        for (const [nombre, codigo, categoria] of TIPOS_SISTEMA) {
+          if (!db.tiposGestion.some((t: { codigo: string | null }) => t.codigo === codigo)) {
+            const id = Math.max(0, ...db.tiposGestion.map((t: { id: number }) => t.id)) + 1
+            db.tiposGestion.push({ id, nombre, codigo, categoria, activo: true, propio: false })
+          }
+        }
+        return db
+      }
     }
   } catch { /* semilla nueva */ }
   const db = semilla()
@@ -459,6 +470,19 @@ function gestionAutomatica(db: DB, cobranza_id: string, usuario_id: string, codi
   }
   db.gestiones.push(gestion)
   return gestion
+}
+
+const CONTACTO_GESTION: Record<string, string> = {
+  telefono: 'teléfono', celular: 'celular', email: 'correo', whatsapp: 'WhatsApp', otro: 'contacto',
+}
+
+/** Dónde anotar un cambio del deudor: sus cobranzas abiertas (o la última). */
+function cobranzasDelDeudor(db: DB, deudorId: string): string[] {
+  const suyas = db.cobranzas.filter((c) => c.deudor_id === deudorId)
+  const abiertas = suyas.filter((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado))
+  if (abiertas.length) return abiertas.map((c) => c.id)
+  const ultima = [...suyas].sort((a, b) => b.numero - a.numero)[0]
+  return ultima ? [ultima.id] : []
 }
 
 /** Texto automático + por dónde fue el contacto + el comentario (como el backend). */
@@ -1010,12 +1034,25 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const datos = cuerpo(config) as { tipo: string; valor: string }
     const nuevo = { id: uid(), deudor_id: d.id, tipo: datos.tipo, valor: datos.valor, activo: true }
     d.contactos.push(nuevo as never)
+    for (const c of cobranzasDelDeudor(db, d.id)) {
+      gestionAutomatica(db, c, usuarioDelToken(config, db).id, 'cambio_datos',
+        `CONTACTO AGREGADO: ${CONTACTO_GESTION[datos.tipo] ?? datos.tipo} ${datos.valor}.`)
+    }
     guardarDB(db)
     return ok(config, nuevo, 201)
   }
   if (metodo === 'DELETE' && /^\/deudores\/contactos\/[^/]+$/.test(url)) {
     const id = url.split('/')[3]
-    for (const d of db.deudores) for (const c of d.contactos) if (c.id === id) c.activo = false
+    for (const d of db.deudores) {
+      for (const c of d.contactos) {
+        if (c.id !== id || !c.activo) continue
+        c.activo = false
+        for (const cob of cobranzasDelDeudor(db, d.id)) {
+          gestionAutomatica(db, cob, usuarioDelToken(config, db).id, 'cambio_datos',
+            `CONTACTO QUITADO: ${CONTACTO_GESTION[c.tipo] ?? c.tipo} ${c.valor}.`)
+        }
+      }
+    }
     guardarDB(db)
     return ok(config, null, 204)
   }

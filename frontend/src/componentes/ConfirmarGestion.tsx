@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../auth'
+import { mensajeDeError } from '../api/client'
 
 // Antes de guardar un cambio: muestra la gestión que va a quedar en el
 // historial a nombre de quien lo hace y pide confirmar. Todo cambio sobre
@@ -31,7 +32,8 @@ export default function ConfirmarGestion({
   }, [alCancelar, pendiente])
 
   return (
-    <div className="modal-fondo" onClick={() => !pendiente && alCancelar()}>
+    // Puede abrirse sobre otro modal: el clic no debe llegar al de abajo.
+    <div className="modal-fondo" onClick={(e) => { e.stopPropagation(); if (!pendiente) alCancelar() }}>
       <div className="modal confirmar-gestion" role="alertdialog" aria-modal="true" aria-labelledby="confirmar-titulo"
         onClick={(e) => e.stopPropagation()}>
         <h3 id="confirmar-titulo">{titulo}</h3>
@@ -50,4 +52,44 @@ export default function ConfirmarGestion({
       </div>
     </div>
   )
+}
+
+interface Pedido {
+  titulo: string
+  gestion: string
+  detalle?: ReactNode
+  confirmar?: string
+  /** Lo que se guarda al confirmar (si falla, el error queda en el modal). */
+  accion: () => Promise<unknown>
+}
+
+/**
+ * Para formularios: `pedir({ titulo, gestion, accion })` abre la confirmación
+ * y `modal` es lo que hay que dibujar.
+ */
+export function useConfirmacion() {
+  const [pedido, setPedido] = useState<Pedido | null>(null)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  async function confirmar() {
+    if (!pedido) return
+    setGuardando(true)
+    setError('')
+    try {
+      await pedido.accion()
+      setPedido(null)
+    } catch (e) {
+      setError(mensajeDeError(e))
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const modal = pedido && (
+    <ConfirmarGestion titulo={pedido.titulo} gestion={pedido.gestion} detalle={pedido.detalle}
+      confirmar={pedido.confirmar} pendiente={guardando} error={error}
+      alConfirmar={confirmar} alCancelar={() => { setPedido(null); setError('') }} />
+  )
+  return { pedir: (p: Pedido) => { setError(''); setPedido(p) }, modal }
 }

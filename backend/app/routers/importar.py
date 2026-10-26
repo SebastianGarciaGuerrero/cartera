@@ -94,10 +94,18 @@ def _fecha(valor):
         return valor.date()
     if isinstance(valor, date):
         return valor
+    texto = _texto(valor)[:10]
     try:
-        return date.fromisoformat(_texto(valor)[:10])
+        return date.fromisoformat(texto)
     except ValueError:
-        raise ValueError(f"Fecha inválida: {valor!r} (usar AAAA-MM-DD)")
+        pass
+    # Como se escribe en Chile: 15-10-2026 o 15/10/2026.
+    for formato in ("%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    raise ValueError(f"Fecha inválida: {valor!r} (usar DD-MM-AAAA o AAAA-MM-DD)")
 
 
 def _plantilla(titulos: list, ejemplo: list, anchos: list, hoja: str, archivo: str):
@@ -337,9 +345,9 @@ async def importar_cobranzas(
 # Carga masiva de GESTIONES
 # ============================================================
 
-COLUMNAS_GESTION = ["ID cliente*", "Fecha (AAAA-MM-DD)", "Gestión*", "Persona*"]
+COLUMNAS_GESTION = ["ID cliente*", "Fecha (DD-MM-AAAA)", "Gestión*", "Persona*"]
 EJEMPLO_GESTION = [
-    "155001", "2026-07-01", "Llamada al deudor, se compromete a pagar el día 5.", "ana@estudio.cl",
+    "155001", "01-07-2026", "Llamada al deudor, se compromete a pagar el día 5.", "ana@estudio.cl",
 ]
 
 
@@ -414,10 +422,9 @@ async def importar_gestiones(
             if fecha_cruda:
                 if isinstance(fecha_cruda, datetime):
                     fecha = fecha_cruda
-                elif isinstance(fecha_cruda, date):
-                    fecha = datetime(fecha_cruda.year, fecha_cruda.month, fecha_cruda.day)
                 else:
-                    fecha = datetime.fromisoformat(_texto(fecha_cruda))
+                    dia = _fecha(fecha_cruda)
+                    fecha = datetime(dia.year, dia.month, dia.day, 12)
 
             gestion_obj = Gestion(
                 cobranza_id=cobranza.id,

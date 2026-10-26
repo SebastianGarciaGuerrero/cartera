@@ -10,6 +10,7 @@ import { EtiquetaEstado, Plata, rutConPuntos } from '../componentes/utiles'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { ResumenDeuda, usePagos } from '../componentes/HistorialPagos'
 import LineaTiempo from '../componentes/LineaTiempo'
+import { useConfirmacion } from '../componentes/ConfirmarGestion'
 
 // Deudores: búsqueda por RUT o nombre (con miles de deudores no se lista
 // todo) y una ficha: resumen de la deuda arriba y, en pestañas, sus
@@ -17,6 +18,10 @@ import LineaTiempo from '../componentes/LineaTiempo'
 
 const NOMBRE_CONTACTO: Record<string, string> = {
   telefono: 'Teléfono', celular: 'Celular', email: 'Correo', whatsapp: 'WhatsApp', otro: 'Otro',
+}
+// Como lo nombra la gestión que deja el servidor.
+const CONTACTO_GESTION: Record<string, string> = {
+  telefono: 'teléfono', celular: 'celular', email: 'correo', whatsapp: 'WhatsApp', otro: 'contacto',
 }
 
 function soloDigitos(v: string) {
@@ -111,8 +116,9 @@ function FichaDeudor({ id }: { id: string }) {
   const { data: pagos } = usePagos({ deudor_id: id })
   const quitar = useMutation({
     mutationFn: (contactoId: string) => api.delete(`/deudores/contactos/${contactoId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['deudor', id] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['deudor', id] }); qc.invalidateQueries({ queryKey: ['gestiones'] }) },
   })
+  const { pedir, modal } = useConfirmacion()
 
   if (!d) return <section className="tarjeta"><div className="pantalla-carga">Cargando…</div></section>
 
@@ -206,14 +212,16 @@ function FichaDeudor({ id }: { id: string }) {
               <li key={c.id}>
                 <span className="suave">{NOMBRE_CONTACTO[c.tipo] ?? c.tipo}</span>
                 <span className="mono">{c.valor}</span>
-                <button className="btn-texto" title="Quitar contacto" onClick={() => {
-                  if (confirm(`¿Quitar ${c.valor}?`)) quitar.mutate(c.id)
-                }}>Quitar</button>
+                <button className="btn-texto" title="Quitar contacto" onClick={() => pedir({
+                  titulo: `Quitar ${c.valor}`, confirmar: 'Sí, quitar', accion: () => quitar.mutateAsync(c.id),
+                  gestion: `CONTACTO QUITADO: ${CONTACTO_GESTION[c.tipo] ?? c.tipo} ${c.valor}.`,
+                })}>Quitar</button>
               </li>
             ))}
             {contactos.length === 0 && <li className="suave">Sin contactos registrados.</li>}
           </ul>
           <div className="separado"><NuevoContacto deudorId={d.id} /></div>
+          {modal}
         </>
       )}
 
@@ -240,14 +248,23 @@ function NuevoContacto({ deudorId }: { deudorId: string }) {
   const [error, setError] = useState('')
   const agregar = useMutation({
     mutationFn: () => api.post(`/deudores/${deudorId}/contactos`, { tipo, valor: valor.trim() }),
-    onSuccess: () => { setValor(''); setAbierto(false); setError(''); qc.invalidateQueries({ queryKey: ['deudor', deudorId] }) },
+    onSuccess: () => {
+      setValor(''); setAbierto(false); setError('')
+      qc.invalidateQueries({ queryKey: ['deudor', deudorId] }); qc.invalidateQueries({ queryKey: ['gestiones'] })
+    },
     onError: (err) => setError(mensajeDeError(err)),
   })
+  const { pedir, modal } = useConfirmacion()
   if (!abierto) {
     return <button className="btn btn-chico btn-secundario" onClick={() => setAbierto(true)}>+ Contacto</button>
   }
   return (
-    <form className="fila" onSubmit={(e: FormEvent) => { e.preventDefault(); agregar.mutate() }}>
+    <form className="fila" onSubmit={(e: FormEvent) => {
+      e.preventDefault()
+      pedir({ titulo: 'Agregar contacto', confirmar: 'Sí, agregar', accion: () => agregar.mutateAsync(),
+        gestion: `CONTACTO AGREGADO: ${CONTACTO_GESTION[tipo] ?? tipo} ${valor.trim()}.` })
+    }}>
+      {modal}
       <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
         {Object.entries(NOMBRE_CONTACTO).map(([v, n]) => <option key={v} value={v}>{n}</option>)}
       </select>

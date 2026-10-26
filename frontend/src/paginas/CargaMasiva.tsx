@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { api, descargarArchivo, mensajeDeError } from '../api/client'
 import type { Cliente } from '../api/tipos'
+import { useAuth } from '../auth'
 
 // Carga masiva desde Excel, en dos modos:
 //  - Cobranzas nuevas: una fila por cobranza (crea deudor + cobranza).
@@ -10,7 +11,8 @@ import type { Cliente } from '../api/tipos'
 //    un cliente, identificadas por su ID cliente. Quedan marcadas "masivo".
 
 export default function CargaMasiva() {
-  const [pestana, setPestana] = useState<'cobranzas' | 'gestiones'>('cobranzas')
+  const { puede } = useAuth()
+  const [pestana, setPestana] = useState<'cobranzas' | 'gestiones'>(puede('carga_masiva') ? 'cobranzas' : 'gestiones')
 
   return (
     <>
@@ -19,18 +21,22 @@ export default function CargaMasiva() {
       </header>
 
       <div className="pestanas">
-        <button
-          className={pestana === 'cobranzas' ? 'pestana activa' : 'pestana'}
-          onClick={() => setPestana('cobranzas')}
-        >
-          Cobranzas nuevas
-        </button>
-        <button
-          className={pestana === 'gestiones' ? 'pestana activa' : 'pestana'}
-          onClick={() => setPestana('gestiones')}
-        >
-          Gestiones
-        </button>
+        {puede('carga_masiva') && (
+          <button
+            className={pestana === 'cobranzas' ? 'pestana activa' : 'pestana'}
+            onClick={() => setPestana('cobranzas')}
+          >
+            Cobranzas nuevas
+          </button>
+        )}
+        {puede('gestiones_masivas') && (
+          <button
+            className={pestana === 'gestiones' ? 'pestana activa' : 'pestana'}
+            onClick={() => setPestana('gestiones')}
+          >
+            Gestiones
+          </button>
+        )}
       </div>
 
       {pestana === 'cobranzas' ? <CargaCobranzas /> : <CargaGestiones />}

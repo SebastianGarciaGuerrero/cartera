@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { Usuario, Rol, Cliente } from '../api/tipos'
 import { fechaHoraLegible } from '../componentes/utiles'
+import RolesPermisos from '../componentes/RolesPermisos'
 
 // Gestión de usuarios (solo admin): crear cuentas del equipo (por invitación
 // al correo, sin que el admin conozca la clave), cambiar rol, activar o
@@ -128,6 +129,7 @@ export default function Usuarios() {
           alCerrar={() => setReseteando(null)}
         />
       )}
+      <RolesPermisos />
     </>
   )
 }

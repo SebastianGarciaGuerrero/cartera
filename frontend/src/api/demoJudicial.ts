@@ -118,6 +118,16 @@ const MOTIVOS: Record<string, string> = {
 }
 const TIPOS_BIEN = { vehiculo: 'Vehículo', inmueble: 'Inmueble', cuenta_bancaria: 'Cuenta bancaria', remuneraciones: 'Remuneraciones', muebles: 'Bienes muebles', otro: 'Otro' }
 const ESTADOS_EMBARGO = { solicitado: 'Solicitado', trabado: 'Trabado', frustrado: 'Frustrado', retirado: 'Retirado', rematado: 'Rematado', alzado: 'Alzado' }
+// Como las nombran las gestiones que deja el servidor.
+const ETAPA_GESTION: Record<string, string> = {
+  ingreso: 'Ingreso', extrajudicial: 'Extrajudicial', para_demanda: 'Para demanda', judicial: 'Judicial',
+}
+const NOMBRE_DOCUMENTO: Record<string, string> = {
+  pagare: 'Pagaré', factura: 'Factura', letra: 'Letra', cheque: 'Cheque', contrato: 'Contrato', boleta: 'Boleta',
+  credito: 'Crédito', otro: 'Documento',
+}
+const nombreDocumento = (d: { tipo: string; numero: string | null }) =>
+  (NOMBRE_DOCUMENTO[d.tipo] ?? d.tipo) + (d.numero ? ` N° ${d.numero}` : '')
 const TIPOS_GASTO = { receptor: 'Receptor', notificacion: 'Notificación', embargo: 'Embargo', fuerza_publica: 'Fuerza pública', conservador: 'Conservador', copias: 'Copias y certificados', publicacion: 'Publicación', martillero: 'Martillero', correo: 'Correo y cartas', otro: 'Otro' }
 const ESTADOS_GASTO = { por_rendir: 'Por rendir', rendido: 'Rendido (por reembolsar)', reembolsado: 'Reembolsado', no_reembolsable: 'No reembolsable', anulado: 'Anulado' }
 
@@ -422,6 +432,10 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
     if (TERMINALES.includes(c.estado)) return a.error(400, 'La cobranza está cerrada; reábrala antes de cambiar su etapa.')
     j.etapas[c.id] = etapa
     registrarCambio(db, a, c.id, anterior, etapa, motivo ?? '')
+    if (anterior !== etapa) {
+      a.gestion(c.id, 'etapa', `CAMBIO DE ETAPA: ${ETAPA_GESTION[anterior] ?? anterior} → ${ETAPA_GESTION[etapa] ?? etapa}`
+        + (motivo?.trim() ? `. Motivo: ${motivo.trim()}` : '') + '.')
+    }
     return a.ok(cicloDemo(db, c, hoy))
   }
 
@@ -442,14 +456,21 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
         monto: d.monto != null ? String(d.monto) : null, banco: d.banco ?? null, plaza: d.plaza ?? null,
         causal_protesto: d.causal_protesto ?? null, fecha_protesto: d.fecha_protesto ?? null, observaciones: null,
         activo: true, created_at: a.ahora() })
-      return a.ok(conPrescripcion(j.documentos[j.documentos.length - 1]), 201)
+      const nuevo = j.documentos[j.documentos.length - 1]
+      a.gestion(c.id, 'cambio_datos', `DOCUMENTO AGREGADO: ${nombreDocumento(nuevo)}`
+        + (nuevo.monto ? `, $${Math.round(Number(nuevo.monto)).toLocaleString('es-CL')}` : '') + '.')
+      return a.ok(conPrescripcion(nuevo), 201)
     }
     return a.ok(j.documentos.filter((d) => d.cobranza_id === c.id && (d.activo || params.todos)).map(conPrescripcion))
   }
   if (metodo === 'PUT' && (m = /^\/cobranzas\/documentos\/([^/]+)$/.exec(url))) {
     const d = (j.documentos ?? []).find((x) => x.id === m![1])
     if (!d) return a.error(404, 'Documento no encontrado')
-    Object.assign(d, a.cuerpo())
+    const cambios = a.cuerpo() as Record<string, unknown>
+    const quitado = cambios.activo === false && d.activo
+    Object.assign(d, cambios)
+    a.gestion(d.cobranza_id, 'cambio_datos', quitado ? `DOCUMENTO QUITADO: ${nombreDocumento(d)}.`
+      : `DOCUMENTO MODIFICADO (${nombreDocumento(d)}).`)
     return a.ok(conPrescripcion(d))
   }
 
@@ -559,7 +580,12 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
     const accion = m[2]
     if (metodo === 'GET' && !accion) return a.ok(fichaCausa(db, causa, hoy))
     if (metodo === 'PUT' && !accion) {
-      Object.assign(causa, a.cuerpo())
+      const cambios = a.cuerpo() as Record<string, unknown>
+      const distintos = Object.keys(cambios).filter((k) => String(cambios[k] ?? '') !== String((causa as unknown as Record<string, unknown>)[k] ?? ''))
+      Object.assign(causa, cambios)
+      if (distintos.length) {
+        for (const id of causa.cobranza_ids) a.gestion(id, 'cambio_datos', `DATOS DE LA CAUSA MODIFICADOS (rol ${causa.rol ?? 'sin rol'}).`)
+      }
       return a.ok(fichaCausa(db, causa, hoy))
     }
     if (metodo === 'POST' && accion === '/tramites') {
@@ -583,6 +609,11 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
           monto: Number(g.monto), proveedor: (g.proveedor as string) || null, numero_boleta: (g.numero_boleta as string) || null,
           estado: 'por_rendir', rendicion_id: null, fecha_reembolso: null, observaciones: null, usuario_id: a.usuarioId, created_at: a.ahora() })
       }
+      let texto = `TRÁMITE JUDICIAL (rol ${causa.rol ?? 'sin rol'}): ${tipo?.nombre ?? 'Observación'}`
+      if (descripcion) texto += `. ${descripcion}`
+      if (tramite.plazo_fecha && tipo) texto += `. Plazo: ${tramite.plazo_fecha.split('-').reverse().join('-')}`
+      if (g && Number(g.monto) > 0) texto += `. Gasto: $${Math.round(Number(g.monto)).toLocaleString('es-CL')}`
+      for (const id of causa.cobranza_ids) a.gestion(id, 'tramite', texto + '.')
       return a.ok({ tramite: { ...tramite, tipo_nombre: tipo?.nombre ?? null, siguiente_nombre: null, usuario_nombre: nombreUsuario(db, a.usuarioId) },
         etapa_procesal: causa.etapa_procesal, propone_resultado: tipo?.resultado ?? null, gasto_id: gastoId }, 201)
     }
@@ -606,6 +637,11 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
     if (metodo === 'POST' && accion === '/embargos') {
       const d = a.cuerpo()
       j.embargos.push({ ...d, id: a.uid(), causa_id: causa.id, estado: String(d.estado ?? 'trabado'), created_at: a.ahora(), updated_at: a.ahora() })
+      const bien = TIPOS_BIEN[String(d.tipo_bien) as keyof typeof TIPOS_BIEN] ?? String(d.tipo_bien)
+      const estadoEmb = ESTADOS_EMBARGO[String(d.estado ?? 'trabado') as keyof typeof ESTADOS_EMBARGO] ?? String(d.estado)
+      for (const id of causa.cobranza_ids) {
+        a.gestion(id, 'embargo', `EMBARGO REGISTRADO (rol ${causa.rol ?? 'sin rol'}): ${bien} — ${String(d.descripcion ?? '')}, ${estadoEmb.toLowerCase()}.`)
+      }
       return a.ok(j.embargos[j.embargos.length - 1], 201)
     }
     if (metodo === 'POST' && accion === '/cobranzas') {
@@ -625,6 +661,8 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
     const e = j.embargos.find((x) => x.id === m![1])
     if (!e) return a.error(404, 'Embargo no encontrado')
     Object.assign(e, a.cuerpo(), { updated_at: a.ahora() })
+    const causaEmb = j.causas.find((c) => c.id === e.causa_id)
+    for (const id of causaEmb?.cobranza_ids ?? []) a.gestion(id, 'embargo', `EMBARGO ACTUALIZADO (${String(e.descripcion ?? '')}).`)
     return a.ok(e)
   }
 
@@ -660,6 +698,10 @@ export function manejarJudicial(db: BaseDemo, metodo: string, url: string, param
       numero_boleta: (d.numero_boleta as string) || null, estado: (d.estado as string) || 'por_rendir', rendicion_id: null,
       fecha_reembolso: null, observaciones: null, usuario_id: a.usuarioId, created_at: a.ahora() }
     j.gastos.push(g)
+    const textoGasto = `GASTO REGISTRADO: ${TIPOS_GASTO[g.tipo as keyof typeof TIPOS_GASTO] ?? g.tipo} — ${g.concepto}, `
+      + `$${Math.round(g.monto).toLocaleString('es-CL')}` + (g.proveedor ? `, ${g.proveedor}` : '')
+      + (g.numero_boleta ? `, boleta N° ${g.numero_boleta}` : '') + (causa?.rol ? ` (causa rol ${causa.rol})` : '') + '.'
+    for (const id of g.cobranza_id ? [g.cobranza_id] : causa?.cobranza_ids ?? []) a.gestion(id, 'gasto', textoGasto)
     return a.ok(vistaGasto(db, g), 201)
   }
   if (metodo === 'POST' && url === '/gastos/reembolsar') {

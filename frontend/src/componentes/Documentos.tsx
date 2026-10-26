@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { TipoDocumento } from '../api/tipos'
-import { NOMBRE_DOCUMENTO, Plata, fechaLegible } from './utiles'
+import { NOMBRE_DOCUMENTO, Plata, clp, fechaLegible } from './utiles'
 import { diasHasta } from './usarJudicial'
+import { useConfirmacion } from './ConfirmarGestion'
 
 // Documentos que respaldan la cobranza (cheques, facturas, letras,
 // pagarés…), cada uno con su vencimiento, banco, protesto y prescripción.
@@ -46,13 +47,27 @@ export default function Documentos({ cobranzaId }: { cobranzaId: string }) {
   const agregar = useMutation({
     mutationFn: () => api.post(`/cobranzas/${cobranzaId}/documentos`, Object.fromEntries(
       Object.entries(d).map(([k, v]) => [k, v === '' ? null : k === 'monto' ? Number(v) : v]))),
-    onSuccess: () => { setNuevo(false); setD(VACIO); setError(''); refrescar() },
+    onSuccess: () => { setNuevo(false); setD(VACIO); setError(''); refrescar(); qc.invalidateQueries({ queryKey: ['gestiones', cobranzaId] }) },
     onError: (e) => setError(mensajeDeError(e)),
   })
   const quitar = useMutation({
     mutationFn: (id: string) => api.put(`/cobranzas/documentos/${id}`, { activo: false }),
-    onSuccess: refrescar,
+    onSuccess: () => { refrescar(); qc.invalidateQueries({ queryKey: ['gestiones', cobranzaId] }) },
   })
+
+  const { pedir, modal } = useConfirmacion()
+  const nombreDoc = (tipo: TipoDocumento, numero: string | null) =>
+    (NOMBRE_DOCUMENTO[tipo] ?? tipo) + (numero ? ` N° ${numero}` : '')
+  function confirmarAgregar() {
+    pedir({
+      titulo: 'Agregar documento',
+      gestion: `DOCUMENTO AGREGADO: ${nombreDoc(d.tipo, d.numero.trim() || null)}`
+        + (d.monto ? `, ${clp(Number(d.monto))}` : '')
+        + (d.fecha_vencimiento ? `, vence el ${fechaLegible(d.fecha_vencimiento)}` : '') + '.',
+      confirmar: 'Sí, agregar',
+      accion: () => agregar.mutateAsync(),
+    })
+  }
 
   const total = (docs ?? []).reduce((s, x) => s + Number(x.monto ?? 0), 0)
   const campo = (k: keyof typeof VACIO) => ({
@@ -66,7 +81,7 @@ export default function Documentos({ cobranzaId }: { cobranzaId: string }) {
         {!nuevo && <button className="btn btn-chico btn-secundario" onClick={() => setNuevo(true)}>Agregar documento</button>}
       </div>
       {nuevo && (
-        <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); agregar.mutate() }}>
+        <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); confirmarAgregar() }}>
           <label>Tipo
             <select {...campo('tipo')}>
               {Object.entries(NOMBRE_DOCUMENTO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -112,7 +127,10 @@ export default function Documentos({ cobranzaId }: { cobranzaId: string }) {
                     <td>
                       {docs.length > 1 && (
                         <button className="btn-texto" disabled={quitar.isPending}
-                          onClick={() => { if (window.confirm('¿Quitar este documento de la cobranza?')) quitar.mutate(x.id) }}>
+                          onClick={() => pedir({
+                            titulo: 'Quitar documento', gestion: `DOCUMENTO QUITADO: ${nombreDoc(x.tipo, x.numero)}.`,
+                            confirmar: 'Sí, quitar', accion: () => quitar.mutateAsync(x.id),
+                          })}>
                           Quitar
                         </button>
                       )}
@@ -125,6 +143,7 @@ export default function Documentos({ cobranzaId }: { cobranzaId: string }) {
         </div>
       )}
       <p className="nota">La prescripción es referencial (cheque: un año desde el protesto); confírmela con el abogado.</p>
+      {modal}
     </section>
   )
 }

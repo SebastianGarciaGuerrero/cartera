@@ -26,6 +26,8 @@ import EstadoDeudor from './paginas/EstadoDeudor'
 import Judicial from './paginas/Judicial'
 import Causa from './paginas/Causa'
 import Gastos from './paginas/Gastos'
+import Inicio from './paginas/Inicio'
+import ConPermiso from './componentes/ConPermiso'
 
 export default function App() {
   return (
@@ -37,22 +39,23 @@ export default function App() {
           <Route path="/restablecer" element={<Restablecer />} />
           <Route path="/estado" element={<EstadoDeudor />} />
           <Route element={<Layout />}>
-            <Route path="/" element={<Navigate to="/agenda" replace />} />
+            <Route path="/" element={<Navigate to="/inicio" replace />} />
+            <Route path="/inicio" element={<Inicio />} />
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/seguimiento" element={<Seguimiento />} />
             <Route path="/calculadora" element={<Calculadora />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/panel" element={<PanelIndicadores />} />
             <Route path="/cobranzas" element={<Cobranzas />} />
-            <Route path="/cobranzas/nueva" element={<NuevaCobranzaPagina />} />
+            <Route path="/cobranzas/nueva" element={<ConPermiso permiso="cobranzas_crear"><NuevaCobranzaPagina /></ConPermiso>} />
             <Route path="/cobranzas/:id" element={<CobranzaDetalle />} />
             <Route path="/judicial" element={<Judicial />} />
             <Route path="/judicial/causas/:id" element={<Causa />} />
-            <Route path="/gastos" element={<Gastos />} />
+            <Route path="/gastos" element={<ConPermiso permiso="ver_totales"><Gastos /></ConPermiso>} />
             <Route path="/abonos" element={<Abonos />} />
-            <Route path="/carga-masiva" element={<CargaMasiva />} />
+            <Route path="/carga-masiva" element={<ConPermiso permiso={['carga_masiva', 'gestiones_masivas']}><CargaMasiva /></ConPermiso>} />
             <Route path="/deudores" element={<Deudores />} />
-            <Route path="/informes" element={<Informes />} />
+            <Route path="/informes" element={<ConPermiso permiso="ver_totales"><Informes /></ConPermiso>} />
             <Route path="/equipo" element={<Equipo />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/mi-empresa" element={<MiEmpresa />} />

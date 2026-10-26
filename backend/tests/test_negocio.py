@@ -153,6 +153,28 @@ def test_carga_masiva_por_titulos_y_campos_extra(cliente_http, org_a):
     assert cob["datos_extra"] == {"patente": "AB-CD-12"}
 
 
+def test_carga_masiva_de_gestiones(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, n=25)
+    yo = cliente_http.get("/api/auth/me", headers=h).json()["email"]
+    contenido = _excel([
+        ["ID cliente", "Fecha", "Gestión", "Persona"],
+        ["EXT-25", "15-10-2026", "Llamada, promete pagar el viernes", yo],
+        ["EXT-25", "2026-10-16", "Segunda llamada", yo],
+        ["NO-EXISTE", "", "x", yo],
+        ["EXT-25", "", "Sin persona", "alguien@otro.cl"],
+    ])
+    r = cliente_http.post("/api/importar/gestiones", headers=h, data={"cliente_id": cartera["cliente_id"]},
+                          files={"archivo": ("gestiones.xlsx", contenido,
+                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert r.status_code == 200, r.text
+    res = r.json()
+    assert res["gestiones_creadas"] == 2 and [e["fila"] for e in res["errores"]] == [4, 5]
+    historial = cliente_http.get("/api/gestiones/", params={"cobranza_id": cartera["cobranza_id"]}, headers=h).json()
+    masivas = [g for g in historial if g["es_masivo"]]
+    assert len(masivas) == 2 and {g["fecha_gestion"][:10] for g in masivas} == {"2026-10-15", "2026-10-16"}
+
+
 def test_exportaciones_y_documentos(cliente_http, org_a):
     h = login(cliente_http, org_a["email"])
     cartera = crear_cartera(cliente_http, h, n=23)

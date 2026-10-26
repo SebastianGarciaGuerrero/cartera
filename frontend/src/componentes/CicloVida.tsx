@@ -7,10 +7,16 @@ import type { CobranzaDetalle } from '../api/tipos'
 import { useAuth } from '../auth'
 import { fechaLegible } from './utiles'
 import NuevaDemanda from './NuevaDemanda'
+import ConfirmarGestion from './ConfirmarGestion'
 
 // Barra con el ciclo de vida de la cobranza: de dónde viene, en qué etapa
 // está y qué le queda. Debajo, el dato clave de la etapa y la acción que la
 // hace avanzar (preparar la demanda, presentarla, ir a la causa).
+
+// Como las nombra la gestión que deja el servidor.
+const ETAPA_GESTION: Record<string, string> = {
+  ingreso: 'Ingreso', extrajudicial: 'Extrajudicial', para_demanda: 'Para demanda', judicial: 'Judicial',
+}
 
 const NOMBRE_ETAPA: Record<string, string> = {
   ingreso: 'Ingreso',
@@ -64,7 +70,7 @@ export function BarraCiclo({ pasos }: { pasos: PasoCiclo[] }) {
 }
 
 export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
-  const { tiene } = useAuth()
+  const { tiene, puede } = useAuth()
   const qc = useQueryClient()
   const [demanda, setDemanda] = useState(false)
   const [error, setError] = useState('')
@@ -75,17 +81,16 @@ export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
     queryFn: async () => (await api.get<Ciclo>(`/cobranzas/${cobranza.id}/ciclo`)).data,
   })
 
+  // Cambio de etapa: se confirma con su motivo (queda como gestión).
+  const [moviendo, setMoviendo] = useState<'extrajudicial' | 'para_demanda' | null>(null)
+  const [motivo, setMotivo] = useState('')
   const mover = useMutation({
-    mutationFn: async (etapa: 'extrajudicial' | 'para_demanda') => {
-      const motivo = etapa === 'para_demanda'
-        ? window.prompt('¿Por qué se prepara la demanda? (opcional)', 'No responde a la cobranza extrajudicial')
-        : window.prompt('¿Por qué vuelve a extrajudicial? (opcional)', '')
-      if (motivo === null) return null
-      return (await api.post<Ciclo>(`/cobranzas/${cobranza.id}/etapa`, { etapa, motivo: motivo || null })).data
-    },
+    mutationFn: async (etapa: 'extrajudicial' | 'para_demanda') =>
+      (await api.post<Ciclo>(`/cobranzas/${cobranza.id}/etapa`, { etapa, motivo: motivo.trim() || null })).data,
     onSuccess: (d) => {
-      if (!d) return
+      setMoviendo(null)
       setError('')
+      qc.invalidateQueries({ queryKey: ['gestiones', cobranza.id] })
       qc.setQueryData(['ciclo', cobranza.id], d)
       qc.invalidateQueries({ queryKey: ['cobranza', cobranza.id] })
     },
@@ -141,17 +146,19 @@ export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
           <div className="ciclo-acciones">
             {(ciclo.etapa === 'ingreso' || ciclo.etapa === 'extrajudicial') && (
               <button className="btn btn-secundario btn-chico" disabled={mover.isPending}
-                onClick={() => mover.mutate('para_demanda')}>
-                Preparar demanda
+                onClick={() => { setMotivo('No responde a la cobranza extrajudicial'); setMoviendo('para_demanda') }}>
+                {puede('judicial_causas') ? 'Preparar demanda' : 'Recomendar demanda'}
               </button>
             )}
             {ciclo.etapa === 'para_demanda' && (
               <>
-                <button className="btn btn-primario btn-chico" onClick={() => setDemanda(true)}>
-                  Presentar demanda
-                </button>
+                {puede('judicial_causas') && (
+                  <button className="btn btn-primario btn-chico" onClick={() => setDemanda(true)}>
+                    Presentar demanda
+                  </button>
+                )}
                 <button className="btn btn-secundario btn-chico" disabled={mover.isPending}
-                  onClick={() => mover.mutate('extrajudicial')}>
+                  onClick={() => { setMotivo(''); setMoviendo('extrajudicial') }}>
                   Volver a extrajudicial
                 </button>
               </>
@@ -166,6 +173,24 @@ export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
       </div>
 
       {demanda && <NuevaDemanda cobranza={cobranza} alCerrar={() => setDemanda(false)} />}
+      {moviendo && (
+        <ConfirmarGestion
+          titulo={moviendo === 'para_demanda' ? 'Pasar a "Para demanda"' : 'Volver a extrajudicial'}
+          detalle={(
+            <label className="campo-ancho">
+              {moviendo === 'para_demanda' ? '¿Por qué se prepara la demanda?' : '¿Por qué vuelve a extrajudicial?'}
+              <input value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={300} placeholder="Opcional" />
+            </label>
+          )}
+          gestion={`CAMBIO DE ETAPA: ${ETAPA_GESTION[ciclo.etapa] ?? ciclo.etapa} → ${ETAPA_GESTION[moviendo]}`
+            + (motivo.trim() ? `. Motivo: ${motivo.trim()}` : '') + '.'}
+          confirmar="Sí, cambiar etapa"
+          pendiente={mover.isPending}
+          error={error}
+          alConfirmar={() => mover.mutate(moviendo)}
+          alCancelar={() => { setMoviendo(null); setError('') }}
+        />
+      )}
     </section>
   )
 }

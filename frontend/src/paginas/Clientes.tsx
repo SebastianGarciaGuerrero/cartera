@@ -19,8 +19,8 @@ interface ClienteCompleto extends Cliente {
 }
 
 export default function Clientes() {
-  const { etiqueta, esAdmin, usuario } = useAuth()
-  const puedeEditar = esAdmin || usuario?.rol === 'supervisor'
+  const { etiqueta, puede } = useAuth()
+  const puedeEditar = puede('clientes_editar')
   const [verInactivos, setVerInactivos] = useState(false)
   const [editando, setEditando] = useState<ClienteCompleto | 'nuevo' | null>(null)
   const [abierto, setAbierto] = useState<string | null>(null)

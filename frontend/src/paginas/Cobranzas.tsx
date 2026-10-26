@@ -22,7 +22,9 @@ const NOMBRE_ETAPA: Record<string, string> = Object.fromEntries(ETAPAS)
 interface ResumenEtapa { etapa: string; cantidad: number; saldo: string }
 
 export default function Cobranzas() {
-  const { etiqueta } = useAuth()
+  const { etiqueta, puede } = useAuth()
+  // El tablero por etapa muestra totales de toda la cartera: solo con permiso.
+  const totales = puede('ver_totales')
   const [busqueda, setBusqueda] = useState('')
   const [estado, setEstado] = useState('')
   const [clienteId, setClienteId] = useState('')
@@ -38,6 +40,7 @@ export default function Cobranzas() {
 
   const { data: etapas } = useQuery({
     queryKey: ['cobranzas', 'etapas', clienteId],
+    enabled: totales,
     queryFn: async () => (await api.get<ResumenEtapa[]>('/cobranzas/resumen-etapas', {
       params: { cliente_id: clienteId || undefined },
     })).data,
@@ -79,19 +82,21 @@ export default function Cobranzas() {
         <h1>Cobranzas</h1>
       </header>
 
-      <div className="tablero-etapas" role="group" aria-label="Cartera por etapa">
-        {ETAPAS.map(([clave, nombre]) => {
-          const e = etapas?.find((x) => x.etapa === clave)
-          return (
-            <button key={clave} className={`tablero-etapa${etapa === clave ? ' elegida' : ''}`} aria-pressed={etapa === clave}
-              onClick={() => { setEtapa(etapa === clave ? '' : clave); setPagina(0) }}>
-              <span className="suave">{nombre}</span>
-              <strong>{e?.cantidad ?? '—'}</strong>
-              <span className="suave">{e && clave !== 'termino' ? compacto(Number(e.saldo)) : e ? 'cerradas' : ''}</span>
-            </button>
-          )
-        })}
-      </div>
+      {totales && (
+        <div className="tablero-etapas" role="group" aria-label="Cartera por etapa">
+          {ETAPAS.map(([clave, nombre]) => {
+            const e = etapas?.find((x) => x.etapa === clave)
+            return (
+              <button key={clave} className={`tablero-etapa${etapa === clave ? ' elegida' : ''}`} aria-pressed={etapa === clave}
+                onClick={() => { setEtapa(etapa === clave ? '' : clave); setPagina(0) }}>
+                <span className="suave">{nombre}</span>
+                <strong>{e?.cantidad ?? '—'}</strong>
+                <span className="suave">{e && clave !== 'termino' ? compacto(Number(e.saldo)) : e ? 'cerradas' : ''}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="filtros">
         <input

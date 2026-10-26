@@ -3,7 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { CausaDetalle, Embargo, EtapaProcesal, TipoTramite, TramiteRegistrado } from '../api/judicial'
-import { Plata, fechaHoraLegible, fechaLegible, fechaLocal, rutConPuntos } from '../componentes/utiles'
+import { Plata, clp, describirCambios, fechaHoraLegible, fechaLegible, fechaLocal, rutConPuntos } from '../componentes/utiles'
+import { useConfirmacion } from '../componentes/ConfirmarGestion'
+import { useAuth } from '../auth'
 import {
   clasePlazo, textoPlazo, useCatalogos, useEquipoJudicial, useTiposTramite, useTribunales,
 } from '../componentes/usarJudicial'
@@ -23,6 +25,9 @@ export default function Causa() {
   const { data: catalogos } = useCatalogos()
   const [editando, setEditando] = useState(false)
   const [propuesta, setPropuesta] = useState<string | null>(null)
+  const { puede } = useAuth()
+  const causas = puede('judicial_causas')
+  const tramites = puede('judicial_tramites')
 
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['judicial'] })
@@ -89,7 +94,7 @@ export default function Causa() {
         )}
       </section>
 
-      {propuesta && vigente && (
+      {propuesta && vigente && causas && (
         <TerminarCausa causa={causa} resultadoInicial={propuesta} alTerminar={() => { setPropuesta(null); refrescar() }}
           alCancelar={() => setPropuesta(null)} aviso />
       )}
@@ -98,7 +103,7 @@ export default function Causa() {
         <section className="tarjeta">
           <div className="tarjeta-cabecera">
             <h2>Datos de la causa</h2>
-            {vigente && !editando && (
+            {vigente && !editando && causas && (
               <button className="btn btn-chico btn-secundario" onClick={() => setEditando(true)}>Corregir</button>
             )}
           </div>
@@ -135,9 +140,9 @@ export default function Causa() {
               </li>
             ))}
           </ul>
-          {vigente && <AgregarCobranza causa={causa} alAgregar={refrescar} />}
+          {vigente && causas && <AgregarCobranza causa={causa} alAgregar={refrescar} />}
 
-          {vigente && (
+          {vigente && causas && (
             <details className="separado">
               <summary className="btn btn-secundario btn-chico">Terminar la causa</summary>
               <TerminarCausa causa={causa} resultadoInicial="pagada" alTerminar={refrescar} />
@@ -146,7 +151,7 @@ export default function Causa() {
         </section>
 
         <section className="tarjeta">
-          {vigente && <RegistrarTramite causa={causa} alRegistrar={(r) => {
+          {vigente && tramites && <RegistrarTramite causa={causa} alRegistrar={(r) => {
             refrescar()
             if (r.propone_resultado) setPropuesta(r.propone_resultado)
           }} />}
@@ -238,8 +243,19 @@ function RegistrarTramite({ causa, alRegistrar }: {
     onError: (e) => setError(mensajeDeError(e)),
   })
 
+  const { pedir, modal } = useConfirmacion()
+  function confirmar() {
+    let texto = `TRÁMITE JUDICIAL (rol ${causa.rol ?? 'sin rol'}): ${tipo?.nombre ?? 'Observación'}`
+    if (descripcion.trim()) texto += `. ${descripcion.trim()}`
+    const plazoFinal = plazo || plazoAuto
+    if (plazoFinal && tipo) texto += `. Plazo: ${fechaLegible(plazoFinal)}`
+    if (conGasto && gasto.monto) texto += `. Gasto: ${clp(Number(gasto.monto))}`
+    pedir({ titulo: 'Registrar trámite', gestion: texto + '.', confirmar: 'Sí, registrar', accion: () => guardar.mutateAsync() })
+  }
+
   return (
-    <form className="form-gestion" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
+    <form className="form-gestion" onSubmit={(e) => { e.preventDefault(); confirmar() }}>
+      {modal}
       <h2>Registrar trámite</h2>
       <div className="fila">
         <input placeholder="Buscar trámite…" value={filtro} onChange={(e) => setFiltro(e.target.value)} />
@@ -326,8 +342,32 @@ function EditarCausa({ causa, alTerminar }: { causa: CausaDetalle; alTerminar: (
   const campo = (k: keyof typeof datos) => ({
     value: datos[k], onChange: (e: { target: { value: string } }) => setDatos({ ...datos, [k]: e.target.value }),
   })
+  const { pedir, modal } = useConfirmacion()
+  function confirmar() {
+    // Lo que cambió, con nombres (tribunal y personas) en vez de ids.
+    const tribunal = (id: string) => tribunales?.find((t) => String(t.id) === id)?.nombre ?? ''
+    const persona = (id: string) => equipo?.find((u) => u.id === id)?.nombre ?? ''
+    const legible = (x: typeof datos) => ({
+      rol: x.rol.trim(), tribunal: tribunal(x.tribunal_id), procedimiento: catalogos?.procedimientos[x.procedimiento] ?? x.procedimiento,
+      abogado: persona(x.abogado_id), procurador: persona(x.procurador_id), caratula: x.caratula, cuantia: x.cuantia,
+      etapa: catalogos?.etapas[x.etapa_procesal as EtapaProcesal] ?? x.etapa_procesal,
+    })
+    const antes = {
+      rol: causa.rol ?? '', tribunal_id: causa.tribunal_id ? String(causa.tribunal_id) : '', procedimiento: causa.procedimiento,
+      abogado_id: causa.abogado_id ?? '', procurador_id: causa.procurador_id ?? '', caratula: causa.caratula ?? '',
+      cuantia: causa.cuantia ?? '', etapa_procesal: causa.etapa_procesal,
+    }
+    const detalle = describirCambios(legible(antes), legible(datos), {
+      rol: 'Rol', tribunal: 'Tribunal', procedimiento: 'Procedimiento', abogado: 'Abogado', procurador: 'Procurador',
+      caratula: 'Carátula', cuantia: 'Cuantía', etapa: 'Etapa procesal',
+    })
+    if (!detalle) { alTerminar(); return }
+    pedir({ titulo: 'Guardar cambios de la causa', gestion: `DATOS DE LA CAUSA MODIFICADOS: ${detalle}.`,
+      confirmar: 'Sí, guardar', accion: () => guardar.mutateAsync() })
+  }
   return (
-    <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
+    <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); confirmar() }}>
+      {modal}
       <label>Rol<input {...campo('rol')} /></label>
       <label>Tribunal
         <select {...campo('tribunal_id')}>
@@ -384,6 +424,7 @@ function AgregarCobranza({ causa, alAgregar }: { causa: CausaDetalle; alAgregar:
     onSuccess: () => { setAbierto(false); alAgregar() },
     onError: (e) => setError(mensajeDeError(e)),
   })
+  const { pedir, modal } = useConfirmacion()
   if (!abierto) {
     return <button className="btn btn-chico btn-secundario" onClick={() => setAbierto(true)}>Sumar otra cobranza del deudor</button>
   }
@@ -395,12 +436,18 @@ function AgregarCobranza({ causa, alAgregar }: { causa: CausaDetalle; alAgregar:
             <li key={c.id}>
               <span className="mono negrita">N° {c.numero}</span> <Plata valor={c.monto_actual} />{' '}
               <button className="btn btn-chico btn-secundario" disabled={agregar.isPending}
-                onClick={() => agregar.mutate(c.id)}>Sumar a la causa</button>
+                onClick={() => pedir({
+                  titulo: `Sumar la cobranza N° ${c.numero} a la causa`,
+                  gestion: `DEMANDA PRESENTADA en la cobranza N° ${c.numero}: se suma a la causa rol ${causa.rol ?? 'sin rol'}`
+                    + `${causa.tribunal ? `, ${causa.tribunal}` : ''}. Pasa a judicial y no vuelve atrás.`,
+                  confirmar: 'Sí, sumar', accion: () => agregar.mutateAsync(c.id),
+                })}>Sumar a la causa</button>
             </li>
           ))}
         </ul>
       )}
       {error && <div className="alerta-error">{error}</div>}
+      {modal}
       <button className="btn-texto" onClick={() => setAbierto(false)}>Cerrar</button>
     </div>
   )
@@ -422,8 +469,10 @@ function TerminarCausa({ causa, resultadoInicial, alTerminar, alCancelar, aviso 
     onSuccess: alTerminar,
     onError: (e) => setError(mensajeDeError(e)),
   })
+  const { pedir, modal } = useConfirmacion()
   return (
     <div className={aviso ? 'aviso-termino tarjeta' : 'form-termino'}>
+      {modal}
       {aviso && (
         <p><strong>Este trámite suele cerrar la causa</strong> como «{catalogos?.resultados[resultadoInicial] ?? resultadoInicial}».
           ¿La terminamos? Las cobranzas sin otra causa vigente quedan cerradas.</p>
@@ -448,7 +497,14 @@ function TerminarCausa({ causa, resultadoInicial, alTerminar, alCancelar, aviso 
       {error && <div className="alerta-error">{error}</div>}
       <div className="acciones-fila">
         <button className="btn btn-primario" disabled={terminar.isPending || (resultado === 'castigo' && !motivo)}
-          onClick={() => terminar.mutate()}>Terminar causa</button>
+          onClick={() => pedir({
+            titulo: 'Terminar la causa',
+            gestion: `CAUSA TERMINADA (${causa.rol ?? 'sin rol'}): ${catalogos?.resultados[resultado] ?? resultado}.`
+              + (resultado === 'castigo' && motivo ? ` Cobranza cerrada: ${catalogos?.motivos_cierre[motivo] ?? motivo}.` : '')
+              + (nota.trim() ? ` ${nota.trim()}` : ''),
+            detalle: <p className="suave">Las cobranzas sin otra causa vigente quedan cerradas.</p>,
+            confirmar: 'Sí, terminar', accion: () => terminar.mutateAsync(),
+          })}>Terminar causa</button>
         {alCancelar && <button className="btn btn-secundario" onClick={alCancelar}>Todavía no</button>}
       </div>
     </div>
@@ -458,6 +514,8 @@ function TerminarCausa({ causa, resultadoInicial, alTerminar, alCancelar, aviso 
 // ------------------------------------------------------------------ embargos
 
 function Embargos({ causa, alCambiar }: { causa: CausaDetalle; alCambiar: () => void }) {
+  const { puede } = useAuth()
+  const tramites = puede('judicial_tramites')
   const { data: catalogos } = useCatalogos()
   const [nuevo, setNuevo] = useState(false)
   const [editando, setEditando] = useState<Embargo | null>(null)
@@ -465,7 +523,7 @@ function Embargos({ causa, alCambiar }: { causa: CausaDetalle; alCambiar: () => 
     <section className="tarjeta separado">
       <div className="tarjeta-cabecera">
         <h2>Embargos ({causa.embargos.length})</h2>
-        {!nuevo && <button className="btn btn-chico btn-secundario" onClick={() => setNuevo(true)}>Registrar embargo</button>}
+        {!nuevo && tramites && <button className="btn btn-chico btn-secundario" onClick={() => setNuevo(true)}>Registrar embargo</button>}
       </div>
       {nuevo && <FormEmbargo causaId={causa.id} alTerminar={() => { setNuevo(false); alCambiar() }} />}
       {causa.embargos.length > 0 && (
@@ -481,7 +539,7 @@ function Embargos({ causa, alCambiar }: { causa: CausaDetalle; alCambiar: () => 
                   <td>{fechaLegible(e.fecha_traba)}</td>
                   <td className="der">{e.monto_tasacion ? <Plata valor={e.monto_tasacion} /> : '—'}</td>
                   <td className="der">{e.monto_remate ? <Plata valor={e.monto_remate} /> : '—'}</td>
-                  <td><button className="btn btn-chico btn-secundario" onClick={() => setEditando(e)}>Actualizar</button></td>
+                  <td>{tramites && <button className="btn btn-chico btn-secundario" onClick={() => setEditando(e)}>Actualizar</button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -528,8 +586,28 @@ function FormEmbargo({ causaId, embargo, alTerminar }: { causaId: string; embarg
   const campo = (k: keyof typeof d) => ({
     value: d[k] ?? '', onChange: (e: { target: { value: string } }) => setD({ ...d, [k]: e.target.value }),
   })
+  const { pedir, modal } = useConfirmacion()
+  function confirmar() {
+    if (!embargo) {
+      pedir({ titulo: 'Registrar embargo', confirmar: 'Sí, registrar', accion: () => guardar.mutateAsync(),
+        gestion: `EMBARGO REGISTRADO: ${catalogos?.tipos_bien[d.tipo_bien] ?? d.tipo_bien} — ${d.descripcion}, `
+          + `${(catalogos?.estados_embargo[d.estado] ?? d.estado).toLowerCase()}.` })
+      return
+    }
+    const legible = (x: Record<string, unknown>) => ({ ...x, tipo_bien: catalogos?.tipos_bien[String(x.tipo_bien)] ?? x.tipo_bien,
+      estado: catalogos?.estados_embargo[String(x.estado)] ?? x.estado })
+    const detalle = describirCambios(legible(embargo as unknown as Record<string, unknown>), legible(d), {
+      tipo_bien: 'Tipo de bien', descripcion: 'Descripción', estado: 'Estado', fecha_traba: 'Fecha de traba',
+      inscripcion: 'Inscripción', depositario: 'Depositario', monto_tasacion: 'Tasación', fecha_remate: 'Fecha de remate',
+      monto_remate: 'Monto del remate', observaciones: 'Observaciones',
+    })
+    if (!detalle) { alTerminar(); return }
+    pedir({ titulo: 'Actualizar embargo', gestion: `EMBARGO ACTUALIZADO (${embargo.descripcion}): ${detalle}.`,
+      confirmar: 'Sí, guardar', accion: () => guardar.mutateAsync() })
+  }
   return (
-    <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
+    <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); confirmar() }}>
+      {modal}
       <label>Bien
         <select {...campo('tipo_bien')}>
           {Object.entries(catalogos?.tipos_bien ?? {}).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -572,17 +650,30 @@ function GastosCausa({ causa, alCambiar }: { causa: CausaDetalle; alCambiar: () 
     onSuccess: () => { setNuevo(false); setD({ ...d, concepto: '', monto: '', numero_boleta: '' }); alCambiar() },
     onError: (e) => setError(mensajeDeError(e)),
   })
+  const { puede } = useAuth()
+  const { pedir, modal } = useConfirmacion()
+  function confirmar() {
+    pedir({
+      titulo: 'Registrar gasto', confirmar: 'Sí, registrar', accion: () => guardar.mutateAsync(),
+      gestion: `GASTO REGISTRADO: ${catalogos?.tipos_gasto[d.tipo] ?? d.tipo} — ${d.concepto.trim()}, ${clp(Number(d.monto))}`
+        + (d.proveedor.trim() ? `, ${d.proveedor.trim()}` : '') + (d.numero_boleta.trim() ? `, boleta N° ${d.numero_boleta.trim()}` : '')
+        + (causa.rol ? ` (causa rol ${causa.rol})` : '') + '.',
+    })
+  }
   return (
     <section className="tarjeta separado">
       <div className="tarjeta-cabecera">
         <h2>Gastos de la causa · <Plata valor={causa.total_gastos} /></h2>
         <div className="acciones-fila">
           {!nuevo && <button className="btn btn-chico btn-secundario" onClick={() => setNuevo(true)}>Registrar gasto</button>}
-          <Link className="btn btn-chico btn-secundario" to={`/gastos?cliente=${causa.cliente_id}`}>Gastos del cliente</Link>
+          {puede('ver_totales') && (
+            <Link className="btn btn-chico btn-secundario" to={`/gastos?cliente=${causa.cliente_id}`}>Gastos del cliente</Link>
+          )}
         </div>
       </div>
       {nuevo && (
-        <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); guardar.mutate() }}>
+        <form className="form-grilla" onSubmit={(e) => { e.preventDefault(); confirmar() }}>
+          {modal}
           <label>Fecha<input type="date" value={d.fecha} max={fechaLocal()} onChange={(e) => setD({ ...d, fecha: e.target.value })} /></label>
           <label>Tipo
             <select value={d.tipo} onChange={(e) => setD({ ...d, tipo: e.target.value })}>

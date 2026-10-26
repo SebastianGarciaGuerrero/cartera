@@ -5,6 +5,7 @@ import { api, mensajeDeError } from '../api/client'
 import type { CausaDetalle } from '../api/judicial'
 import type { Cobranza, CobranzaDetalle } from '../api/tipos'
 import { NOMBRE_DOCUMENTO, Plata, clp, fechaLocal } from './utiles'
+import { useConfirmacion } from './ConfirmarGestion'
 import {
   procedimientoPorDocumento, useCatalogos, useEquipoJudicial, useTribunales,
 } from './usarJudicial'
@@ -52,6 +53,18 @@ export default function NuevaDemanda({ cobranza, alCerrar }: {
     }
     return Array.from(grupos.entries())
   }, [tribunales])
+
+  const { pedir, modal } = useConfirmacion()
+  function confirmar() {
+    const tribunal = tribunales?.find((t) => String(t.id) === tribunalId)?.nombre
+    const donde = [rol.trim() ? `rol ${rol.trim()}` : '', tribunal ? `en ${tribunal}` : ''].filter(Boolean).join(' ')
+    pedir({
+      titulo: `Presentar demanda (${elegidas.length} cobranza${elegidas.length === 1 ? '' : 's'})`,
+      gestion: `DEMANDA PRESENTADA: ${catalogos?.procedimientos[procedimiento] ?? procedimiento}${donde ? `, ${donde}` : ''}.`,
+      detalle: <p className="suave">Queda en cada cobranza de la demanda. Pasan a judicial y no vuelven atrás.</p>,
+      confirmar: 'Sí, presentar demanda', accion: () => guardar.mutateAsync(),
+    })
+  }
 
   function alternar(id: string) {
     setElegidas((e) => e.includes(id) ? e.filter((x) => x !== id) : [...e, id])
@@ -163,12 +176,13 @@ export default function NuevaDemanda({ cobranza, alCerrar }: {
         {error && <div className="alerta-error">{error}</div>}
         <div className="acciones-fila">
           <button className="btn btn-primario" disabled={guardar.isPending || elegidas.length === 0}
-            onClick={() => guardar.mutate()}>
+            onClick={confirmar}>
             {guardar.isPending ? 'Guardando…' : `Presentar demanda (${elegidas.length} cobranza${elegidas.length === 1 ? '' : 's'})`}
           </button>
           <button className="btn btn-secundario" onClick={alCerrar}>Cancelar</button>
         </div>
       </div>
+      {modal}
     </div>
   )
 }

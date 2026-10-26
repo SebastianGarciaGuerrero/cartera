@@ -27,7 +27,7 @@ export interface CuerpoAcuerdo {
 export default function AcuerdoCalculado({ cobranza, alCambiar }: {
   cobranza: CobranzaDetalle
   /** Avisa el cuerpo listo para crear (o null si falta algo). */
-  alCambiar: (cuerpo: CuerpoAcuerdo | null) => void
+  alCambiar: (cuerpo: CuerpoAcuerdo | null, plan?: PlanAcuerdo | null) => void
 }) {
   const modalidad = cobranza.tipo === 'judicial' ? 'judicial' : 'extrajudicial'
   const { data: ufHoy, isError: sinUF } = useUF()
@@ -66,7 +66,7 @@ export default function AcuerdoCalculado({ cobranza, alCambiar }: {
     if (!cuerpo) { setPlan(null); setError(''); alCambiar(null); return }
     const t = window.setTimeout(() => {
       api.post<PlanAcuerdo>('/calculadora/acuerdo', cuerpo)
-        .then((r) => { setPlan(r.data); setError(''); alCambiar(cuerpo) })
+        .then((r) => { setPlan(r.data); setError(''); alCambiar(cuerpo, r.data) })
         .catch((e) => { setPlan(null); setError(mensajeDeError(e)); alCambiar(null) })
     }, 350)
     return () => window.clearTimeout(t)
