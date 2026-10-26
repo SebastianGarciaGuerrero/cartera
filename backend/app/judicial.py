@@ -407,3 +407,15 @@ def plazos_agenda(db: Session, organizacion_id: UUID, desde: date, hasta: date,
 
 def descripcion_gasto(monto) -> str:
     return clp(monto)
+
+
+def nota_conjunta(causa: Causa) -> str:
+    """
+    En una causa con varias cobranzas, un trámite o un gasto queda como
+    gestión en cada una (cada cuenta muestra su avance), pero es UNO solo: el
+    texto lo aclara para que no parezca duplicado.
+    """
+    if len(causa.vinculos) < 2:
+        return ""
+    numeros = sorted(v.cobranza.numero for v in causa.vinculos)
+    return " Causa conjunta de las cobranzas " + ", ".join(f"N° {n}" for n in numeros) + "."

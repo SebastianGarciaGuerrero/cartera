@@ -43,3 +43,44 @@ def test_cambios_dejan_gestion(cliente_http, org_a):
     assert "DATOS DEL DEUDOR MODIFICADOS: Comuna: — → Valparaíso." in textos
     gestiones = cliente_http.get("/api/gestiones/", params={"cobranza_id": cid}, headers=h).json()
     assert all(g["usuario_id"] == yo for g in gestiones)
+
+
+def test_reincidente_y_cuentas_separadas(cliente_http, org_a):
+    from datetime import timedelta
+    from app.indicadores import hoy_chile
+
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, monto=1000, n=321)
+    vieja = cartera["cobranza_id"]
+    # Paga todo ayer: la primera cobranza queda cerrada.
+    r = cliente_http.post("/api/pagos/", headers=h, json={
+        "cobranza_id": vieja, "monto": 1000, "capital": 1000,
+        "fecha_pago": (hoy_chile() - timedelta(days=1)).isoformat()})
+    assert r.status_code == 201, r.text
+    ficha = cliente_http.get(f"/api/deudores/{cartera['deudor_id']}", headers=h).json()
+    assert ficha["reincidente"] is False and ficha["cobranzas_cerradas"] == 1
+
+    # Vuelve a deber: es el mismo deudor (mismo RUT), con una cuenta nueva y aparte.
+    nueva = cliente_http.post("/api/cobranzas/", headers=h, json={
+        "cliente_id": cartera["cliente_id"], "deudor_id": cartera["deudor_id"],
+        "monto_original": 5000, "id_externo": "EXT-321-B"}).json()["id"]
+    ficha = cliente_http.get(f"/api/deudores/{cartera['deudor_id']}", headers=h).json()
+    assert ficha["reincidente"] is True
+    rut = ficha["rut"]
+    encontrado = cliente_http.get("/api/deudores/buscar", headers=h, params={"q": rut}).json()
+    assert encontrado[0]["reincidente"] is True
+
+    # Un cambio del deudor queda en UNA cobranza (la abierta), no en la cerrada.
+    cliente_http.post(f"/api/deudores/{cartera['deudor_id']}/contactos", headers=h,
+                      json={"tipo": "email", "valor": "vuelve@correo.cl"})
+    assert any("vuelve@correo.cl" in t for t in _historial(cliente_http, h, nueva))
+    assert not any("vuelve@correo.cl" in t for t in _historial(cliente_http, h, vieja))
+
+    # Con dos abiertas, solo en la que se elige: no se duplica.
+    tercera = cliente_http.post("/api/cobranzas/", headers=h, json={
+        "cliente_id": cartera["cliente_id"], "deudor_id": cartera["deudor_id"],
+        "monto_original": 7000, "id_externo": "EXT-321-C"}).json()["id"]
+    cliente_http.post(f"/api/deudores/{cartera['deudor_id']}/contactos", headers=h,
+                      params={"cobranza_id": nueva}, json={"tipo": "celular", "valor": "+56977776666"})
+    assert any("+56977776666" in t for t in _historial(cliente_http, h, nueva))
+    assert not any("+56977776666" in t for t in _historial(cliente_http, h, tercera))

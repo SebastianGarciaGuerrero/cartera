@@ -1,10 +1,10 @@
 """
 Qué puede hacer cada rol dentro del estudio.
 
-Todos los roles internos (salvo 'viewer', de solo lectura) trabajan sus
-casos: registran gestiones, promesas, acuerdos, abonos y gastos de cada
-cobranza, y pueden recomendar pasar una cobranza a demanda. Lo que está
-aquí es lo que NO es para todos:
+Las gestiones son la columna vertebral: todos los roles internos (salvo
+'viewer', de solo lectura) registran gestiones, promesas, acuerdos, abonos
+y gastos de cada cobranza, y pueden recomendar pasar una cobranza a
+demanda. Lo que está aquí es lo que NO es para todos:
 
   cobranzas_crear      ingresar cobranzas una por una
   carga_masiva         carga masiva de cobranzas
@@ -43,9 +43,9 @@ ROLES_AJUSTABLES = ("supervisor", "abogado", "procurador", "operador", "viewer")
 
 POR_DEFECTO: dict[str, set[str]] = {
     "supervisor": set(PERMISOS),
-    "abogado": {"cobranzas_crear", "judicial_causas", "judicial_tramites"},
+    "abogado": {"judicial_causas", "judicial_tramites"},
     "procurador": {"judicial_tramites"},
-    "operador": {"cobranzas_crear"},
+    "operador": set(),  # ejecutivos: gestionan sus casos; ingresar cobranzas es de la administración
     "viewer": set(),
 }
 

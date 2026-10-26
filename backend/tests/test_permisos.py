@@ -11,12 +11,14 @@ def test_ejecutivo_trabaja_sus_casos_pero_no_ve_totales(cliente_http, org_a):
     cartera = crear_cartera(cliente_http, h, n=301)
     ho = login(cliente_http, agregar_usuario(org_a["org_id"], "operador"))
     me = cliente_http.get("/api/auth/me", headers=ho).json()
-    assert "cobranzas_crear" in me["permisos"] and "ver_totales" not in me["permisos"]
+    assert "cobranzas_crear" not in me["permisos"] and "ver_totales" not in me["permisos"]
 
-    # Ingresa cobranzas, pero no clientes.
-    r = cliente_http.post("/api/cobranzas/", headers=ho, json={
-        "cliente_id": cartera["cliente_id"], "deudor_id": cartera["deudor_id"], "monto_original": 1000})
+    # Gestiona (la columna vertebral), pero no ingresa cobranzas ni clientes.
+    r = cliente_http.post("/api/gestiones/completa", headers=ho, json={
+        "cobranza_id": cartera["cobranza_id"], "descripcion": "Llamada, no contesta"})
     assert r.status_code == 201, r.text
+    assert cliente_http.post("/api/cobranzas/", headers=ho, json={
+        "cliente_id": cartera["cliente_id"], "deudor_id": cartera["deudor_id"], "monto_original": 1000}).status_code == 403
     assert cliente_http.post("/api/clientes/", headers=ho,
                              json={"rut": rut_valido(302), "razon_social": "X"}).status_code == 403
     assert cliente_http.put(f"/api/clientes/{cartera['cliente_id']}", headers=ho,

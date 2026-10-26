@@ -132,6 +132,9 @@ class DeudorDetalle(DeudorResponse):
     Se usa en GET /api/deudores/{id} (ficha completa del deudor).
     """
     contactos: List[ContactoResponse] = Field(default_factory=list)
+    # Volvió a deber después de cerrar una deuda (pagada, archivada o castigada).
+    reincidente: bool = False
+    cobranzas_cerradas: int = 0
 
 
 class DeudorBusqueda(DeudorResponse):
@@ -139,3 +142,5 @@ class DeudorBusqueda(DeudorResponse):
     total_cobranzas: int = 0
     cobranzas_abiertas: int = 0
     saldo_abierto: float = 0
+    reincidente: bool = False
+    cobranzas_cerradas: int = 0

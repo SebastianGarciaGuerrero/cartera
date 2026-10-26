@@ -40,7 +40,7 @@ from app.schemas.judicial import (
 )
 from app.security import get_current_user, usuario_autorizado
 from app.permisos import requiere_permiso, tiene_permiso
-from app.judicial import TIPOS_GASTO
+from app.judicial import TIPOS_GASTO, nota_conjunta
 from app.operaciones import clp, describir_cambios, registrar_cambio
 
 
@@ -56,7 +56,8 @@ def texto_gasto(gasto: Gasto, rol: Optional[str] = None) -> str:
         texto += f" (causa rol {rol})"
     if gasto.estado == "no_reembolsable":
         texto += ". No se cobra al cliente"
-    return texto + "."
+    texto += "."
+    return texto + (nota_conjunta(gasto.causa) if gasto.causa is not None and gasto.cobranza_id is None else "")
 
 
 def cobranzas_del_gasto(gasto: Gasto) -> list:
@@ -161,6 +162,7 @@ def registrar(datos: GastoCreate, db: Session = Depends(get_db),
     db.add(gasto)
     # Queda como gestión de quien lo registró, en la cobranza (o en las de la causa).
     destinos = [datos.cobranza_id] if datos.cobranza_id else [v.cobranza_id for v in causa.vinculos]
+    gasto.causa = causa
     registrar_cambio(db, destinos, usuario.id, "gasto", texto_gasto(gasto, causa.rol if causa else None))
     db.commit()
     db.refresh(gasto)
@@ -181,7 +183,8 @@ def corregir(gasto_id: UUID, datos: GastoUpdate, db: Session = Depends(get_db),
     detalle = describir_cambios(antes, cambios, {"numero_boleta": "N° boleta", "proveedor": "Receptor / proveedor"})
     if detalle:
         registrar_cambio(db, cobranzas_del_gasto(gasto), usuario.id, "gasto",
-                         f"GASTO MODIFICADO ({gasto.concepto}): {detalle}.")
+                         f"GASTO MODIFICADO ({gasto.concepto}): {detalle}."
+                         + (nota_conjunta(gasto.causa) if gasto.causa is not None and gasto.cobranza_id is None else ""))
     db.commit()
     db.refresh(gasto)
     return gasto

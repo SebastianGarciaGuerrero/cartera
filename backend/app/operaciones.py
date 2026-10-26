@@ -265,15 +265,23 @@ def registrar_cambio(db: Session, cobranza_ids, usuario_id, codigo_tipo: str, te
         gestion_automatica(db, cobranza_id, usuario_id, codigo_tipo, texto)
 
 
-def cobranzas_del_deudor(db: Session, deudor_id) -> list:
-    """Dónde anotar un cambio del deudor: sus cobranzas abiertas (o la última, si no tiene)."""
-    abiertas = [i for (i,) in db.query(Cobranza.id).filter(Cobranza.deudor_id == deudor_id,
-                                                             Cobranza.estado.in_(ABIERTAS))]
-    if abiertas:
-        return abiertas
-    ultima = (db.query(Cobranza.id).filter(Cobranza.deudor_id == deudor_id)
-              .order_by(Cobranza.numero.desc()).first())
-    return [ultima[0]] if ultima else []
+def cobranza_del_deudor(db: Session, deudor_id, elegida=None) -> list:
+    """
+    Dónde anotar un cambio del deudor (contacto, dirección…): en UNA sola
+    cobranza, para no duplicar gestiones entre cuentas que son separadas. La
+    elegida por quien hace el cambio si es de este deudor; si no, su cobranza
+    abierta más reciente (o la última, si no tiene abiertas).
+    """
+    if elegida is not None:
+        cob = db.get(Cobranza, elegida)
+        if cob is not None and cob.deudor_id == deudor_id:
+            return [cob.id]
+    for filtro in ((Cobranza.estado.in_(ABIERTAS),), ()):
+        ultima = (db.query(Cobranza.id).filter(Cobranza.deudor_id == deudor_id, *filtro)
+                  .order_by(Cobranza.numero.desc()).first())
+        if ultima:
+            return [ultima[0]]
+    return []
 
 
 def _valor(v) -> str:

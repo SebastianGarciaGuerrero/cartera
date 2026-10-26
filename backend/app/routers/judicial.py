@@ -247,7 +247,7 @@ def corregir_causa(causa_id: UUID, datos: CausaUpdate, db: Session = Depends(get
     detalle = describir_cambios(antes, legibles(), {"rol": "Rol"})
     if detalle:
         registrar_cambio(db, _cobranzas_de(causa), usuario.id, "cambio_datos",
-                         f"DATOS DE LA CAUSA MODIFICADOS: {detalle}.")
+                         f"DATOS DE LA CAUSA MODIFICADOS: {detalle}." + judicial.nota_conjunta(causa))
     _commit(db, "No se pudo actualizar la causa.")
     return ficha_causa(causa.id, db)
 
@@ -295,7 +295,7 @@ def registrar_tramite(causa_id: UUID, datos: TramiteCreate, db: Session = Depend
         texto += f". Plazo: {tramite.plazo_fecha:%d-%m-%Y}"
     if datos.gasto:
         texto += f". Gasto: {clp(datos.gasto.monto)}"
-    registrar_cambio(db, _cobranzas_de(causa), usuario.id, "tramite", texto + ".")
+    registrar_cambio(db, _cobranzas_de(causa), usuario.id, "tramite", texto + "." + judicial.nota_conjunta(causa))
     _commit(db, "No se pudo registrar el trámite.")
     db.refresh(tramite)
     gasto = db.query(Gasto.id).filter(Gasto.tramite_id == tramite.id).first()
@@ -329,7 +329,8 @@ def registrar_embargo(causa_id: UUID, datos: EmbargoBase, db: Session = Depends(
     registrar_cambio(db, _cobranzas_de(causa), usuario.id, "embargo",
                      f"EMBARGO REGISTRADO (rol {causa.rol or 'sin rol'}): "
                      f"{judicial.TIPOS_BIEN.get(datos.tipo_bien, datos.tipo_bien)} — {datos.descripcion}, "
-                     f"{judicial.ESTADOS_EMBARGO.get(datos.estado, datos.estado).lower()}.")
+                     f"{judicial.ESTADOS_EMBARGO.get(datos.estado, datos.estado).lower()}."
+                     + judicial.nota_conjunta(causa))
     _commit(db, "No se pudo registrar el embargo.")
     db.refresh(embargo)
     return embargo
@@ -349,7 +350,7 @@ def actualizar_embargo(embargo_id: UUID, datos: EmbargoUpdate, db: Session = Dep
     if detalle:
         causa = _causa(db, embargo.causa_id)
         registrar_cambio(db, _cobranzas_de(causa), usuario.id, "embargo",
-                         f"EMBARGO ACTUALIZADO ({embargo.descripcion}): {detalle}.")
+                         f"EMBARGO ACTUALIZADO ({embargo.descripcion}): {detalle}." + judicial.nota_conjunta(causa))
     _commit(db, "No se pudo actualizar el embargo.")
     db.refresh(embargo)
     return embargo
