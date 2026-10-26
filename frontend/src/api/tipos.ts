@@ -122,10 +122,15 @@ export interface DeudorBusqueda extends Deudor {
   total_cobranzas: number
   cobranzas_abiertas: number
   saldo_abierto: number
+  /** Volvió a deber después de cerrar una deuda (cada cobranza sigue siendo una cuenta aparte). */
+  reincidente?: boolean
+  cobranzas_cerradas?: number
 }
 
 export interface DeudorDetalle extends Deudor {
   contactos: Contacto[]
+  reincidente?: boolean
+  cobranzas_cerradas?: number
 }
 
 export type EstadoCobranza =

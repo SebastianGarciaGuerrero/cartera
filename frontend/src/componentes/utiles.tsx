@@ -122,3 +122,13 @@ export function describirCambios(antes: Record<string, unknown>, despues: Record
     .map((k) => `${nombres[k] ?? k}: ${valor(antes[k])} → ${valor(despues[k])}`)
     .join('; ')
 }
+
+/** El deudor volvió a deber después de cerrar una deuda; cada cobranza sigue siendo una cuenta aparte. */
+export function EtiquetaReincidente({ cerradas }: { cerradas: number }) {
+  return (
+    <span className="etiqueta etiqueta-reincidente"
+      title={`Volvió a deber después de cerrar ${cerradas} ${cerradas === 1 ? 'cobranza' : 'cobranzas'}. Cada cobranza es una cuenta aparte.`}>
+      Reincidente
+    </span>
+  )
+}

@@ -303,3 +303,9 @@
 @media (max-width: 900px) {
   .inicio-grilla { grid-template-columns: 1fr; }
 }
+
+/* ---------- Reincidente y cuentas separadas ---------- */
+.etiqueta-reincidente { background: #faeeda; color: #854f0b; border: 1px solid #fac775; }
+.filtro-cuenta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--texto-suave); margin-bottom: 10px; }
+.filtro-cuenta select { max-width: 100%; }
+.ficha-deudor .subtitulo:first-of-type { margin-top: 4px; }

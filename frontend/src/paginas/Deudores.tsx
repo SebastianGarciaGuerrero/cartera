@@ -6,7 +6,7 @@ import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
 import type { Cobranza, Contacto, DeudorBusqueda, DeudorDetalle, Gestion } from '../api/tipos'
 import NuevoDeudor from '../componentes/NuevoDeudor'
-import { EtiquetaEstado, Plata, rutConPuntos } from '../componentes/utiles'
+import { EtiquetaEstado, EtiquetaReincidente, Plata, rutConPuntos } from '../componentes/utiles'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { ResumenDeuda, usePagos } from '../componentes/HistorialPagos'
 import LineaTiempo from '../componentes/LineaTiempo'
@@ -14,7 +14,11 @@ import { useConfirmacion } from '../componentes/ConfirmarGestion'
 
 // Deudores: búsqueda por RUT o nombre (con miles de deudores no se lista
 // todo) y una ficha: resumen de la deuda arriba y, en pestañas, sus
-// cobranzas, sus gestiones, sus contactos y sus datos.
+// cobranzas, sus gestiones, sus contactos y sus datos. Cada cobranza es una
+// cuenta aparte: las abiertas y las anteriores se muestran separadas, cada
+// gestión dice de qué cobranza es y un cambio de contacto queda en UNA.
+
+const ABIERTAS = ['activa', 'acuerdo_pago', 'judicial']
 
 const NOMBRE_CONTACTO: Record<string, string> = {
   telefono: 'Teléfono', celular: 'Celular', email: 'Correo', whatsapp: 'WhatsApp', otro: 'Otro',
@@ -73,6 +77,7 @@ export default function Deudores() {
                     {d.comuna ? ` · ${d.comuna}` : ''}
                   </span>
                   {d.en_boletin_comercial && <span className="etiqueta etiqueta-castigo">DICOM</span>}
+                  {d.reincidente && <EtiquetaReincidente cerradas={d.cobranzas_cerradas ?? 0} />}
                   <span className="resultado-monto">{d.saldo_abierto > 0 && <Plata valor={d.saldo_abierto} />}</span>
                 </button>
               ))}
@@ -115,17 +120,29 @@ function FichaDeudor({ id }: { id: string }) {
   const { data: campos } = useCampos('deudor')
   const { data: pagos } = usePagos({ deudor_id: id })
   const quitar = useMutation({
-    mutationFn: (contactoId: string) => api.delete(`/deudores/contactos/${contactoId}`),
+    mutationFn: ({ contactoId, cobranzaId }: { contactoId: string; cobranzaId?: string }) =>
+      api.delete(`/deudores/contactos/${contactoId}`, { params: { cobranza_id: cobranzaId } }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['deudor', id] }); qc.invalidateQueries({ queryKey: ['gestiones'] }) },
   })
   const { pedir, modal } = useConfirmacion()
+  const [filtroGestiones, setFiltroGestiones] = useState('')
+  const [cuentaElegida, setCuentaElegida] = useState('')
 
   if (!d) return <section className="tarjeta"><div className="pantalla-carga">Cargando…</div></section>
 
   const contactos = d.contactos.filter((c) => c.activo)
-  const abiertas = (cobranzas ?? []).filter((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado))
-  const original = (cobranzas ?? []).reduce((s, c) => s + Number(c.monto_original), 0)
+  const porNumero = [...(cobranzas ?? [])].sort((a, b) => b.numero - a.numero)
+  const abiertas = porNumero.filter((c) => ABIERTAS.includes(c.estado))
+  const anteriores = porNumero.filter((c) => !ABIERTAS.includes(c.estado))
+  // El resumen es de la deuda vigente (lo anterior es otra cuenta); sin deuda vigente, la historia.
+  const vigentes = abiertas.length ? abiertas : porNumero
+  const idsVigentes = new Set(vigentes.map((c) => c.id))
+  const original = vigentes.reduce((s, c) => s + Number(c.monto_original), 0)
   const saldo = abiertas.reduce((s, c) => s + Number(c.monto_actual), 0)
+  const pagosVigentes = pagos?.filter((p) => idsVigentes.has(p.cobranza_id))
+  // Dónde queda la gestión de un cambio de contacto: en UNA cobranza.
+  const cuenta = porNumero.find((c) => c.id === cuentaElegida) ?? abiertas[0] ?? porNumero[0]
+  const gestionesVisibles = filtroGestiones ? gestiones?.filter((g) => g.cobranza_id === filtroGestiones) : gestiones
   const celular = contactos.find((c) => ['whatsapp', 'celular', 'telefono'].includes(c.tipo))
   const correo = contactos.find((c) => c.tipo === 'email')
   const numeros = new Map((cobranzas ?? []).map((c) => [c.id, c.numero]))
@@ -155,6 +172,7 @@ function FichaDeudor({ id }: { id: string }) {
             <h2>
               {d.nombre}
               {d.en_boletin_comercial && <span className="etiqueta etiqueta-castigo">DICOM</span>}
+              {d.reincidente && <EtiquetaReincidente cerradas={d.cobranzas_cerradas ?? 0} />}
             </h2>
             <span className="ficha-deudor-meta">
               <span className="mono">{rutConPuntos(d.rut)}</span>
@@ -170,7 +188,7 @@ function FichaDeudor({ id }: { id: string }) {
         </div>
       </header>
 
-      <ResumenDeuda original={original} saldo={saldo} pagos={pagos} deudorId={d.id}
+      <ResumenDeuda original={original} saldo={saldo} pagos={pagosVigentes} deudorId={d.id}
         enlaceAbonar={abiertas.length === 1 ? `/abonos?cobranza=${abiertas[0].id}` : abiertas.length > 1 ? `/abonos?q=${d.rut}` : undefined} />
 
       <nav className="pestanas pestanas-ficha" aria-label="Secciones de la ficha">
@@ -183,26 +201,38 @@ function FichaDeudor({ id }: { id: string }) {
       </nav>
 
       {pestana === 'cobranzas' && (
-        <ul className="lista-cobranzas">
-          {cobranzas?.map((c) => (
-            <li key={c.id}>
-              <Link to={`/cobranzas/${c.id}`} className="negrita">N° {c.numero}</Link>
-              <strong><Plata valor={c.monto_actual} /></strong>
-              <span className="suave">{c.cliente_nombre}</span>
-              <span className="lista-cobranzas-estado">
-                <EtiquetaEstado estado={c.estado} />
-                {['activa', 'acuerdo_pago', 'judicial'].includes(c.estado) && (
-                  <Link className="btn btn-chico btn-secundario" to={`/abonos?cobranza=${c.id}`}>Abonar</Link>
-                )}
-              </span>
-            </li>
-          ))}
-          {cobranzas?.length === 0 && <li className="vacio">Sin cobranzas.</li>}
-        </ul>
+        <>
+          {cobranzas?.length === 0 && <p className="vacio">Sin cobranzas.</p>}
+          {abiertas.length > 0 && (
+            <>
+              <h3 className="subtitulo">Abiertas ({abiertas.length})</h3>
+              <ListaCobranzas lista={abiertas} />
+            </>
+          )}
+          {anteriores.length > 0 && (
+            <>
+              <h3 className="subtitulo">Anteriores, cerradas ({anteriores.length})</h3>
+              <ListaCobranzas lista={anteriores} />
+            </>
+          )}
+        </>
       )}
 
       {pestana === 'gestiones' && (
-        gestiones ? <LineaTiempo gestiones={gestiones} cobranzas={numeros} /> : <p className="suave">Cargando…</p>
+        <>
+          {porNumero.length > 1 && (
+            <label className="filtro-cuenta">
+              Ver las gestiones de
+              <select value={filtroGestiones} onChange={(e) => setFiltroGestiones(e.target.value)}>
+                <option value="">Todas sus cobranzas (cada una con su N°)</option>
+                {porNumero.map((c) => (
+                  <option key={c.id} value={c.id}>N° {c.numero} · {c.cliente_nombre} · {c.estado.replace('_', ' ')}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {gestionesVisibles ? <LineaTiempo gestiones={gestionesVisibles} cobranzas={numeros} /> : <p className="suave">Cargando…</p>}
+        </>
       )}
 
       {pestana === 'contactos' && (
@@ -213,14 +243,26 @@ function FichaDeudor({ id }: { id: string }) {
                 <span className="suave">{NOMBRE_CONTACTO[c.tipo] ?? c.tipo}</span>
                 <span className="mono">{c.valor}</span>
                 <button className="btn-texto" title="Quitar contacto" onClick={() => pedir({
-                  titulo: `Quitar ${c.valor}`, confirmar: 'Sí, quitar', accion: () => quitar.mutateAsync(c.id),
+                  titulo: `Quitar ${c.valor}`, confirmar: 'Sí, quitar',
+                  accion: () => quitar.mutateAsync({ contactoId: c.id, cobranzaId: cuenta?.id }),
                   gestion: `CONTACTO QUITADO: ${CONTACTO_GESTION[c.tipo] ?? c.tipo} ${c.valor}.`,
+                  detalle: cuenta && <p className="suave">Queda en la cobranza N° {cuenta.numero}.</p>,
                 })}>Quitar</button>
               </li>
             ))}
             {contactos.length === 0 && <li className="suave">Sin contactos registrados.</li>}
           </ul>
-          <div className="separado"><NuevoContacto deudorId={d.id} /></div>
+          {abiertas.length > 1 ? (
+            <label className="filtro-cuenta separado">
+              Los cambios de contacto quedan como gestión en la cobranza
+              <select value={cuenta?.id ?? ''} onChange={(e) => setCuentaElegida(e.target.value)}>
+                {abiertas.map((c) => <option key={c.id} value={c.id}>N° {c.numero} · {c.cliente_nombre}</option>)}
+              </select>
+            </label>
+          ) : cuenta && (
+            <p className="nota separado">Los cambios de contacto quedan como gestión en la cobranza N° {cuenta.numero}.</p>
+          )}
+          <div className="separado"><NuevoContacto deudorId={d.id} cuenta={cuenta} /></div>
           {modal}
         </>
       )}
@@ -240,14 +282,35 @@ function FichaDeudor({ id }: { id: string }) {
   )
 }
 
-function NuevoContacto({ deudorId }: { deudorId: string }) {
+function ListaCobranzas({ lista }: { lista: Cobranza[] }) {
+  return (
+    <ul className="lista-cobranzas">
+      {lista.map((c) => (
+        <li key={c.id}>
+          <Link to={`/cobranzas/${c.id}`} className="negrita">N° {c.numero}{c.id_externo && <span className="mono suave"> · {c.id_externo}</span>}</Link>
+          <strong><Plata valor={c.monto_actual} /></strong>
+          <span className="suave">{c.cliente_nombre}</span>
+          <span className="lista-cobranzas-estado">
+            <EtiquetaEstado estado={c.estado} />
+            {ABIERTAS.includes(c.estado) && (
+              <Link className="btn btn-chico btn-secundario" to={`/abonos?cobranza=${c.id}`}>Abonar</Link>
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function NuevoContacto({ deudorId, cuenta }: { deudorId: string; cuenta?: Cobranza }) {
   const qc = useQueryClient()
   const [abierto, setAbierto] = useState(false)
   const [tipo, setTipo] = useState('celular')
   const [valor, setValor] = useState('')
   const [error, setError] = useState('')
   const agregar = useMutation({
-    mutationFn: () => api.post(`/deudores/${deudorId}/contactos`, { tipo, valor: valor.trim() }),
+    mutationFn: () => api.post(`/deudores/${deudorId}/contactos`, { tipo, valor: valor.trim() },
+      { params: { cobranza_id: cuenta?.id } }),
     onSuccess: () => {
       setValor(''); setAbierto(false); setError('')
       qc.invalidateQueries({ queryKey: ['deudor', deudorId] }); qc.invalidateQueries({ queryKey: ['gestiones'] })
@@ -262,7 +325,8 @@ function NuevoContacto({ deudorId }: { deudorId: string }) {
     <form className="fila" onSubmit={(e: FormEvent) => {
       e.preventDefault()
       pedir({ titulo: 'Agregar contacto', confirmar: 'Sí, agregar', accion: () => agregar.mutateAsync(),
-        gestion: `CONTACTO AGREGADO: ${CONTACTO_GESTION[tipo] ?? tipo} ${valor.trim()}.` })
+        gestion: `CONTACTO AGREGADO: ${CONTACTO_GESTION[tipo] ?? tipo} ${valor.trim()}.`,
+        detalle: cuenta && <p className="suave">Queda en la cobranza N° {cuenta.numero}.</p> })
     }}>
       {modal}
       <select value={tipo} onChange={(e) => setTipo(e.target.value)}>

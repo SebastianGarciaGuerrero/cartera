@@ -1,5 +1,15 @@
 # Hoja de ruta: Cartera como producto SaaS
 
+## Pendientes en pausa
+
+Acordados, pero en espera hasta que se pidan:
+
+- **Abono a una causa con varias cobranzas**: registrar el pago una vez y que se
+  reparta entre las cobranzas de la causa (proporcional al saldo o la más
+  antigua primero). Hoy se registra cobranza por cobranza.
+- **Avenimiento de una causa con varias cobranzas**: un solo plan de cuotas
+  para la causa, repartido entre sus cobranzas. Hoy el acuerdo es por cobranza.
+
 ## Fase 1: cimientos ✅ (rama `saas/fase-1`)
 
 - Migraciones versionadas con Alembic; la base existente se adopta sin pérdida.

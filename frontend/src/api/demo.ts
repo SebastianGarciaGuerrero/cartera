@@ -476,13 +476,24 @@ const CONTACTO_GESTION: Record<string, string> = {
   telefono: 'teléfono', celular: 'celular', email: 'correo', whatsapp: 'WhatsApp', otro: 'contacto',
 }
 
-/** Dónde anotar un cambio del deudor: sus cobranzas abiertas (o la última). */
-function cobranzasDelDeudor(db: DB, deudorId: string): string[] {
+/**
+ * Dónde anotar un cambio del deudor: en UNA cobranza (la elegida, o la
+ * abierta más reciente, o la última), para no duplicar gestiones entre cuentas.
+ */
+function cobranzaDelDeudor(db: DB, deudorId: string, elegida?: string): string[] {
+  const suyas = db.cobranzas.filter((c) => c.deudor_id === deudorId).sort((a, b) => b.numero - a.numero)
+  const destino = suyas.find((c) => c.id === elegida)
+    ?? suyas.find((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado)) ?? suyas[0]
+  return destino ? [destino.id] : []
+}
+
+/** Volvió a deber después de cerrar una cobranza (como el backend). */
+function reincidencia(db: DB, deudorId: string) {
   const suyas = db.cobranzas.filter((c) => c.deudor_id === deudorId)
-  const abiertas = suyas.filter((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado))
-  if (abiertas.length) return abiertas.map((c) => c.id)
-  const ultima = [...suyas].sort((a, b) => b.numero - a.numero)[0]
-  return ultima ? [ultima.id] : []
+  const cerradas = suyas.filter((c) => ['pagada', 'archivada', 'castigo'].includes(c.estado))
+  const reincidente = cerradas.some((a) => suyas.some((b) => b.id !== a.id
+    && b.fecha_ingreso > ((a as { fecha_cierre?: string | null }).fecha_cierre ?? a.fecha_ingreso)))
+  return { reincidente, cobranzas_cerradas: cerradas.length }
 }
 
 /** Texto automático + por dónde fue el contacto + el comentario (como el backend). */
@@ -978,13 +989,13 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
         const suyas = db.cobranzas.filter((c) => c.deudor_id === d.id)
         const abiertas = suyas.filter((c) => abiertos.includes(c.estado))
         return { ...d, total_cobranzas: suyas.length, cobranzas_abiertas: abiertas.length,
-          saldo_abierto: abiertas.reduce((s, c) => s + Number(c.monto_actual), 0) }
+          saldo_abierto: abiertas.reduce((s, c) => s + Number(c.monto_actual), 0), ...reincidencia(db, d.id) }
       }))
   }
   if (metodo === 'GET' && url === '/deudores/') return ok(config, db.deudores)
   if (metodo === 'GET' && /^\/deudores\/[^/]+$/.test(url)) {
     const d = db.deudores.find((x) => x.id === url.split('/')[2])
-    return d ? ok(config, d) : error(404, 'Deudor no encontrado')
+    return d ? ok(config, { ...d, ...reincidencia(db, d.id) }) : error(404, 'Deudor no encontrado')
   }
   // ---- portal del deudor: enlace personal (equipo) ----
   const rutaEnlace = /^\/deudores\/([^/]+)\/enlace$/.exec(url)
@@ -1034,7 +1045,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const datos = cuerpo(config) as { tipo: string; valor: string }
     const nuevo = { id: uid(), deudor_id: d.id, tipo: datos.tipo, valor: datos.valor, activo: true }
     d.contactos.push(nuevo as never)
-    for (const c of cobranzasDelDeudor(db, d.id)) {
+    for (const c of cobranzaDelDeudor(db, d.id, params.cobranza_id)) {
       gestionAutomatica(db, c, usuarioDelToken(config, db).id, 'cambio_datos',
         `CONTACTO AGREGADO: ${CONTACTO_GESTION[datos.tipo] ?? datos.tipo} ${datos.valor}.`)
     }
@@ -1047,7 +1058,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       for (const c of d.contactos) {
         if (c.id !== id || !c.activo) continue
         c.activo = false
-        for (const cob of cobranzasDelDeudor(db, d.id)) {
+        for (const cob of cobranzaDelDeudor(db, d.id, params.cobranza_id)) {
           gestionAutomatica(db, cob, usuarioDelToken(config, db).id, 'cambio_datos',
             `CONTACTO QUITADO: ${CONTACTO_GESTION[c.tipo] ?? c.tipo} ${c.valor}.`)
         }

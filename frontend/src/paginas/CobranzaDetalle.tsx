@@ -2,8 +2,8 @@ import { Fragment, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, descargarArchivo } from '../api/client'
-import type { CobranzaDetalle as Ficha, Gestion } from '../api/tipos'
-import { EtiquetaEstado, Plata, fechaLegible } from '../componentes/utiles'
+import type { CobranzaDetalle as Ficha, DeudorDetalle, Gestion } from '../api/tipos'
+import { EtiquetaEstado, EtiquetaReincidente, Plata, fechaLegible } from '../componentes/utiles'
 import Finanzas from '../componentes/Finanzas'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { useAuth } from '../auth'
@@ -31,6 +31,13 @@ export default function CobranzaDetalle() {
   const { data: cob, isLoading } = useQuery({
     queryKey: ['cobranza', id],
     queryFn: async () => (await api.get<Ficha>(`/cobranzas/${id}`)).data,
+  })
+
+  // Si el deudor es reincidente se marca: esta cobranza es una cuenta aparte de las anteriores.
+  const { data: deudor } = useQuery({
+    queryKey: ['deudor', cob?.deudor?.id],
+    enabled: Boolean(cob?.deudor?.id),
+    queryFn: async () => (await api.get<DeudorDetalle>(`/deudores/${cob!.deudor!.id}`)).data,
   })
 
   const { data: gestiones } = useQuery({
@@ -83,6 +90,7 @@ export default function CobranzaDetalle() {
               <strong>{cob.deudor?.nombre ?? '—'}</strong>
               <span className="mono suave"> {cob.deudor?.rut}</span>
               {cob.deudor?.en_boletin_comercial && <span className="etiqueta etiqueta-castigo">DICOM</span>}
+              {deudor?.reincidente && <EtiquetaReincidente cerradas={deudor.cobranzas_cerradas ?? 0} />}
             </dd>
             {cob.terceros.map((t) => (
               <Fragment key={`${t.tercero_id}-${t.rol}`}>
