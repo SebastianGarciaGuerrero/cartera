@@ -243,7 +243,7 @@
 .calc-acciones { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .calc-acciones .btn { width: 100%; justify-content: center; }
 .calc-vacio { margin: 8px 0; }
-.calc-plan { grid-column: 1 / -1; }
+.calc-plan { margin-top: 16px; }
 .calc-plan h3 { margin: 0 0 10px; font-size: 15px; }
 .calc-plan .fila-pie td { background: var(--fondo); }
 .calc-texto {
@@ -306,6 +306,15 @@
 
 /* ---------- Reincidente y cuentas separadas ---------- */
 .etiqueta-reincidente { background: #faeeda; color: #854f0b; border: 1px solid #fac775; }
-.filtro-cuenta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--texto-suave); margin-bottom: 10px; }
+.filtro-cuenta {
+  display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: wrap;
+  font-size: 13px; color: var(--texto-suave); margin-bottom: 10px; text-align: left;
+}
 .filtro-cuenta select { max-width: 100%; }
 .ficha-deudor .subtitulo:first-of-type { margin-top: 4px; }
+
+/* Los montos usan .mono (13,5 px): en cifras grandes manda el tamaño del contenedor. */
+.calc-grande .mono, .calc-cifra .mono, .calc-desglose .mono, .inicio-cifra .mono { font-size: inherit; }
+.calc-grupo .fila .check { flex-direction: row; align-items: center; gap: 8px; align-self: center; }
+.calc-grupo .fila .check input { width: auto; }
+.inicio-cabecera { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

@@ -476,12 +476,12 @@ export function FormPago({ cobranzaId, cuota, saldo, modalidad = 'extrajudicial'
               {editando ? 'Volver al automático' : 'Editar desglose'}
             </button>
           </div>
-          {!cuadra && (
+          {!cuadra && (editando ? (
             <div className="alerta-error">
               El desglose suma <Plata valor={suma} /> y el monto es <Plata valor={monto} />
               {' '}(diferencia <Plata valor={monto - suma} />).
             </div>
-          )}
+          ) : <p className="nota">Calculando el desglose…</p>)}
           {cuadra && excede && (
             <div className="alerta-error">
               El monto es mayor que la deuda: el capital de este pago (<Plata valor={capital} />)

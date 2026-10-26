@@ -183,6 +183,10 @@ def crear_gestion(
     return nueva_gestion
 
 
+# Tipos que deja el sistema al registrar un cambio: no se eligen a mano.
+TIPOS_DE_CAMBIOS = {"gasto", "tramite", "embargo", "etapa", "cambio_datos"}
+
+
 @router.post("/completa", response_model=GestionResponse, status_code=status.HTTP_201_CREATED)
 def registrar_gestion_completa(
     datos: GestionCompleta,
@@ -206,6 +210,9 @@ def registrar_gestion_completa(
         canal = db.get(TipoGestion, datos.tipo_id)
         if canal is None:
             raise HTTPException(status_code=404, detail="El tipo de gestión no existe")
+        if canal.codigo in TIPOS_DE_CAMBIOS:
+            raise HTTPException(status_code=422,
+                                detail="Ese tipo lo registra el sistema solo al hacer el cambio (gasto, trámite, etapa…).")
     nota = (datos.descripcion or "").strip() or None
 
     if datos.resultado == "gestion":

@@ -84,3 +84,13 @@ def test_reincidente_y_cuentas_separadas(cliente_http, org_a):
                       params={"cobranza_id": nueva}, json={"tipo": "celular", "valor": "+56977776666"})
     assert any("+56977776666" in t for t in _historial(cliente_http, h, nueva))
     assert not any("+56977776666" in t for t in _historial(cliente_http, h, tercera))
+
+
+def test_tipos_de_cambios_no_se_eligen_a_mano(cliente_http, org_a):
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, n=331)
+    tipos = cliente_http.get("/api/gestiones/tipos", headers=h).json()
+    cambio = next(t["id"] for t in tipos if t["codigo"] == "cambio_datos")
+    r = cliente_http.post("/api/gestiones/completa", headers=h, json={
+        "cobranza_id": cartera["cobranza_id"], "tipo_id": cambio, "descripcion": "Cambié el teléfono"})
+    assert r.status_code == 422

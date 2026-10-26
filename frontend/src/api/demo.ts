@@ -427,9 +427,9 @@ const PERMISOS: Record<string, string> = {
 const ROLES_AJUSTABLES = ['supervisor', 'abogado', 'procurador', 'operador', 'viewer']
 const PERMISOS_DEFECTO: Record<string, string[]> = {
   supervisor: Object.keys(PERMISOS),
-  abogado: ['cobranzas_crear', 'judicial_causas', 'judicial_tramites'],
+  abogado: ['judicial_causas', 'judicial_tramites'],
   procurador: ['judicial_tramites'],
-  operador: ['cobranzas_crear'],
+  operador: [], // gestionan sus casos; ingresar cobranzas es de la administración
   viewer: [],
 }
 function permisosDe(db: DB, rol: string): string[] {
@@ -765,7 +765,9 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
         return ok(config, { ...h, total_honorarios: String(abono - Number(h.capital)), total_deuda: String(abono), pct_judicial: String(pct) })
       }
       const plan = calc.acuerdo({ ...d, pct_judicial: pct })
-      if (url === '/calculadora/acuerdo') return ok(config, plan)
+      if (url === '/calculadora/acuerdo') {
+        return ok(config, { ...plan, pct_judicial: d.modalidad === 'judicial' ? String(pct) : null })
+      }
       if (url === '/calculadora/acuerdo/crear') {
         const cob = db.cobranzas.find((c) => c.id === d.cobranza_id)
         if (!cob) return error(404, 'Cobranza no encontrada')
@@ -1302,6 +1304,12 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       }
     }
     if (Number(cob.monto_actual) === 0) cob.estado = 'pagada'
+    if (cob.estado === 'pagada') {
+      // Ciclo de vida: la cobranza termina por pago (sirve para saber si el deudor reincide).
+      const cerrada = cob as { fecha_cierre?: string | null; motivo_cierre?: string | null }
+      cerrada.fecha_cierre ??= nuevo.fecha_pago
+      cerrada.motivo_cierre ??= 'pagada'
+    }
 
     // Desglose: solo se listan los conceptos con monto; los vacíos se omiten.
     const desglose: string[] = []

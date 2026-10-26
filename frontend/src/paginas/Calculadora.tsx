@@ -312,6 +312,8 @@ function Acuerdo({ base, cobranza }: { base: Base; cobranza: CobranzaDetalle | n
   }
 
   return (
+    <>
+    {/* La tarjeta del resultado queda fija al bajar, pero solo junto a los datos (no sobre el plan). */}
     <div className="calc-grilla">
       <section className="tarjeta calc-datos">
         <div className="calc-grupo">
@@ -440,6 +442,7 @@ function Acuerdo({ base, cobranza }: { base: Base; cobranza: CobranzaDetalle | n
           </p>
         )}
       </aside>
+    </div>
 
       {plan && (
         <section className="tarjeta calc-plan">
@@ -488,6 +491,6 @@ function Acuerdo({ base, cobranza }: { base: Base; cobranza: CobranzaDetalle | n
         </section>
       )}
       {modal}
-    </div>
+    </>
   )
 }
