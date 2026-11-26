@@ -1,10 +1,11 @@
-import { Link, NavLink, Outlet, Navigate, useLocation } from 'react-router-dom'
+import { Link, Outlet, Navigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { Empresa } from '../api/tipos'
 import { LogoEmpresa } from './Logo'
 import { useAvisos } from './Avisos'
 import BarraSuperior from './BarraSuperior'
+import MenuLateral from './MenuLateral'
 import RecordatorioDelDia from './RecordatorioDelDia'
 import { useAuth } from '../auth'
 import { MARCA } from '../marca'
@@ -16,7 +17,7 @@ import { MARCA } from '../marca'
 // mandante va a su propio portal (PortalLayout).
 
 export default function Layout() {
-  const { usuario, cargando, esAdmin, etiqueta, tiene, puede } = useAuth()
+  const { usuario, cargando } = useAuth()
   const ubicacion = useLocation()
 
   const { data: empresa } = useQuery({
@@ -27,9 +28,8 @@ export default function Layout() {
     retry: false,
   })
 
-  // Avisos (campana y contador de la agenda): lo atrasado, lo de hoy y lo de mañana.
+  // Avisos (campana, inicio y recordatorio del día): lo atrasado, lo de hoy y lo de mañana.
   const { data: avisos } = useAvisos(Boolean(usuario) && usuario?.rol !== 'mandante')
-  const pendientes = (avisos?.atrasados.length ?? 0) + (avisos?.hoy.length ?? 0)
 
   if (cargando) return <div className="pantalla-carga">Cargando…</div>
   if (!usuario) return <Navigate to="/login" replace />
@@ -55,54 +55,8 @@ export default function Layout() {
             alt={usuario.organizacion.nombre} className="sidebar-logo-empresa" />
         </Link>
 
-        {/* El menú muestra solo lo que el rol puede usar (ver app/permisos.py). */}
-        <nav className="menu">
-          <NavLink to="/inicio">Inicio</NavLink>
-
-          <div className="menu-grupo">Trabajo</div>
-          <NavLink to="/agenda">
-            Agenda
-            {pendientes > 0 && <span className="menu-contador">{pendientes}</span>}
-          </NavLink>
-          <NavLink to="/seguimiento">Mi seguimiento</NavLink>
-          <NavLink to="/deudores">{etiqueta('deudores', 'Deudores')}</NavLink>
-          <NavLink to="/cobranzas" end>{etiqueta('cobranzas', 'Cobranzas')}</NavLink>
-          <NavLink to="/abonos">Ingreso de abonos</NavLink>
-          {tiene('calculadora_369') && <NavLink to="/calculadora">Calculadora 3-6-9</NavLink>}
-
-          {tiene('judicial') && (
-            <>
-              <div className="menu-grupo">Judicial</div>
-              <NavLink to="/judicial">Causas y plazos</NavLink>
-              {puede('ver_totales') && <NavLink to="/gastos">Gastos por cliente</NavLink>}
-            </>
-          )}
-
-          {(puede('cobranzas_crear') || puede('carga_masiva') || puede('gestiones_masivas')) && (
-            <>
-              <div className="menu-grupo">Ingresos</div>
-              {puede('cobranzas_crear') && (
-                <NavLink to="/cobranzas/nueva">Ingreso de {etiqueta('cobranza', 'cobranza').toLowerCase()}</NavLink>
-              )}
-              {(puede('carga_masiva') || puede('gestiones_masivas')) && <NavLink to="/carga-masiva">Carga masiva</NavLink>}
-            </>
-          )}
-
-          <div className="menu-grupo">{puede('ver_totales') ? 'Reportes' : 'Mis números'}</div>
-          <NavLink to="/panel">Panel</NavLink>
-          {puede('ver_totales') && <NavLink to="/informes">Informes</NavLink>}
-          {esAdmin && <NavLink to="/equipo">Equipo</NavLink>}
-
-          <div className="menu-grupo">{esAdmin ? 'Administración' : 'Datos'}</div>
-          <NavLink to="/clientes">{etiqueta('clientes', 'Clientes')}</NavLink>
-          {esAdmin && (
-            <>
-              <NavLink to="/usuarios">Usuarios y permisos</NavLink>
-              <NavLink to="/mi-empresa">Mi empresa</NavLink>
-              <NavLink to="/configuracion">Configuración</NavLink>
-            </>
-          )}
-        </nav>
+        {/* Por áreas y según el rol (ver MenuLateral); los permisos los aplica el servidor. */}
+        <MenuLateral />
       </aside>
 
       <div className="principal">

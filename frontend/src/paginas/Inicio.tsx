@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import type { ItemAgenda, TipoItemAgenda } from '../api/tipos'
 import { useAuth } from '../auth'
 import { useAvisos } from '../componentes/Avisos'
+import { useVeJudicial } from '../componentes/MenuLateral'
 import { Plata } from '../componentes/utiles'
 import { ESTILO_TIPO } from './Agenda'
 
@@ -45,7 +46,8 @@ function areaGuardada(rol: string): Area {
 
 export default function Inicio() {
   const { usuario, tiene, puede, esAdmin } = useAuth()
-  const conJudicial = tiene('judicial')
+  // El selector de área solo si la persona trabaja lo judicial (la misma regla del menú).
+  const conJudicial = useVeJudicial()
   const [area, setArea] = useState<Area>(() => (conJudicial ? areaGuardada(usuario?.rol ?? '') : 'extrajudicial'))
   const { data: avisos } = useAvisos(true)
   const totales = puede('ver_totales')

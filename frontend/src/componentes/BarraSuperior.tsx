@@ -135,7 +135,6 @@ function MiSemana() {
     for (const i of items ?? []) m.set(i.fecha, [...(m.get(i.fecha) ?? []), i])
     return m
   }, [items])
-  const deHoy = porDia.get(hoy)?.length ?? 0
   const lista = porDia.get(elegido) ?? []
 
   return (
@@ -146,7 +145,6 @@ function MiSemana() {
           <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
         </svg>
         <span>Mi semana</span>
-        {deHoy > 0 && <span className="barra-contador">{deHoy} hoy</span>}
       </button>
       {abierto && (
         <div className="mi-semana-panel" role="dialog" aria-label="Mis pendientes de la semana">

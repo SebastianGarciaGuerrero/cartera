@@ -1066,3 +1066,25 @@ tr.pago-anulado td:nth-child(5) { text-decoration: none; }
 .errores-carga td { white-space: normal !important; }
 .lista-ayuda { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .zona-peligro { border-color: #fecdca; }
+
+/* ---------- Menú lateral por áreas (Fase A) ---------- */
+.menu-seccion { display: flex; flex-direction: column; gap: 2px; }
+.menu-items { display: flex; flex-direction: column; gap: 2px; }
+.menu a { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.menu-icono { flex: none; opacity: 0.8; }
+.menu a.active .menu-icono, .menu a:hover .menu-icono { opacity: 1; }
+.menu-grupo-boton {
+  display: flex; align-items: center; justify-content: space-between; width: calc(100% - 12px);
+  background: none; border: none; cursor: pointer; font: inherit; text-align: left; padding: 6px 0;
+}
+.menu-grupo-boton:hover { color: #c3d2e0; }
+.menu-flecha { width: 14px; height: 14px; transform: rotate(90deg); transition: transform 0.15s; }
+.menu-seccion.plegada .menu-flecha { transform: rotate(0deg); }
+@media (min-width: 761px) {
+  .menu-seccion.plegada .menu-items { display: none; }
+}
+@media (max-width: 760px) {
+  /* En celular el menú es una franja que se desliza: van todas las opciones, sin grupos. */
+  .menu-seccion, .menu-items { display: contents; }
+  .menu-grupo-boton { display: none; }
+}
