@@ -6,17 +6,13 @@ import { api } from '../api/client'
 import type { Avisos as DatosAvisos, Cobranza, ItemAgenda } from '../api/tipos'
 import { useAuth } from '../auth'
 import Avisos from './Avisos'
-import { EtiquetaEstado, Plata, enDias, fechaLocal } from './utiles'
+import { EtiquetaEstado, Plata, enDias, fechaLocal, nombreRol } from './utiles'
 import { ESTILO_TIPO } from '../paginas/Agenda'
 
 // Barra de arriba: buscador de casos, la semana de la persona (sus
 // pendientes día por día, se actualiza sola al registrar gestiones), los
 // avisos y su perfil. El menú de módulos sigue en la barra lateral.
 
-const NOMBRE_ROL: Record<string, string> = {
-  admin: 'Administración', supervisor: 'Supervisión', operador: 'Ejecutivo/a', abogado: 'Abogado/a',
-  procurador: 'Procurador/a', viewer: 'Consulta',
-}
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
 /** Cierra un panel al hacer clic fuera o con Escape. */
@@ -209,7 +205,7 @@ function MenuPerfil() {
         <span className="avatar" aria-hidden="true">{iniciales}</span>
         <span className="perfil-texto">
           <strong>{usuario.nombre}</strong>
-          <small>{NOMBRE_ROL[usuario.rol] ?? usuario.rol}</small>
+          <small>{nombreRol(usuario.rol)}</small>
         </span>
       </button>
       {abierto && (

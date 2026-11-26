@@ -149,3 +149,16 @@ export function soloDigitos(v: string) {
   return d.length === 9 && d.startsWith('9') ? '56' + d : d.length === 8 ? '569' + d : d
 }
 
+/** Nombre visible de cada rol (en la base van con su código: operador, viewer…). */
+export const NOMBRE_ROL: Record<string, string> = {
+  operador: 'Ejecutivo/a', supervisor: 'Supervisión', abogado: 'Abogado/a', procurador: 'Procurador/a',
+  admin: 'Administración', viewer: 'Consulta', mandante: 'Cliente (portal)',
+}
+
+/** Orden en que se ofrecen los roles al crear o editar un usuario. */
+export const ORDEN_ROLES = Object.keys(NOMBRE_ROL)
+
+export function nombreRol(codigo: string | null | undefined): string {
+  return codigo ? NOMBRE_ROL[codigo] ?? codigo : '—'
+}
+

@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { Usuario, Rol, Cliente } from '../api/tipos'
-import { fechaHoraLegible } from '../componentes/utiles'
+import { ORDEN_ROLES, fechaHoraLegible, nombreRol } from '../componentes/utiles'
 import RolesPermisos from '../componentes/RolesPermisos'
 
 // Gestión de usuarios (solo admin): crear cuentas del equipo (por invitación
@@ -26,8 +26,10 @@ export default function Usuarios() {
     queryFn: async () => (await api.get<Rol[]>('/usuarios/roles')).data,
   })
 
-  const nombreRol = (rol_id: number) =>
-    roles?.find((r) => r.id === rol_id)?.nombre ?? `rol ${rol_id}`
+  const rolDe = (rol_id: number) => {
+    const codigo = roles?.find((r) => r.id === rol_id)?.nombre
+    return codigo ? nombreRol(codigo) : `rol ${rol_id}`
+  }
 
   function refrescar() {
     qc.invalidateQueries({ queryKey: ['usuarios'] })
@@ -74,7 +76,7 @@ export default function Usuarios() {
               <tr key={u.id}>
                 <td className="negrita">{u.nombre}</td>
                 <td>{u.email}</td>
-                <td>{nombreRol(u.rol_id)}</td>
+                <td>{rolDe(u.rol_id)}</td>
                 <td>
                   {u.activo
                     ? <span className="etiqueta etiqueta-pagada">Activo</span>
@@ -164,7 +166,8 @@ function NuevoUsuario({ roles, alCrear }: { roles: Rol[]; alCrear: () => void })
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [resultado, setResultado] = useState('')
-  const esMandante = roles.find((r) => String(r.id) === rolId)?.nombre === 'mandante'
+  const rolElegido = roles.find((r) => String(r.id) === rolId)
+  const esMandante = rolElegido?.nombre === 'mandante'
 
   const crear = useMutation({
     mutationFn: async () => {
@@ -226,10 +229,11 @@ function NuevoUsuario({ roles, alCrear }: { roles: Rol[]; alCrear: () => void })
           Rol *
           <select value={rolId} onChange={(e) => setRolId(e.target.value)} required>
             <option value="">Seleccionar…</option>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id} title={r.descripcion ?? ''}>{r.nombre}</option>
+            {enOrden(roles).map((r) => (
+              <option key={r.id} value={r.id} title={r.descripcion ?? ''}>{nombreRol(r.nombre)}</option>
             ))}
           </select>
+          {rolElegido?.descripcion && <span className="nota">{rolElegido.descripcion}</span>}
         </label>
         {esMandante && <SelectorCliente valor={clienteId} alCambiar={setClienteId} />}
       </div>
@@ -272,7 +276,8 @@ function EditarUsuario({ usuario, roles, alCerrar, alGuardar }: {
   const [clienteId, setClienteId] = useState(usuario.cliente_id ?? '')
   const [activo, setActivo] = useState(usuario.activo)
   const [error, setError] = useState('')
-  const esMandante = roles.find((r) => String(r.id) === rolId)?.nombre === 'mandante'
+  const rolElegido = roles.find((r) => String(r.id) === rolId)
+  const esMandante = rolElegido?.nombre === 'mandante'
 
   const guardar = useMutation({
     mutationFn: async () => {
@@ -301,8 +306,8 @@ function EditarUsuario({ usuario, roles, alCerrar, alGuardar }: {
         <label>
           Rol
           <select value={rolId} onChange={(e) => setRolId(e.target.value)}>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>{r.nombre}</option>
+            {enOrden(roles).map((r) => (
+              <option key={r.id} value={r.id} title={r.descripcion ?? ''}>{nombreRol(r.nombre)}</option>
             ))}
           </select>
         </label>
@@ -380,3 +385,13 @@ function ClaveTemporal({ usuario, alCerrar }: { usuario: Usuario; alCerrar: () =
     </div>
   )
 }
+
+/** Los roles en el orden en que se ofrecen (Ejecutivo/a primero; el portal de clientes al final). */
+function enOrden(roles: Rol[]): Rol[] {
+  const lugar = (r: Rol) => {
+    const i = ORDEN_ROLES.indexOf(r.nombre)
+    return i < 0 ? ORDEN_ROLES.length : i
+  }
+  return [...roles].sort((a, b) => lugar(a) - lugar(b))
+}
+

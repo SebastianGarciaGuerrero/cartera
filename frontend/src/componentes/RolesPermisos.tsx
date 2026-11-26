@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
+import { nombreRol } from './utiles'
 
 // Roles y permisos: qué puede hacer cada rol además de trabajar sus casos
 // (gestiones, acuerdos, abonos, gastos y recomendar la demanda, que son de
@@ -12,10 +13,6 @@ interface VistaPermisos {
   por_defecto: Record<string, string[]>
 }
 
-const NOMBRE_ROL: Record<string, string> = {
-  admin: 'Administración', supervisor: 'Supervisión', abogado: 'Abogado/a', procurador: 'Procurador/a',
-  operador: 'Ejecutivo/a', viewer: 'Consulta',
-}
 
 export default function RolesPermisos() {
   const qc = useQueryClient()
@@ -57,7 +54,7 @@ export default function RolesPermisos() {
           <thead>
             <tr>
               <th>Permiso</th>
-              {roles.map((r) => <th key={r} className="centro">{NOMBRE_ROL[r] ?? r}</th>)}
+              {roles.map((r) => <th key={r} className="centro">{nombreRol(r)}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -68,7 +65,7 @@ export default function RolesPermisos() {
                   <td key={r} className="centro">
                     <input type="checkbox" checked={data.roles[r].includes(clave)}
                       disabled={r === 'admin' || guardar.isPending}
-                      aria-label={`${NOMBRE_ROL[r] ?? r}: ${nombre}`} onChange={() => alternar(r, clave)} />
+                      aria-label={`${nombreRol(r)}: ${nombre}`} onChange={() => alternar(r, clave)} />
                   </td>
                 ))}
               </tr>
