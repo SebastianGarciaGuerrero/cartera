@@ -34,7 +34,8 @@ from app.models.cobranza import Cobranza
 from app.operaciones import sumar_meses
 
 ETAPAS = ("ingreso", "extrajudicial", "para_demanda", "judicial")
-ESTADOS_TERMINALES = ("pagada", "archivada", "castigo")
+# "eliminada": el cliente indicó que la cobranza ya no corresponde (eliminada de cartera).
+ESTADOS_TERMINALES = ("pagada", "archivada", "castigo", "eliminada")
 
 # Pasos de la barra, en orden. "grupo" agrupa los pasos judiciales.
 PASOS = [
@@ -64,6 +65,7 @@ MOTIVOS_CIERRE = {
     "desistida": "Desistimiento",
     "devuelta_cliente": "Devuelta al cliente",
     "suspendida_cliente": "Suspendida por el cliente",
+    "eliminada_cartera": "Eliminada de cartera por el cliente",
     "otro": "Otro motivo",
 }
 

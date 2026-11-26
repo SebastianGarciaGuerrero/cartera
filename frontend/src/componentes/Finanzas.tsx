@@ -70,6 +70,12 @@ export default function Finanzas({ cobranza, alPedirAcuerdo }: {
   // Refresca todo lo que la cascada del backend puede haber cambiado.
   const refrescarTodo = () => refrescarCaso(qc, cobranzaId)
 
+  const baja = useMutation({
+    mutationFn: (motivo: string) => api.post(`/acuerdos/${acuerdoDetalle!.id}/baja`, { motivo: motivo.trim() || null }),
+    onSuccess: refrescarTodo,
+    onError: (e) => alert(mensajeDeError(e)),
+  })
+
   // --- Estado del formulario de pago (por cuota o directo) ---
   const [pagando, setPagando] = useState<Cuota | 'directo' | null>(null)
 
@@ -101,6 +107,12 @@ export default function Finanzas({ cobranza, alPedirAcuerdo }: {
               onClick={() => descargarArchivo(`/documentos/acuerdo/${acuerdoDetalle.id}`)}>
               {cobranza.tipo === 'judicial' ? 'Avenimiento' : 'Acuerdo'} (Word)
             </button>
+            {acuerdoDetalle.estado === 'vigente' && (
+              <button className="btn btn-chico btn-peligro" disabled={baja.isPending} onClick={() => {
+                const motivo = prompt('¿Dar de baja el acuerdo? Pasa a incumplido y la cobranza vuelve a gestión.\nMotivo (opcional):')
+                if (motivo !== null) baja.mutate(motivo)
+              }}>Dar de baja</button>
+            )}
           </div>
 
           <table className="tabla tabla-cuotas">
@@ -179,12 +191,13 @@ export default function Finanzas({ cobranza, alPedirAcuerdo }: {
           </thead>
           <tbody>
             {pagos.map((p) => (
-              <tr key={p.id}>
+              <tr key={p.id} className={p.anulado_at ? 'pago-anulado' : ''}
+                title={p.anulado_at ? `Anulado: ${p.motivo_anulacion ?? ''}` : undefined}>
                 <td>{fechaLegible(p.fecha_pago)}</td>
                 <td className="der"><Plata valor={p.monto} /></td>
                 <td className="der"><Plata valor={p.capital} /></td>
                 <td className="der"><Plata valor={p.honorarios} /></td>
-                <td>{p.estado_pago}</td>
+                <td>{p.anulado_at ? <span className="etiqueta etiqueta-castigo">Anulado</span> : p.estado_pago}</td>
                 <td>{p.forma_pago ?? '—'}</td>
                 <td className="mono">{p.numero_comprobante ?? '—'}</td>
               </tr>

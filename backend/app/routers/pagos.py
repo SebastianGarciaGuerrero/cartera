@@ -29,9 +29,10 @@ from app.database import get_db
 from app.security import get_current_user, usuario_autorizado
 from app.models.pago import Pago
 from app.models.cobranza import Cobranza
-from app.operaciones import registrar_pago as registrar_pago_en
+from app.operaciones import anular_pago, registrar_pago as registrar_pago_en
+from app.permisos import requiere_permiso
 from app.models.usuario import Usuario
-from app.schemas.pago import PagoCreate, PagoResponse
+from app.schemas.pago import AnulacionPago, PagoCreate, PagoResponse
 
 
 # dependencies=[...] exige token válido en TODOS los endpoints del router
@@ -117,3 +118,23 @@ def registrar_pago(
         )
 
     return nuevo_pago
+
+
+@router.post("/{pago_id}/anular", response_model=PagoResponse,
+             dependencies=[Depends(requiere_permiso("pagos_anular"))])
+def anular(pago_id: UUID, datos: AnulacionPago, db: Session = Depends(get_db),
+           usuario: Usuario = Depends(get_current_user)):
+    """
+    Anula un pago mal ingresado: no se borra ni se edita. El pago queda
+    marcado y fuera de los totales, se revierte su efecto (saldo, cuota,
+    acuerdo y estado de la cobranza) y queda una gestión con el motivo; la
+    gestión original del pago sigue en el historial. Para corregirlo, se
+    anula y se registra el pago correcto.
+    """
+    pago = db.get(Pago, pago_id)
+    if pago is None:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    anular_pago(db, pago, usuario, datos.motivo)
+    db.commit()
+    db.refresh(pago)
+    return pago

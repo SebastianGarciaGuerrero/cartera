@@ -101,6 +101,7 @@ def listar_cobranzas(
     cliente_id: Optional[UUID] = None,
     filial_id: Optional[int] = None,
     ejecutivo_id: Optional[UUID] = None,
+    sin_ejecutivo: bool = False,
     deudor_id: Optional[UUID] = None,
     estado: Optional[str] = None,
     etapa: Optional[str] = Query(None, pattern="^(ingreso|extrajudicial|para_demanda|judicial|termino)$"),
@@ -112,13 +113,16 @@ def listar_cobranzas(
     Lista cobranzas con paginación y filtros opcionales (se combinan con AND).
     El total sin paginar va en el header X-Total-Count.
     """
-    query = db.query(Cobranza).options(joinedload(Cobranza.deudor), joinedload(Cobranza.cliente))
+    query = db.query(Cobranza).options(joinedload(Cobranza.deudor), joinedload(Cobranza.cliente),
+                     joinedload(Cobranza.ejecutivo), joinedload(Cobranza.filial))
 
     if cliente_id is not None:
         query = query.filter(Cobranza.cliente_id == cliente_id)
     if filial_id is not None:
         query = query.filter(Cobranza.filial_id == filial_id)
-    if ejecutivo_id is not None:
+    if sin_ejecutivo:
+        query = query.filter(Cobranza.ejecutivo_id.is_(None))
+    elif ejecutivo_id is not None:
         query = query.filter(Cobranza.ejecutivo_id == ejecutivo_id)
     if deudor_id is not None:
         query = query.filter(Cobranza.deudor_id == deudor_id)
@@ -156,7 +160,8 @@ def buscar_cobranzas(
     patron = f"%{q.replace('.', '')}%"
     rut = q.replace(".", "").replace("-", "")
     query = (db.query(Cobranza).join(Deudor, Cobranza.deudor_id == Deudor.id)
-             .options(joinedload(Cobranza.deudor), joinedload(Cobranza.cliente)))
+             .options(joinedload(Cobranza.deudor), joinedload(Cobranza.cliente),
+                     joinedload(Cobranza.ejecutivo), joinedload(Cobranza.filial)))
 
     condiciones = [
         cast(Cobranza.numero, String).like(patron),
@@ -186,7 +191,7 @@ def resumen_etapas(cliente_id: Optional[UUID] = None, db: Session = Depends(get_
     params = {"org": usuario.organizacion_id, "cliente": cliente_id}
     filtro = "AND cliente_id = :cliente" if cliente_id else ""
     filas = db.execute(text(f"""
-        SELECT CASE WHEN estado IN ('pagada', 'archivada', 'castigo') THEN 'termino' ELSE etapa END AS etapa,
+        SELECT CASE WHEN estado IN ('pagada', 'archivada', 'castigo', 'eliminada') THEN 'termino' ELSE etapa END AS etapa,
                count(*) AS cantidad, COALESCE(sum(monto_actual), 0) AS saldo
         FROM cobranzas
         WHERE organizacion_id = :org {filtro}
@@ -295,7 +300,8 @@ def actualizar_cobranza(
         if cobranza.estado in ciclo.ESTADOS_TERMINALES:
             cobranza.fecha_cierre = cobranza.fecha_cierre or hoy_chile()
             if not cobranza.motivo_cierre:
-                cobranza.motivo_cierre = "pagada" if cobranza.estado == "pagada" else "otro"
+                cobranza.motivo_cierre = {"pagada": "pagada", "eliminada": "eliminada_cartera"}.get(
+                    cobranza.estado, "otro")
         else:
             cobranza.fecha_cierre = None
             cobranza.motivo_cierre = None

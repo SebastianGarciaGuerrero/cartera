@@ -85,6 +85,15 @@ FastAPI con capas por dominio: `backend/app/{models,schemas,routers}/<entidad>.p
 - Etiquetas de la UI en `organizaciones.configuracion["etiquetas"]` (claves en `routers/configuracion.py: ETIQUETAS_DEFECTO`); el frontend usa `useAuth().etiqueta(clave, defecto)`.
 - Tipos de gestión de sistema tienen `codigo` estable; el código usa `tipo_de_sistema(db, "abono")`, nunca el nombre.
 
+### Operación con cartera real (migración 0015)
+
+- **Carga masiva** (`app/carga_masiva.py`, endpoints en `routers/importar.py`): reconoce títulos con sinónimos (`COLUMNAS_COBRANZA`, `CAMPOS_PERSONA`; "Rut Paciente" → tercero con rol), detecta la fila de títulos y carga varias hojas; un teléfono con formato de fecha se lee como número (parche de `openpyxl.worksheet._reader.from_excel`). Corre en segundo plano (`app/trabajos.py`, tabla `trabajos`): el endpoint responde 202 con `trabajo_id` y se consulta `GET /api/importar/trabajos/{id}`. En los tests el `TestClient` ya la deja terminada. Modo `actualizar` solo admin; dentro de un archivo manda la primera fila de cada deudor.
+- **ID cliente único por (cliente, filial)**: índice parcial `NULLS NOT DISTINCT` (no `UniqueConstraint` en el modelo).
+- **Estado `eliminada`** (eliminada de cartera, motivo `eliminada_cartera`): terminal, en `ciclo.ESTADOS_TERMINALES`; no cuenta como asignado en panel/portal. Masivo en `routers/cartera.py` (también asignar/repartir), permiso `cartera_gestionar`.
+- **Pagos anulados**: `operaciones.anular_pago` revierte la cascada; la base solo permite poner `anulado_at/anulado_por/motivo_anulacion` una vez (trigger `pagos_solo_anulacion`). Todo total de pagos filtra `anulado_at IS NULL` (vistas `vista_recupero`/`vista_rendicion` incluidas). Permiso `pagos_anular`.
+- **Agenda**: ítems con `seccion` (llamadas, whatsapp, correos, cuotas_vencidas, bajas…); tipo `baja` = acuerdo vigente sin pagos de cuota en `MESES_SIN_PAGO_BAJA` (3) meses → `POST /api/acuerdos/{id}/baja`. Recordatorios con `tipo`.
+- **Pasar a producción** (`app/produccion.py`, `/api/organizacion/produccion`): única vez, borra la cartera de prueba de la organización con los triggers de inmutabilidad apagados SOLO en esa transacción y fija `numero_cobranza_siguiente`.
+
 ## Reglas de negocio (no negociables)
 
 - **Nunca DELETE físico.** Soft delete con `activo`. La base lo impone (sin permiso DELETE para `cartera_app`).

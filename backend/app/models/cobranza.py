@@ -19,7 +19,7 @@ defina cada organización (ver models/campo_personalizado.py).
 
 from sqlalchemy import (
     Column, String, Boolean, Text, Date, Integer, Numeric,
-    TIMESTAMP, ForeignKey, UniqueConstraint, FetchedValue, text
+    TIMESTAMP, ForeignKey, FetchedValue, text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -92,15 +92,15 @@ class Cobranza(TenantMixin, Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
     updated_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
 
-    __table_args__ = (
-        UniqueConstraint("cliente_id", "id_externo", name="uq_cobranza_id_externo"),
-    )
+    # ID cliente único por cliente y FILIAL (migración 0015: índice único
+    # parcial con NULLS NOT DISTINCT; se declara en la migración, no acá).
     # Trae el N° asignado por el trigger en el mismo INSERT (RETURNING).
     __mapper_args__ = {"eager_defaults": True}
 
     cliente = relationship("Cliente", backref="cobranzas")
     filial = relationship("Filial", backref="cobranzas")
     deudor = relationship("Deudor", backref="cobranzas")
+    ejecutivo = relationship("Usuario", foreign_keys=[ejecutivo_id])
     terceros = relationship(
         "CobranzaTercero", back_populates="cobranza", cascade="all, delete-orphan"
     )
@@ -113,6 +113,14 @@ class Cobranza(TenantMixin, Base):
     @property
     def deudor_rut(self):
         return self.deudor.rut if self.deudor else None
+
+    @property
+    def ejecutivo_nombre(self):
+        return self.ejecutivo.nombre if self.ejecutivo else None
+
+    @property
+    def filial_nombre(self):
+        return self.filial.nombre if self.filial else None
 
     @property
     def cliente_nombre(self):

@@ -4,11 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { Avisos as DatosAvisos, ItemAgenda } from '../api/tipos'
 import { fechaLegible } from './utiles'
-import { ESTILO_TIPO } from '../paginas/Agenda'
+import { ESTILO_TIPO, porSeccion } from '../paginas/Agenda'
 
-// Campana de avisos: lo atrasado, lo de hoy y lo de mañana de la persona
-// (cuotas que vencen de los acuerdos que registró o tiene asignados,
-// promesas, próximos contactos y recordatorios). Se actualiza sola.
+// Campana de avisos: el recordatorio del día de cada persona. Lo de hoy y lo
+// atrasado, separado por secciones (acuerdos para dar de baja, cuotas
+// vencidas, promesas, llamadas, WhatsApp, correos…), y lo de mañana al final
+// para avisarle al deudor antes de que venza. Se actualiza sola.
 
 export function useAvisos(activo: boolean) {
   return useQuery({
@@ -59,8 +60,9 @@ export default function Avisos({ datos }: { datos: DatosAvisos | undefined }) {
             <p className="suave">No tienes nada pendiente para hoy ni mañana.</p>
           ) : (
             <>
-              <Grupo titulo="Atrasado" items={datos.atrasados} conFecha alElegir={cerrar} />
-              <Grupo titulo="Hoy" items={datos.hoy} alElegir={cerrar} />
+              {porSeccion([...datos.atrasados, ...datos.hoy]).map((g) => (
+                <Grupo key={g.seccion} titulo={g.nombre} items={g.items} conFecha alElegir={cerrar} />
+              ))}
               <Grupo titulo="Mañana" items={datos.manana} alElegir={cerrar}
                 nota="Buen momento para recordarle al deudor." />
             </>
@@ -86,8 +88,9 @@ function Grupo({ titulo, items, conFecha, nota, alElegir }: {
               <span className="avisos-texto">
                 <span>{i.titulo}</span>
                 <span className="suave">
-                  {ESTILO_TIPO[i.tipo].nombre}{conFecha && ` · ${fechaLegible(i.fecha)}`}{i.hora && ` · ${i.hora.slice(0, 5)}`}
-                  {i.detalle && i.tipo === 'cuota' && ` · ${i.detalle}`}
+                  {conFecha && i.atrasado ? `Atrasado: ${fechaLegible(i.fecha)}` : ESTILO_TIPO[i.tipo].nombre}
+                  {i.hora && ` · ${i.hora.slice(0, 5)}`}
+                  {i.detalle && (i.tipo === 'cuota' || i.tipo === 'baja') && ` · ${i.detalle}`}
                 </span>
               </span>
             </>

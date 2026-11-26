@@ -15,6 +15,8 @@ demanda. Lo que está aquí es lo que NO es para todos:
   ver_totales          totales de toda la cartera: panel general, informes,
                        resumen por etapa, gastos por cliente
   gastos_rendir        rendir y reembolsar gastos a los clientes
+  cartera_gestionar    asignar cobranzas a ejecutivos y eliminarlas de cartera
+  pagos_anular         anular un pago mal ingresado
 
 Cada estudio puede ajustar la tabla desde Configuración → Roles y permisos
 (se guarda en organizaciones.configuracion["permisos"]). El administrador
@@ -36,6 +38,8 @@ PERMISOS = {
     "judicial_tramites": "Registrar trámites y embargos",
     "ver_totales": "Ver los totales de toda la cartera",
     "gastos_rendir": "Rendir y reembolsar gastos",
+    "cartera_gestionar": "Asignar cartera y eliminar de cartera",
+    "pagos_anular": "Anular pagos mal ingresados",
 }
 
 # Los roles que se pueden ajustar (el admin siempre tiene todo).

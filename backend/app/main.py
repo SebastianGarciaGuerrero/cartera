@@ -53,6 +53,7 @@ from app.routers import panel
 from app.routers import portal
 from app.routers import estado_deudor
 from app.routers import seguimiento
+from app.routers import cartera
 
 
 logging.basicConfig(
@@ -165,6 +166,7 @@ app.include_router(portal.router)
 app.include_router(estado_deudor.equipo)
 app.include_router(estado_deudor.publico)
 app.include_router(seguimiento.router)
+app.include_router(cartera.router)
 
 
 @app.get("/api/health")

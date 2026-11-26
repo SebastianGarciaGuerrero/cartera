@@ -300,7 +300,7 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
 
     emp = _empresa(db)
     cob = _cargar_cobranza(db, cobranza_id)
-    pagos = db.query(Pago).filter(Pago.cobranza_id == cobranza_id).all()
+    pagos = db.query(Pago).filter(Pago.cobranza_id == cobranza_id, Pago.anulado_at.is_(None)).all()
 
     deudor = cob.deudor
     cliente = cob.cliente
@@ -421,7 +421,7 @@ def documento_acuerdo(acuerdo_id: UUID, request: Request, db: Session = Depends(
     cob = acuerdo.cobranza
     # Lo pagado antes de firmar este acuerdo (abonos previos a la deuda).
     pagado_antes = sum(
-        (Decimal(p.capital or 0) for p in db.query(Pago).filter(Pago.cobranza_id == cob.id).all()
+        (Decimal(p.capital or 0) for p in db.query(Pago).filter(Pago.cobranza_id == cob.id, Pago.anulado_at.is_(None)).all()
          if p.created_at and acuerdo.created_at and p.created_at < acuerdo.created_at),
         Decimal(0),
     )

@@ -28,7 +28,8 @@ from app.models.cobranza import Cobranza
 from app.operaciones import crear_acuerdo as crear_acuerdo_en
 from app.operaciones import validar_sin_acuerdo_vigente  # noqa: F401 (lo importan otros módulos)
 from app.models.usuario import Usuario
-from app.operaciones import describir_cambios, registrar_cambio
+from app.operaciones import dar_de_baja_acuerdo, describir_cambios, registrar_cambio
+from pydantic import BaseModel, Field
 from app.schemas.acuerdo import (
     AcuerdoCreate,
     AcuerdoEstadoUpdate,
@@ -138,6 +139,27 @@ def actualizar_estado_acuerdo(
         registrar_cambio(db, [acuerdo.cobranza_id], usuario.id, "cambio_datos",
                          f"ACUERDO DE PAGO MODIFICADO: {detalle}.")
 
+    db.commit()
+    db.refresh(acuerdo)
+    return acuerdo
+
+
+class Baja(BaseModel):
+    motivo: Optional[str] = Field(None, max_length=1000)
+
+
+@router.post("/{acuerdo_id}/baja", response_model=AcuerdoResponse)
+def dar_de_baja(acuerdo_id: UUID, datos: Baja, db: Session = Depends(get_db),
+                usuario: Usuario = Depends(get_current_user)):
+    """
+    Da de baja un acuerdo que dejó de pagarse (la agenda lo sugiere tras
+    3 meses sin pagos de cuota): pasa a incumplido, la cobranza vuelve a
+    gestión y queda la gestión con las cuotas atrasadas y el último pago.
+    """
+    acuerdo = db.get(AcuerdoPago, acuerdo_id)
+    if acuerdo is None:
+        raise HTTPException(status_code=404, detail="Acuerdo no encontrado")
+    dar_de_baja_acuerdo(db, acuerdo, usuario, datos.motivo)
     db.commit()
     db.refresh(acuerdo)
     return acuerdo

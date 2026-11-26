@@ -40,7 +40,9 @@ VEN_A_OTROS = {"admin", "supervisor"}
 # Margen para dar por cumplida una promesa: pago hasta 3 días después de la fecha.
 GRACIA_PROMESA = 3
 
-NO_AUTOMATICAS = ('automatica', 'ingreso')
+# Lo que el sistema registra solo (o un cambio de datos): no es trabajo de cobranza de la persona.
+NO_AUTOMATICAS = ('automatica', 'ingreso', 'cambio_datos', 'etapa', 'eliminada_cartera', 'pago_anulado',
+                  'acuerdo_baja')
 MIS_ACUERDOS = "(ap.usuario_id = :u OR c.ejecutivo_id = :u)"
 
 
@@ -177,7 +179,7 @@ def ver_seguimiento(
     if promesas:
         for r in db.execute(text("""
             SELECT cobranza_id, fecha_pago FROM pagos
-            WHERE organizacion_id = :org AND cobranza_id = ANY(:ids) AND fecha_pago >= :d
+            WHERE organizacion_id = :org AND anulado_at IS NULL AND cobranza_id = ANY(:ids) AND fecha_pago >= :d
         """), {**p, "ids": list({g["cobranza_id"] for g in promesas}), "d": desde}).mappings():
             pagos_cobranzas.setdefault(r["cobranza_id"], []).append(r["fecha_pago"])
     cumplidas = vencidas = 0
@@ -190,7 +192,7 @@ def ver_seguimiento(
 
     pagos = db.execute(text("""
         SELECT count(*) AS n, coalesce(sum(monto), 0) AS monto FROM pagos
-        WHERE organizacion_id = :org AND usuario_id = :u AND fecha_pago BETWEEN :d AND :hoy
+        WHERE organizacion_id = :org AND anulado_at IS NULL AND usuario_id = :u AND fecha_pago BETWEEN :d AND :hoy
     """), {**p, "d": desde}).mappings().one()
 
     cuotas = db.execute(text(f"""
@@ -239,7 +241,7 @@ def ver_seguimiento(
         LIMIT 30
     """), p).mappings().all()
 
-    ultimas = db.execute(text("""
+    ultimas = db.execute(text(f"""
         SELECT c.id AS cobranza_id, c.numero, d.nombre AS deudor, t.nombre AS tipo,
                left(g.descripcion, 180) AS descripcion, g.fecha_gestion AS fecha
         FROM gestiones g
@@ -247,7 +249,7 @@ def ver_seguimiento(
         JOIN deudores d ON d.id = c.deudor_id
         LEFT JOIN tipos_gestion t ON t.id = g.tipo_id
         WHERE g.organizacion_id = :org AND g.usuario_id = :u
-          AND (t.codigo IS NULL OR t.codigo NOT IN ('automatica', 'ingreso'))
+          AND (t.codigo IS NULL OR t.codigo NOT IN {NO_AUTOMATICAS})
         ORDER BY g.fecha_gestion DESC, g.created_at DESC
         LIMIT 10
     """), p).mappings().all()

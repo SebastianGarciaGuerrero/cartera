@@ -127,7 +127,7 @@ def panel(
             SELECT COALESCE(SUM(p.monto), 0) AS total, COALESCE(SUM(p.capital), 0) AS capital,
                    COALESCE(SUM(p.honorarios), 0) AS honorarios,
                    COALESCE(SUM(p.intereses), 0) AS intereses, COUNT(*) AS pagos
-            FROM pagos p JOIN cobranzas c ON c.id = p.cobranza_id
+            FROM pagos p JOIN cobranzas c ON c.id = p.cobranza_id AND p.anulado_at IS NULL
             WHERE p.organizacion_id = :org AND p.fecha_pago BETWEEN :{d} AND :{h} {filtro}
         """), p).mappings().one()
         return Recupero(**r)
@@ -173,7 +173,7 @@ def panel(
                COALESCE(SUM(p.capital), 0) AS capital, COALESCE(SUM(p.honorarios), 0) AS honorarios,
                COALESCE(SUM(p.monto - p.capital - p.honorarios), 0) AS otros,
                COALESCE(SUM(p.monto), 0) AS total
-        FROM pagos p JOIN cobranzas c ON c.id = p.cobranza_id
+        FROM pagos p JOIN cobranzas c ON c.id = p.cobranza_id AND p.anulado_at IS NULL
         WHERE p.organizacion_id = :org AND p.fecha_pago >= :inicio_serie {filtro}
         GROUP BY 1
     """), p).mappings().all()
@@ -189,12 +189,12 @@ def panel(
         SELECT cl.id AS cliente_id, COALESCE(cl.nombre_fantasia, cl.razon_social) AS cliente,
                COUNT(*) FILTER (WHERE c.estado IN {ABIERTAS}) AS abiertas,
                COALESCE(SUM(c.monto_actual) FILTER (WHERE c.estado IN {ABIERTAS}), 0) AS saldo,
-               COALESCE(SUM(c.monto_original), 0) AS asignado,
-               COALESCE((SELECT SUM(p.capital) FROM pagos p JOIN cobranzas c2 ON c2.id = p.cobranza_id
+               COALESCE(SUM(c.monto_original) FILTER (WHERE c.estado <> 'eliminada'), 0) AS asignado,
+               COALESCE((SELECT SUM(p.capital) FROM pagos p JOIN cobranzas c2 ON c2.id = p.cobranza_id AND p.anulado_at IS NULL
                          WHERE c2.cliente_id = cl.id AND p.organizacion_id = :org
                            AND p.fecha_pago BETWEEN :desde AND :hasta
                            {filtro.replace('c.', 'c2.')}), 0) AS recuperado_periodo,
-               COALESCE((SELECT SUM(p.capital) FROM pagos p JOIN cobranzas c2 ON c2.id = p.cobranza_id
+               COALESCE((SELECT SUM(p.capital) FROM pagos p JOIN cobranzas c2 ON c2.id = p.cobranza_id AND p.anulado_at IS NULL
                          WHERE c2.cliente_id = cl.id AND p.organizacion_id = :org
                            {filtro.replace('c.', 'c2.')}), 0) AS recuperado_total
         FROM clientes cl JOIN cobranzas c ON c.cliente_id = cl.id

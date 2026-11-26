@@ -10,8 +10,9 @@ import type { CampoPersonalizado, Cliente, TipoCampo, TipoGestion } from '../api
 //  - Etiquetas: cómo se llaman las cosas en la interfaz (Mandante, Sucursal...).
 //  - Campos personalizados: datos propios en cobranzas y deudores.
 //  - Tipos de gestión propios.
+//  - Producción: borrar los datos de prueba y empezar la numeración real (una vez).
 
-type Pestana = 'campos' | 'etiquetas' | 'tipos' | 'cobro'
+type Pestana = 'campos' | 'etiquetas' | 'tipos' | 'cobro' | 'produccion'
 
 export default function Configuracion() {
   const [pestana, setPestana] = useState<Pestana>('campos')
@@ -22,7 +23,7 @@ export default function Configuracion() {
       </header>
       <div className="pestanas">
         {([['campos', 'Campos personalizados'], ['etiquetas', 'Nombres en pantalla'],
-           ['tipos', 'Tipos de gestión'], ['cobro', 'Cobro']] as const).map(([clave, nombre]) => (
+           ['tipos', 'Tipos de gestión'], ['cobro', 'Cobro'], ['produccion', 'Producción']] as const).map(([clave, nombre]) => (
           <button key={clave} className={`pestana ${pestana === clave ? 'activa' : ''}`}
             onClick={() => setPestana(clave)}>{nombre}</button>
         ))}
@@ -31,6 +32,7 @@ export default function Configuracion() {
       {pestana === 'etiquetas' && <Etiquetas />}
       {pestana === 'tipos' && <TiposGestion />}
       {pestana === 'cobro' && <Cobro />}
+      {pestana === 'produccion' && <Produccion />}
     </>
   )
 }
@@ -358,3 +360,86 @@ function Cobro() {
     </form>
   )
 }
+
+// ------------------------------------------------------------ producción
+
+interface EstadoProduccion {
+  en_produccion: string | null
+  numero_siguiente: number
+  datos_de_prueba: Record<string, number>
+}
+
+const NOMBRE_DATO: Record<string, string> = {
+  cobranzas: 'cobranzas', deudores: 'deudores', gestiones: 'gestiones', pagos: 'pagos',
+  acuerdos_pago: 'acuerdos', causas: 'causas', clientes: 'clientes',
+}
+
+function Produccion() {
+  const qc = useQueryClient()
+  const { usuario } = useAuth()
+  const [confirmacion, setConfirmacion] = useState('')
+  const [numero, setNumero] = useState('40000')
+  const [error, setError] = useState('')
+  const { data: estado } = useQuery({
+    queryKey: ['produccion'],
+    queryFn: async () => (await api.get<EstadoProduccion>('/organizacion/produccion')).data,
+  })
+  const pasar = useMutation({
+    mutationFn: async () => (await api.post<EstadoProduccion>('/organizacion/produccion', {
+      confirmacion: confirmacion.trim(), numero_inicial: Number(numero),
+    })).data,
+    onSuccess: () => { setError(''); qc.invalidateQueries() },
+    onError: (e) => setError(mensajeDeError(e)),
+  })
+  if (!estado) return <div className="pantalla-carga">Cargando…</div>
+  const nombre = usuario?.organizacion.nombre ?? ''
+
+  if (estado.en_produccion) {
+    return (
+      <section className="tarjeta">
+        <h2>En producción</h2>
+        <div className="alerta-exito">
+          En producción desde el {estado.en_produccion.split('-').reverse().join('-')}. La próxima cobranza
+          será la N° {estado.numero_siguiente.toLocaleString('es-CL')}.
+        </div>
+        <p className="suave">Esto se hace una sola vez: los datos que se ingresen desde ahora son reales.</p>
+      </section>
+    )
+  }
+  const datos = Object.entries(estado.datos_de_prueba).filter(([, n]) => n > 0)
+  return (
+    <section className="tarjeta zona-peligro">
+      <h2>Comenzar en producción</h2>
+      <p>
+        Borra <strong>todos los datos de prueba</strong> y deja el sistema listo para la cartera real. Se hace
+        una sola vez y <strong>no se puede deshacer</strong>.
+      </p>
+      {datos.length > 0 ? (
+        <p>Se borrarán: {datos.map(([k, n]) => `${n.toLocaleString('es-CL')} ${NOMBRE_DATO[k] ?? k}`).join(', ')}.</p>
+      ) : <p className="suave">No hay datos de prueba que borrar.</p>}
+      <p className="suave">
+        Se conservan los usuarios, los datos y el logo de la empresa, la configuración (permisos, nombres en
+        pantalla, plantillas, tipos de gestión, campos generales) y las bitácoras. Hazlo <strong>antes</strong> de
+        cargar la cartera real.
+      </p>
+      <form className="form-finanzas" onSubmit={(e: FormEvent) => { e.preventDefault(); pasar.mutate() }}>
+        <label>
+          N° de la primera cobranza real
+          <input type="number" min="1" value={numero} onChange={(e) => setNumero(e.target.value)} required />
+        </label>
+        <label>
+          Para confirmar, escribe el nombre de la organización: <strong>{nombre}</strong>
+          <input value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} autoComplete="off" />
+        </label>
+        {error && <div className="alerta-error">{error}</div>}
+        <div className="fila">
+          <button className="btn btn-peligro" disabled={pasar.isPending
+            || confirmacion.trim().toLowerCase() !== nombre.trim().toLowerCase() || !Number(numero)}>
+            {pasar.isPending ? 'Borrando datos de prueba…' : 'Borrar datos de prueba y comenzar'}
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
+

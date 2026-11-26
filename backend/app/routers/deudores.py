@@ -52,7 +52,7 @@ def reincidencia(db: Session, organizacion_id, deudor_ids: list) -> dict:
                )) AS reincidente
         FROM cobranzas a
         WHERE a.organizacion_id = :org AND a.deudor_id = ANY(:ids)
-          AND a.estado IN ('pagada', 'archivada', 'castigo')
+          AND a.estado IN ('pagada', 'archivada', 'castigo', 'eliminada')
         GROUP BY a.deudor_id
     """), {"org": organizacion_id, "ids": list(deudor_ids)}).mappings().all()
     return {f["deudor_id"]: (bool(f["reincidente"]), f["cerradas"]) for f in filas}

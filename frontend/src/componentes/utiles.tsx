@@ -18,6 +18,7 @@ export const NOMBRE_ESTADO: Record<EstadoCobranza, string> = {
   pagada: 'Pagada',
   archivada: 'Archivada',
   castigo: 'Castigo',
+  eliminada: 'Eliminada de cartera',
 }
 
 export function EtiquetaEstado({ estado }: { estado: EstadoCobranza }) {

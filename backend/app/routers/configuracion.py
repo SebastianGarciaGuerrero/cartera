@@ -36,6 +36,10 @@ from app.models.organizacion import Organizacion
 from app.permisos import PERMISOS, POR_DEFECTO, ROLES_AJUSTABLES, permisos_de
 from app.planes import funciones_de
 from app.security import require_admin, usuario_autorizado
+from app import produccion
+from app.models.usuario import Usuario
+from app.sesiones import registrar_evento
+from app.tenancy import sesion_sistema
 
 router = APIRouter(tags=["Configuración"])
 
@@ -299,3 +303,50 @@ def editar_campo(campo_id: UUID, datos: CampoEditar, db: Session = Depends(get_d
     db.commit()
     db.refresh(campo)
     return campo
+
+
+# ------------------------------------------------------------ pasar a producción
+
+class EstadoProduccion(BaseModel):
+    en_produccion: Optional[str] = None      # fecha en que se pasó
+    numero_siguiente: int
+    datos_de_prueba: dict                    # cuánto hay hoy (lo que se borraría)
+
+
+class PasarAProduccion(BaseModel):
+    confirmacion: str = Field(..., description="El nombre de la organización, escrito tal cual")
+    numero_inicial: int = Field(40000, ge=1, le=99_999_999)
+
+
+@router.get("/api/organizacion/produccion", response_model=EstadoProduccion)
+def estado_produccion(request: Request, db: Session = Depends(get_db),
+                      admin: Usuario = Depends(require_admin)):
+    org = request.state.organizacion
+    with sesion_sistema() as sis:
+        datos = produccion.conteos(sis, org.id)
+    return EstadoProduccion(en_produccion=produccion.ya_en_produccion(org.configuracion),
+                            numero_siguiente=org.numero_cobranza_siguiente, datos_de_prueba=datos)
+
+
+@router.post("/api/organizacion/produccion", response_model=EstadoProduccion)
+def pasar_a_produccion(datos: PasarAProduccion, request: Request, db: Session = Depends(get_db),
+                       admin: Usuario = Depends(require_admin)):
+    """
+    Borra los datos de prueba de la organización (cartera, clientes de prueba)
+    y fija el N° de la primera cobranza real. Una sola vez; no se deshace.
+    """
+    org = request.state.organizacion
+    if produccion.ya_en_produccion(org.configuracion):
+        raise HTTPException(status_code=409, detail="La organización ya está en producción: esto se hace una sola vez.")
+    if " ".join(datos.confirmacion.split()).lower() != " ".join(org.nombre.split()).lower():
+        raise HTTPException(status_code=422, detail=f"Para confirmar, escribe el nombre exacto: {org.nombre}")
+    with sesion_sistema() as sis:
+        borrado = produccion.pasar_a_produccion(sis, org.id, datos.numero_inicial, admin.id)
+        registrar_evento(sis, "pasar_a_produccion", True, request=request, usuario_id=admin.id,
+                         organizacion_id=org.id, detalle={"borrado": borrado, "numero_inicial": datos.numero_inicial})
+        sis.commit()
+        conteo = produccion.conteos(sis, org.id)
+        fila = sis.get(Organizacion, org.id)
+        en_produccion, siguiente = produccion.ya_en_produccion(fila.configuracion), fila.numero_cobranza_siguiente
+    return EstadoProduccion(en_produccion=en_produccion, numero_siguiente=siguiente, datos_de_prueba=conteo)
+

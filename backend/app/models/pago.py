@@ -51,12 +51,25 @@ class Pago(TenantMixin, Base):
     usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"), nullable=False)
     observaciones = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), server_default=text("NOW()"))
-    # Sin updated_at → INMUTABLE.
+    # Sin updated_at → INMUTABLE. Lo único que se permite es ANULARLO (una
+    # vez, con motivo): el pago y su gestión quedan; los totales lo ignoran.
+    anulado_at = Column(TIMESTAMP(timezone=True))
+    anulado_por = Column(UUID(as_uuid=True), ForeignKey("usuarios.id"))
+    motivo_anulacion = Column(Text)
 
     # Navegación. backref crea cobranza.pagos y cuota.pagos.
     cobranza = relationship("Cobranza", backref="pagos")
     cuota = relationship("Cuota", backref="pagos")
-    usuario = relationship("Usuario")
+    usuario = relationship("Usuario", foreign_keys=[usuario_id])
+    anulador = relationship("Usuario", foreign_keys=[anulado_por])
+
+    @property
+    def anulado(self) -> bool:
+        return self.anulado_at is not None
+
+    @property
+    def anulado_por_nombre(self):
+        return self.anulador.nombre if self.anulador else None
 
     # Para el historial de pagos (ficha del deudor y de la cobranza).
     @property
@@ -73,3 +86,7 @@ class Pago(TenantMixin, Base):
 
     def __repr__(self):
         return f"<Pago(cobranza_id={self.cobranza_id}, monto={self.monto})>"
+
+
+# Filtro de los pagos que cuentan (todos menos los anulados).
+PAGO_VIGENTE = Pago.anulado_at.is_(None)

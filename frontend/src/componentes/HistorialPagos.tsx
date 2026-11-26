@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../api/client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, mensajeDeError } from '../api/client'
+import { refrescarCaso } from '../api/refrescar'
+import { useAuth } from '../auth'
 import type { Pago } from '../api/tipos'
 import { Plata, fechaHoraLegible, fechaLegible, nombreCuota } from './utiles'
 import { NOMBRE_FORMA } from './Finanzas'
@@ -9,6 +12,10 @@ import { NOMBRE_FORMA } from './Finanzas'
 // Cuánto debía al llegar, cuánto ha pagado y cuánto debe hoy, con el
 // historial de pagos a un clic: solo los pagos, con su fecha, y al abrir uno
 // su desglose (capital, honorarios, interés, gastos, comprobante…).
+// Un pago mal ingresado se ANULA (no se borra): queda tachado con su motivo,
+// fuera de los totales, y su gestión original sigue en el historial.
+
+const vigente = (p: Pago) => !p.anulado_at
 
 export function usePagos(filtro: { deudor_id?: string; cobranza_id?: string }) {
   const clave = filtro.deudor_id ? ['pagos-deudor', filtro.deudor_id] : ['pagos', filtro.cobranza_id]
@@ -29,7 +36,8 @@ export function ResumenDeuda({ original, saldo, pagos, alAbonar, enlaceAbonar, d
   cobranzaId?: string
 }) {
   const [historial, setHistorial] = useState(false)
-  const pagado = (pagos ?? []).reduce((s, p) => s + Number(p.monto), 0)
+  const validos = (pagos ?? []).filter(vigente)
+  const pagado = validos.reduce((s, p) => s + Number(p.monto), 0)
   const avance = original > 0 ? Math.min(100, Math.round(((original - saldo) / original) * 100)) : 0
   return (
     <section className="resumen-deuda" aria-label="Resumen de la deuda">
@@ -40,7 +48,7 @@ export function ResumenDeuda({ original, saldo, pagos, alAbonar, enlaceAbonar, d
       <div className="resumen-deuda-cifra">
         <span className="suave">Ha pagado</span>
         <strong className="texto-verde"><Plata valor={pagado} /></strong>
-        <span className="suave">{pagos?.length ?? 0} pago{pagos?.length === 1 ? '' : 's'}</span>
+        <span className="suave">{validos.length} pago{validos.length === 1 ? '' : 's'}</span>
       </div>
       <div className="resumen-deuda-cifra">
         <span className="suave">Debe hoy</span>
@@ -67,7 +75,7 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
 }) {
   const { data: pagos, isLoading } = usePagos(deudorId ? { deudor_id: deudorId } : { cobranza_id: cobranzaId })
   const [abierto, setAbierto] = useState<string | null>(null)
-  const total = (pagos ?? []).reduce((s, p) => s + Number(p.monto), 0)
+  const total = (pagos ?? []).filter(vigente).reduce((s, p) => s + Number(p.monto), 0)
 
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') alCerrar() }
@@ -87,7 +95,7 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
             {pagos?.map((p) => {
               const abiertoEste = abierto === p.id
               return (
-                <li key={p.id} className={abiertoEste ? 'abierto' : ''}>
+                <li key={p.id} className={[abiertoEste ? 'abierto' : '', p.anulado_at ? 'pago-anulado' : ''].join(' ')}>
                   <button className="historial-pago" aria-expanded={abiertoEste}
                     onClick={() => setAbierto(abiertoEste ? null : p.id)}>
                     <span className="historial-fecha">{fechaLegible(p.fecha_pago)}</span>
@@ -95,6 +103,7 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
                       {p.numero_cuota != null ? nombreCuota(p.numero_cuota, null, 'Cuota ') : p.estado_pago === 'abono' ? 'Abono' : 'Pago'}
                       {deudorId && p.numero_cobranza && ` · Cobranza N° ${p.numero_cobranza}`}
                       {p.forma_pago && ` · ${NOMBRE_FORMA[p.forma_pago] ?? p.forma_pago}`}
+                      {p.anulado_at && <span className="etiqueta etiqueta-castigo">Anulado</span>}
                     </span>
                     <strong className="historial-monto"><Plata valor={p.monto} /></strong>
                   </button>
@@ -108,8 +117,13 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
                       {p.usuario_nombre && <><dt>Registró</dt><dd>{p.usuario_nombre}{p.created_at && ` · ${fechaHoraLegible(p.created_at)}`}</dd></>}
                       {p.observaciones && <><dt>Comentario</dt><dd>{p.observaciones}</dd></>}
                       {deudorId && <><dt>Cobranza</dt><dd><Link to={`/cobranzas/${p.cobranza_id}`} onClick={alCerrar}>Ver cobranza N° {p.numero_cobranza}</Link></dd></>}
+                      {p.anulado_at && (
+                        <><dt>Anulado</dt><dd>{fechaHoraLegible(p.anulado_at)}{p.anulado_por_nombre && ` por ${p.anulado_por_nombre}`}
+                          {p.motivo_anulacion && <div className="suave">Motivo: {p.motivo_anulacion}</div>}</dd></>
+                      )}
                     </dl>
                   )}
+                  {abiertoEste && !p.anulado_at && <AnularPago pago={p} />}
                 </li>
               )
             })}
@@ -123,3 +137,47 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
     </div>
   )
 }
+
+function AnularPago({ pago }: { pago: Pago }) {
+  const { puede } = useAuth()
+  const qc = useQueryClient()
+  const [abierto, setAbierto] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [listo, setListo] = useState(false)
+  const anular = useMutation({
+    mutationFn: () => api.post(`/pagos/${pago.id}/anular`, { motivo: motivo.trim() }),
+    onSuccess: () => {
+      setListo(true)
+      refrescarCaso(qc, pago.cobranza_id)
+      qc.invalidateQueries({ queryKey: ['pagos-deudor'] })
+    },
+  })
+  if (!puede('pagos_anular')) return null
+  if (listo) {
+    return <div className="alerta-exito">Pago anulado. Si estaba mal ingresado, registra ahora el pago correcto.</div>
+  }
+  if (!abierto) {
+    return <button className="btn btn-chico btn-peligro anular-pago" onClick={() => setAbierto(true)}>Anular este pago</button>
+  }
+  return (
+    <form className="form-anular" onSubmit={(e: FormEvent) => { e.preventDefault(); anular.mutate() }}>
+      <p className="nota">
+        El pago no se borra: queda tachado y fuera de los totales, el saldo vuelve atrás y su gestión
+        original se mantiene. Se agrega una gestión con el motivo.
+      </p>
+      <label>
+        Motivo *
+        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} required minLength={3} maxLength={500} autoFocus
+          placeholder="Ej.: monto mal digitado, era $45.000" />
+      </label>
+      {anular.error && <div className="alerta-error">{mensajeDeError(anular.error)}</div>}
+      <div className="acciones-fila">
+        <button className="btn btn-chico btn-peligro" disabled={anular.isPending || motivo.trim().length < 3}>
+          {anular.isPending ? 'Anulando…' : 'Anular pago'}
+        </button>
+        <button type="button" className="btn btn-chico btn-secundario" onClick={() => setAbierto(false)}>Cancelar</button>
+      </div>
+    </form>
+  )
+}
+

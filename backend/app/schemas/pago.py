@@ -71,5 +71,13 @@ class PagoResponse(PagoBase):
     numero_cobranza: Optional[int] = None
     numero_cuota: Optional[int] = None
     usuario_nombre: Optional[str] = None
+    # Anulación (un pago mal ingresado se anula; no se borra ni se edita).
+    anulado_at: Optional[datetime] = None
+    anulado_por_nombre: Optional[str] = None
+    motivo_anulacion: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AnulacionPago(BaseModel):
+    motivo: str = Field(..., min_length=3, max_length=1000)

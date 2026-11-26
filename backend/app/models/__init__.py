@@ -24,3 +24,4 @@ from app.models.audit import AuditLog  # noqa: F401
 from app.models.seguridad import Sesion, TokenUnUso, EventoAcceso  # noqa: F401
 from app.models.agenda import Recordatorio, Indicador  # noqa: F401
 from app.models.enlace_deudor import EnlaceDeudor  # noqa: F401
+from app.models.trabajo import Trabajo  # noqa: F401

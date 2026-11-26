@@ -134,7 +134,7 @@ export interface DeudorDetalle extends Deudor {
 }
 
 export type EstadoCobranza =
-  | 'activa' | 'acuerdo_pago' | 'judicial' | 'pagada' | 'archivada' | 'castigo'
+  | 'activa' | 'acuerdo_pago' | 'judicial' | 'pagada' | 'archivada' | 'castigo' | 'eliminada'
 
 export type TipoDocumento =
   | 'pagare' | 'factura' | 'letra' | 'cheque' | 'contrato' | 'boleta' | 'credito' | 'otro'
@@ -169,6 +169,9 @@ export interface Cobranza {
   deudor_nombre?: string | null
   deudor_rut?: string | null
   cliente_nombre?: string | null
+  ejecutivo_id?: string | null
+  ejecutivo_nombre?: string | null
+  filial_nombre?: string | null
 }
 
 export interface TerceroEnCobranza {
@@ -265,6 +268,10 @@ export interface Pago {
   numero_cobranza?: number | null
   numero_cuota?: number | null
   usuario_nombre?: string | null
+  // Anulación (un pago mal ingresado se anula: no se borra ni se edita)
+  anulado_at?: string | null
+  anulado_por_nombre?: string | null
+  motivo_anulacion?: string | null
 }
 
 export interface ReporteUsuario {
@@ -301,7 +308,13 @@ export interface Empresa {
 
 // ---------- Fase 2: agenda, calculadora, mensaje de pago ----------
 
-export type TipoItemAgenda = 'contacto' | 'promesa' | 'cuota' | 'recordatorio' | 'plazo'
+export type TipoItemAgenda = 'contacto' | 'promesa' | 'cuota' | 'recordatorio' | 'plazo' | 'baja'
+
+export type SeccionAgenda =
+  | 'bajas' | 'cuotas_vencidas' | 'cuotas' | 'promesas' | 'llamadas' | 'whatsapp' | 'correos'
+  | 'visitas' | 'plazos' | 'tareas'
+
+export type TipoRecordatorio = 'llamada' | 'whatsapp' | 'correo' | 'visita' | 'tarea'
 
 export interface ItemAgenda {
   tipo: TipoItemAgenda
@@ -318,10 +331,13 @@ export interface ItemAgenda {
   recordatorio_id: string | null
   cuota_id: string | null
   causa_id?: string | null
+  acuerdo_id?: string | null
+  seccion?: SeccionAgenda
 }
 
 export interface Recordatorio {
   id: string
+  tipo?: TipoRecordatorio
   usuario_id: string
   cobranza_id: string | null
   fecha: string
@@ -560,4 +576,55 @@ export interface Seguimiento {
   atrasados: { cobranza_id: string; numero: number; deudor: string; cuotas_atrasadas: number; monto_atrasado: string; desde: string }[]
   proximas_cuotas: { cobranza_id: string; numero: number; deudor: string; cuota: number; de: number; fecha: string; monto: string }[]
   ultimas: { cobranza_id: string; numero: number; deudor: string; tipo: string | null; descripcion: string; fecha: string }[]
+}
+
+// ---------- Carga masiva en segundo plano ----------
+
+export interface ColumnaAnalizada {
+  titulo: string
+  clave: string | null      // lo que reconoció el sistema (rut, monto, t_telefono…)
+  rol: string | null        // rol del tercero (paciente, aval…)
+  campo: string | null      // campo adicional existente con ese título
+  llenas: number
+}
+
+export interface HojaAnalizada {
+  nombre: string
+  fila_titulos: number
+  filas: number
+  sirve: boolean
+  columnas: ColumnaAnalizada[]
+}
+
+export interface ResultadoCarga {
+  filas_procesadas: number
+  cobranzas_creadas: number
+  cobranzas_actualizadas: number
+  ya_existian: number
+  deudores_nuevos: number
+  contactos_agregados: number
+  gestiones_creadas: number
+  campos_creados: string[]
+  filiales_creadas: string[]
+  errores: { hoja: string; fila: number; error: string }[]
+  total_errores: number
+  avisos: string[]
+  error?: string
+}
+
+export interface Trabajo {
+  id: string
+  tipo: string
+  estado: 'en_cola' | 'procesando' | 'terminado' | 'error'
+  archivo: string | null
+  total: number
+  procesadas: number
+  resultado: ResultadoCarga | null
+}
+
+export interface ResultadoMasivo {
+  seleccionadas: number
+  cambiadas: number
+  omitidas: number
+  por_ejecutivo: Record<string, number>
 }

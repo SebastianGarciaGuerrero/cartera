@@ -194,6 +194,7 @@ label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-w
 .etiqueta-pagada       { background: #d3f5e2; color: var(--verde); }
 .etiqueta-archivada    { background: #e7ebef; color: var(--texto-suave); }
 .etiqueta-castigo      { background: #fee4e2; color: var(--rojo); }
+.etiqueta-eliminada    { background: #f1e8fb; color: #5b2a86; }
 
 /* ---------- Botones ---------- */
 
@@ -1029,3 +1030,39 @@ details > summary::-webkit-details-marker { display: none; }
   .modal-fondo { position: static; background: none; padding: 0; }
   .modal { box-shadow: none; border: none; width: 100% !important; max-height: none; }
 }
+
+/* ---------- Agenda por secciones y acciones peligrosas ---------- */
+.agenda-seccion + .agenda-seccion { margin-top: 6px; }
+.agenda-seccion .subtitulo { margin: 14px 0 4px; }
+.btn-peligro { background: #fee4e2; color: #912018; border: 1px solid #fecdca; }
+.btn-peligro:hover:not(:disabled) { background: #fecdca; }
+
+/* ---------- Selección en la lista de cobranzas ---------- */
+.col-check { width: 32px; text-align: center; }
+.col-check input { width: auto; }
+.fila-marcada td { background: #eef4fb; }
+.barra-cartera {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;
+  background: var(--tarjeta); border: 1px solid var(--acento); border-radius: 10px; padding: 10px 14px;
+}
+.barra-cartera-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.btn-enlace { font: inherit; background: none; border: none; color: var(--acento); cursor: pointer; text-decoration: underline; padding: 0; }
+
+/* ---------- Pagos anulados ---------- */
+.pago-anulado .historial-monto, tr.pago-anulado td { text-decoration: line-through; color: var(--texto-suave); }
+tr.pago-anulado td:nth-child(5) { text-decoration: none; }
+.anular-pago { margin: 4px 0 8px; }
+.form-anular { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 10px; }
+.form-anular label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+
+/* ---------- Carga masiva ---------- */
+.barra-avance { height: 12px; background: var(--fondo); border: 1px solid var(--borde); border-radius: 6px; overflow: hidden; margin: 8px 0; }
+.barra-avance span { display: block; height: 100%; background: var(--acento); transition: width 0.4s; }
+.hojas-carga { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.opcion.deshabilitada { opacity: 0.55; }
+.columnas-reconocidas { margin: 10px 0; }
+.chip-fijo { cursor: default; background: var(--fondo); }
+.errores-carga { max-height: 320px; overflow-y: auto; margin-top: 8px; }
+.errores-carga td { white-space: normal !important; }
+.lista-ayuda { margin: 0 0 12px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.zona-peligro { border-color: #fecdca; }

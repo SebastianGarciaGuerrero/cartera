@@ -9,7 +9,7 @@ no se guarda.
 """
 
 import calendar
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 
@@ -249,6 +249,83 @@ def registrar_pago(db: Session, cobranza: Cobranza, datos: PagoCreate, usuario: 
         gestion_automatica(db, cobranza.id, usuario.id, "pagado",
                            "CUENTA SALDADA. La cobranza queda en estado pagada.")
     return pago, gestion
+
+
+# ------------------------------------------------------------ anular un pago
+
+NOMBRE_ESTADO = {"activa": "activa", "acuerdo_pago": "acuerdo de pago", "judicial": "judicial",
+                 "pagada": "pagada"}
+
+
+def anular_pago(db: Session, pago: Pago, usuario: Usuario, motivo: str) -> Gestion:
+    """
+    Anula un pago mal ingresado sin borrar nada: el pago queda marcado (y
+    fuera de todos los totales), su gestión original sigue en el historial y
+    se agrega otra con la anulación. Revierte la cascada del pago: el saldo
+    capital, la cuota, el acuerdo cumplido y la cobranza pagada vuelven atrás.
+    """
+    if pago.anulado_at is not None:
+        raise HTTPException(status_code=400, detail="Este pago ya estaba anulado.")
+    motivo = (motivo or "").strip()
+    if len(motivo) < 3:
+        raise HTTPException(status_code=422, detail="Indica el motivo de la anulación.")
+    cobranza = pago.cobranza
+    estado_antes = cobranza.estado
+    monto = Decimal(pago.monto)
+    cobranza.monto_actual = Decimal(cobranza.monto_actual) + Decimal(pago.capital or 0)
+
+    acuerdo_reabierto = False
+    cuota = pago.cuota
+    if cuota is not None:
+        cuota.monto_pagado = max(Decimal(0), Decimal(cuota.monto_pagado) - monto)
+        if cuota.monto_pagado >= Decimal(cuota.monto):
+            cuota.estado = "pagada"
+        else:
+            cuota.estado = "pagada_parcial" if cuota.monto_pagado > 0 else "pendiente"
+            if cuota.acuerdo.estado == "cumplido":
+                cuota.acuerdo.estado = "vigente"
+                acuerdo_reabierto = True
+    if cobranza.estado == "pagada" and (cobranza.monto_actual > 0 or acuerdo_reabierto):
+        vigente = any(a.estado == "vigente" for a in cobranza.acuerdos)
+        cobranza.estado = "acuerdo_pago" if vigente else ("judicial" if cobranza.etapa == "judicial" else "activa")
+        cobranza.motivo_cierre = None
+        cobranza.fecha_cierre = None
+
+    pago.anulado_at = datetime.now(timezone.utc)
+    pago.anulado_por = usuario.id
+    pago.motivo_anulacion = motivo
+
+    que = "abono" if cuota is None else ("pago del pie" if cuota.numero_cuota == 0
+                                         else f"pago de la cuota {cuota.numero_cuota}")
+    texto = (f"PAGO ANULADO: el {que} de {clp(monto)} del {pago.fecha_pago.strftime('%d-%m-%Y')} "
+             f"(registrado por {pago.usuario.nombre}) se anula. Motivo: {motivo}. "
+             f"Saldo capital: {clp(cobranza.monto_actual)}.")
+    if cobranza.estado != estado_antes:
+        texto += f" La cobranza vuelve a estado {NOMBRE_ESTADO.get(cobranza.estado, cobranza.estado)}."
+    return gestion_automatica(db, cobranza.id, usuario.id, "pago_anulado", texto)
+
+
+# ------------------------------------------------------------ acuerdo sin pagos: baja
+
+MESES_SIN_PAGO_BAJA = 3
+
+
+def dar_de_baja_acuerdo(db: Session, acuerdo: AcuerdoPago, usuario: Usuario,
+                        motivo: Optional[str] = None) -> Gestion:
+    """El acuerdo pasa a incumplido y la cobranza vuelve a gestión; queda la gestión con el porqué."""
+    if acuerdo.estado != "vigente":
+        raise HTTPException(status_code=400, detail="Solo se da de baja un acuerdo vigente.")
+    hoy = hoy_chile()
+    atrasadas = [c for c in acuerdo.cuotas if c.estado != "pagada" and c.fecha_vencimiento < hoy]
+    monto = sum((Decimal(c.monto) - Decimal(c.monto_pagado) for c in atrasadas), Decimal(0))
+    pagos = [p.fecha_pago for c in acuerdo.cuotas for p in c.pagos if p.anulado_at is None]
+    acuerdo.estado = "incumplido"
+    cobranza = acuerdo.cobranza
+    if cobranza.estado == "acuerdo_pago":
+        cobranza.estado = "judicial" if cobranza.etapa == "judicial" else "activa"
+    texto = (f"ACUERDO DADO DE BAJA por no pago: {len(atrasadas)} cuota(s) atrasada(s) por {clp(monto)}; "
+             f"último pago de cuota: {max(pagos).strftime('%d-%m-%Y') if pagos else 'ninguno'}.")
+    return gestion_automatica(db, cobranza.id, usuario.id, "acuerdo_baja", con_nota(texto, motivo))
 
 
 # ------------------------------------------------------------ cambios

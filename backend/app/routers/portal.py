@@ -93,11 +93,12 @@ class ResumenPortal(BaseModel):
 def resumen(request: Request, db: Session = Depends(get_db),
             usuario: Usuario = Depends(usuario_mandante)):
     cli = db.get(Cliente, usuario.cliente_id)
-    cobs = db.query(Cobranza).filter(Cobranza.cliente_id == usuario.cliente_id)
+    cobs = db.query(Cobranza).filter(Cobranza.cliente_id == usuario.cliente_id,
+                                     Cobranza.estado != "eliminada")
     abiertas = cobs.filter(Cobranza.estado.in_(("activa", "acuerdo_pago", "judicial")))
     hoy = hoy_chile()
     inicio_mes = hoy.replace(day=1)
-    pagos = (db.query(Pago).join(Cobranza, Cobranza.id == Pago.cobranza_id)
+    pagos = (db.query(Pago).join(Cobranza, Cobranza.id == Pago.cobranza_id).filter(Pago.anulado_at.is_(None))
              .filter(Cobranza.cliente_id == usuario.cliente_id))
     capital_total = pagos.with_entities(func.coalesce(func.sum(Pago.capital), 0)).scalar()
     capital_mes = (pagos.filter(Pago.fecha_pago >= inicio_mes)
@@ -219,7 +220,7 @@ def ficha(cobranza_id: UUID, db: Session = Depends(get_db),
         ultima_gestion=gestiones[0].fecha if gestiones else None,
         gestiones=gestiones,
         pagos=[PagoPortal(fecha_pago=p.fecha_pago, monto=p.monto, capital=p.capital or 0,
-                          forma_pago=p.forma_pago) for p in cob.pagos],
+                          forma_pago=p.forma_pago) for p in cob.pagos if p.anulado_at is None],
         acuerdo=acuerdo,
     )
 

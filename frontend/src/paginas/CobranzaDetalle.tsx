@@ -1,7 +1,8 @@
 import { Fragment, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { api, descargarArchivo } from '../api/client'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, descargarArchivo, mensajeDeError } from '../api/client'
+import { refrescarCaso } from '../api/refrescar'
 import type { CobranzaDetalle as Ficha, DeudorDetalle, Gestion } from '../api/tipos'
 import { EtiquetaEstado, EtiquetaReincidente, Plata, fechaLegible } from '../componentes/utiles'
 import Finanzas from '../componentes/Finanzas'
@@ -24,7 +25,7 @@ import LineaTiempo from '../componentes/LineaTiempo'
 
 export default function CobranzaDetalle() {
   const { id } = useParams()
-  const { etiqueta, tiene } = useAuth()
+  const { etiqueta, tiene, puede } = useAuth()
   const [mensaje, setMensaje] = useState(false)
   const [enlace, setEnlace] = useState(false)
 
@@ -102,6 +103,12 @@ export default function CobranzaDetalle() {
             <dd>
               {cob.cliente?.nombre_fantasia ?? cob.cliente?.razon_social ?? '—'}
               {cob.filial && <span className="suave"> · {cob.filial.nombre}</span>}
+            </dd>
+            <dt>Ejecutivo</dt>
+            <dd>
+              {puede('cartera_gestionar')
+                ? <SelectorEjecutivo cobranzaId={cob.id} actual={cob.ejecutivo_id ?? null} />
+                : (cob.ejecutivo_nombre ?? <span className="suave">Sin asignar</span>)}
             </dd>
             <dt>{etiqueta('id_externo', 'ID cliente')}</dt>
             <dd className="mono">{cob.id_externo ?? '—'}</dd>
@@ -184,3 +191,24 @@ export default function CobranzaDetalle() {
     </>
   )
 }
+
+function SelectorEjecutivo({ cobranzaId, actual }: { cobranzaId: string; actual: string | null }) {
+  const qc = useQueryClient()
+  const { data: ejecutivos } = useQuery({
+    queryKey: ['cartera-ejecutivos'],
+    queryFn: async () => (await api.get<{ id: string; nombre: string; abiertas: number }[]>('/cartera/ejecutivos')).data,
+  })
+  const cambiar = useMutation({
+    mutationFn: (id: string) => api.put(`/cobranzas/${cobranzaId}`, { ejecutivo_id: id || null }),
+    onSuccess: () => refrescarCaso(qc, cobranzaId),
+    onError: (e) => alert(mensajeDeError(e)),
+  })
+  return (
+    <select value={actual ?? ''} disabled={cambiar.isPending} aria-label="Ejecutivo asignado"
+      onChange={(e) => cambiar.mutate(e.target.value)}>
+      <option value="">Sin asignar</option>
+      {ejecutivos?.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+    </select>
+  )
+}
+

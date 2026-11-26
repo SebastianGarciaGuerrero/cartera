@@ -339,7 +339,7 @@ def ver_estado(datos: AccesoEstado, request: Request, db: Session = Depends(get_
             capital_pendiente=cob.monto_actual,
             convenio=_convenio(cob, hoy),
             pagos=[PagoDeudor(fecha=p.fecha_pago, monto=p.monto)
-                   for p in sorted(cob.pagos, key=lambda p: p.fecha_pago, reverse=True)],
+                   for p in sorted(cob.pagos, key=lambda p: p.fecha_pago, reverse=True) if p.anulado_at is None],
             como_pagar=((cliente.instrucciones_pago if cliente else None)
                         or (emp.instrucciones_pago if emp else None) or None),
         ))

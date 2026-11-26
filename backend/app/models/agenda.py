@@ -25,6 +25,8 @@ class Recordatorio(TenantMixin, Base):
     fecha = Column(Date, nullable=False)
     hora = Column(Time)
     titulo = Column(String(200), nullable=False)
+    # Sección de la agenda: llamada / whatsapp / correo / visita / tarea.
+    tipo = Column(String(20), nullable=False, server_default=text("'tarea'"))
     nota = Column(Text)
     estado = Column(String(20), nullable=False, server_default=text("'pendiente'"))
     completado_at = Column(TIMESTAMP(timezone=True))

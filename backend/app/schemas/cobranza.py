@@ -37,7 +37,7 @@ class TerceroEnCobranza(BaseModel):
 # línea + un ALTER TABLE. Si en el futuro cambian mucho, se migra a una tabla
 # catálogo 'estados_cobranza'.
 EstadoCobranza = Literal[
-    "activa", "acuerdo_pago", "judicial", "pagada", "archivada", "castigo"
+    "activa", "acuerdo_pago", "judicial", "pagada", "archivada", "castigo", "eliminada"
 ]
 TipoCobranza = Literal["extrajudicial", "judicial"]
 TipoDocumento = Literal[
@@ -151,6 +151,8 @@ class CobranzaResponse(CobranzaBase):
     deudor_nombre: Optional[str] = None
     deudor_rut: Optional[str] = None
     cliente_nombre: Optional[str] = None
+    ejecutivo_nombre: Optional[str] = None
+    filial_nombre: Optional[str] = None
     # Ciclo de vida (lo mueve el sistema, no se edita por PUT)
     etapa: str = "ingreso"
     etapa_desde: Optional[date] = None

@@ -127,6 +127,18 @@ def _excel(filas: list) -> bytes:
     return buf.getvalue()
 
 
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def cargar(cliente_http, h, ruta, contenido, data=None):
+    """Sube el Excel; la carga corre en segundo plano y se lee su resultado."""
+    r = cliente_http.post(ruta, headers=h, data=data or {}, files={"archivo": ("carga.xlsx", contenido, XLSX)})
+    assert r.status_code == 202, r.text
+    trabajo = cliente_http.get(f"/api/importar/trabajos/{r.json()['trabajo_id']}", headers=h).json()
+    assert trabajo["estado"] == "terminado", trabajo
+    return trabajo["resultado"]
+
+
 def test_carga_masiva_por_titulos_y_campos_extra(cliente_http, org_a):
     h = login(cliente_http, org_a["email"])
     r = cliente_http.post("/api/clientes/", headers=h, json={"rut": rut_valido(30), "razon_social": "Clínica Sur"})
@@ -142,13 +154,12 @@ def test_carga_masiva_por_titulos_y_campos_extra(cliente_http, org_a):
         [99000, "Clínica Sur", "Rut Malo", "12345678-9", "", ""],
         [50000, "No Existe", "Ana", rut_valido(31), "", ""],
     ])
-    r = cliente_http.post("/api/importar/cobranzas", headers=h,
-                          files={"archivo": ("carga.xlsx", contenido,
-                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
-    assert r.status_code == 200, r.text
-    res = r.json()
+    vista = cliente_http.post("/api/importar/analizar", headers=h,
+                              files={"archivo": ("carga.xlsx", contenido, XLSX)}).json()["hojas"][0]
+    columnas = {c["titulo"]: c for c in vista["columnas"]}
+    assert columnas["Patente"]["campo"] == "Patente" and columnas["Columna rara"]["clave"] is None
+    res = cargar(cliente_http, h, "/api/importar/cobranzas", contenido)
     assert res["cobranzas_creadas"] == 1 and len(res["errores"]) == 2
-    assert res["columnas_ignoradas"] == ["Columna rara"]
     cob = cliente_http.get("/api/cobranzas/buscar", params={"q": "Pedro"}, headers=h).json()[0]
     assert cob["datos_extra"] == {"patente": "AB-CD-12"}
 
@@ -164,11 +175,7 @@ def test_carga_masiva_de_gestiones(cliente_http, org_a):
         ["NO-EXISTE", "", "x", yo],
         ["EXT-25", "", "Sin persona", "alguien@otro.cl"],
     ])
-    r = cliente_http.post("/api/importar/gestiones", headers=h, data={"cliente_id": cartera["cliente_id"]},
-                          files={"archivo": ("gestiones.xlsx", contenido,
-                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
-    assert r.status_code == 200, r.text
-    res = r.json()
+    res = cargar(cliente_http, h, "/api/importar/gestiones", contenido, {"cliente_id": cartera["cliente_id"]})
     assert res["gestiones_creadas"] == 2 and [e["fila"] for e in res["errores"]] == [4, 5]
     historial = cliente_http.get("/api/gestiones/", params={"cobranza_id": cartera["cobranza_id"]}, headers=h).json()
     masivas = [g for g in historial if g["es_masivo"]]

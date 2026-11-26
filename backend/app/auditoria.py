@@ -39,6 +39,7 @@ CLAVE_CONTEXTO = "auditoria"
 # sistema que solo cambian en mantenciones.
 TABLAS_EXCLUIDAS = {
     "audit_log", "roles", "eventos_acceso", "sesiones", "tokens_un_uso",
+    "trabajos",  # el avance de una carga cambia a cada rato: no es un dato de negocio
 }
 
 # Tablas inmutables (la base impide editarlas o borrarlas): el registro

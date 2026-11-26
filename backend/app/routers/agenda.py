@@ -47,6 +47,11 @@ class ItemVista(BaseModel):
     recordatorio_id: Optional[UUID] = None
     cuota_id: Optional[UUID] = None
     causa_id: Optional[UUID] = None
+    acuerdo_id: Optional[UUID] = None
+    seccion: str = "tareas"
+
+
+TipoRecordatorio = Literal["llamada", "whatsapp", "correo", "visita", "tarea"]
 
 
 def _usuario_objetivo(usuario: Usuario, usuario_id: Optional[UUID], todos: bool) -> Optional[UUID]:
@@ -118,6 +123,7 @@ def mis_avisos(db: Session = Depends(get_db), usuario: Usuario = Depends(get_cur
 # ------------------------------------------------------------ recordatorios
 
 class RecordatorioEntrada(BaseModel):
+    tipo: TipoRecordatorio = "tarea"
     fecha: date
     hora: Optional[time] = None
     titulo: str = Field(..., min_length=1, max_length=200)
@@ -127,6 +133,7 @@ class RecordatorioEntrada(BaseModel):
 
 
 class RecordatorioCambios(BaseModel):
+    tipo: Optional[TipoRecordatorio] = None
     fecha: Optional[date] = None
     hora: Optional[time] = None
     titulo: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -136,6 +143,7 @@ class RecordatorioCambios(BaseModel):
 
 class RecordatorioVista(BaseModel):
     id: UUID
+    tipo: str = "tarea"
     usuario_id: UUID
     cobranza_id: Optional[UUID] = None
     fecha: date
@@ -183,7 +191,7 @@ def crear_recordatorio(
         raise HTTPException(status_code=404, detail="Cobranza no encontrada")
     r = Recordatorio(
         usuario_id=asignado, cobranza_id=datos.cobranza_id, fecha=datos.fecha,
-        hora=datos.hora, titulo=datos.titulo, nota=datos.nota, creado_por=usuario.id,
+        hora=datos.hora, titulo=datos.titulo, nota=datos.nota, creado_por=usuario.id, tipo=datos.tipo,
     )
     db.add(r)
     db.commit()

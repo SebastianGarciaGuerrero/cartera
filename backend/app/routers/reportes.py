@@ -71,7 +71,7 @@ def reporte_equipo(
     acuerdos = dict(q.group_by(AcuerdoPago.usuario_id).all())
 
     # Pagos por usuario (cantidad y monto).
-    q = db.query(Pago.usuario_id, func.count(Pago.id), func.coalesce(func.sum(Pago.monto), 0))
+    q = db.query(Pago.usuario_id, func.count(Pago.id), func.coalesce(func.sum(Pago.monto), 0)).filter(Pago.anulado_at.is_(None))
     if desde is not None:
         q = q.filter(Pago.fecha_pago >= desde)
     if hasta is not None:

@@ -1,5 +1,20 @@
 # Hoja de ruta: Cartera como producto SaaS
 
+## Operación con cartera real ✅ (noviembre 2026)
+
+- Carga de la planilla del cliente tal como viene (varias hojas, títulos con
+  sus nombres, paciente como tercero, teléfonos y correos múltiples, estado
+  desde "Etapas de cobranza"), en segundo plano con avance y errores
+  descargables; actualización de cobranzas existentes (admin). Probada con
+  4.479 filas reales: 4.448 cobranzas y 31 errores de RUT.
+- Gestiones masivas con tipo, persona y próximo contacto (por N°, ID o RUT).
+- Asignar / repartir cartera entre ejecutivos; eliminar de cartera (estado
+  propio, en informes); anular pagos sin borrar; acuerdos sin pago 3 meses →
+  "para dar de baja"; agenda y avisos por secciones; paso a producción con
+  numeración desde 40.000.
+- Pendiente: replicar estas funciones en la demo sin servidor; servidor MCP
+  propio (consultas de Claude por organización, solo lectura).
+
 ## Pendientes en pausa
 
 Acordados, pero en espera hasta que se pidan:
