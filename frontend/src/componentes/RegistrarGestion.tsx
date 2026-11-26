@@ -30,10 +30,10 @@ const RESULTADOS: { valor: ResultadoGestion; nombre: string; ayuda: string }[] =
   { valor: 'pago', nombre: 'Pago / abono', ayuda: 'Ya pagó' },
 ]
 
-// Tipos que el sistema registra solo (desde un acuerdo, un pago, etc.).
-// Los que deja el sistema solo (al registrar el acuerdo, el pago, la demanda o un cambio): no se eligen a mano.
+// Los que deja el sistema solo (al registrar el acuerdo, el pago, la demanda, una
+// anulación, una baja o un cambio): no se eligen a mano.
 const TIPOS_AUTOMATICOS = new Set(['automatica', 'ingreso', 'acuerdo', 'abono', 'pagado', 'promesa_pago', 'demanda',
-  'gasto', 'tramite', 'embargo', 'etapa', 'cambio_datos'])
+  'gasto', 'tramite', 'embargo', 'etapa', 'cambio_datos', 'pago_anulado', 'eliminada_cartera', 'acuerdo_baja'])
 
 interface CuotaEditable { fecha: string; monto: string }
 
