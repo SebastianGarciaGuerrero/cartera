@@ -100,7 +100,8 @@ function Grupo({ titulo, items, conFecha, nota, alElegir }: {
               {i.causa_id
                 ? <Link to={`/judicial/causas/${i.causa_id}`} onClick={alElegir}>{contenido}</Link>
                 : i.cobranza_id
-                ? <Link to={`/cobranzas/${i.cobranza_id}`} onClick={alElegir}>{contenido}</Link>
+                ? <Link to={`/cobranzas/${i.cobranza_id}${i.tipo === 'cuota' || i.tipo === 'baja' ? '?ver=pagos' : ''}`}
+                  onClick={alElegir}>{contenido}</Link>
                 : <Link to="/agenda" onClick={alElegir}>{contenido}</Link>}
             </li>
           )

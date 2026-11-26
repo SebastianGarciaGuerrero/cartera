@@ -6,8 +6,7 @@ import { api, mensajeDeError } from '../api/client'
 import { refrescarCaso } from '../api/refrescar'
 import { useAuth } from '../auth'
 import type { Pago } from '../api/tipos'
-import { Plata, fechaHoraLegible, fechaLegible, nombreCuota } from './utiles'
-import { NOMBRE_FORMA } from './Finanzas'
+import { NOMBRE_FORMA, Plata, fechaHoraLegible, fechaLegible, nombreCuota } from './utiles'
 
 // Cuánto debía al llegar, cuánto ha pagado y cuánto debe hoy, con el
 // historial de pagos a un clic: solo los pagos, con su fecha, y al abrir uno
@@ -26,7 +25,8 @@ export function usePagos(filtro: { deudor_id?: string; cobranza_id?: string }) {
   })
 }
 
-export function ResumenDeuda({ original, saldo, pagos, alAbonar, enlaceAbonar, deudorId, cobranzaId }: {
+export function ResumenDeuda({ original, saldo, pagos, alAbonar, enlaceAbonar, deudorId, cobranzaId, alVerHistorial,
+  nombreAbonar = 'Registrar abono' }: {
   original: number
   saldo: number
   pagos: Pago[] | undefined
@@ -34,6 +34,9 @@ export function ResumenDeuda({ original, saldo, pagos, alAbonar, enlaceAbonar, d
   enlaceAbonar?: string
   deudorId?: string
   cobranzaId?: string
+  /** Si se da, "Historial de pagos" lleva ahí (la pestaña de pagos de la ficha) en vez de abrir la ventana. */
+  alVerHistorial?: () => void
+  nombreAbonar?: string
 }) {
   const [historial, setHistorial] = useState(false)
   const validos = (pagos ?? []).filter(vigente)
@@ -56,12 +59,12 @@ export function ResumenDeuda({ original, saldo, pagos, alAbonar, enlaceAbonar, d
         <span className="medidor" title={`${avance} % del capital recuperado`}><span style={{ width: `${avance}%` }} /></span>
       </div>
       <div className="resumen-deuda-acciones">
-        <button className="btn btn-secundario btn-chico" onClick={() => setHistorial(true)}
+        <button className="btn btn-secundario btn-chico" onClick={() => (alVerHistorial ? alVerHistorial() : setHistorial(true))}
           disabled={!pagos || pagos.length === 0}>
           Historial de pagos
         </button>
-        {alAbonar && <button className="btn btn-primario btn-chico" onClick={alAbonar}>Registrar abono</button>}
-        {enlaceAbonar && <Link className="btn btn-primario btn-chico" to={enlaceAbonar}>Registrar abono</Link>}
+        {alAbonar && <button className="btn btn-primario btn-chico" onClick={alAbonar}>{nombreAbonar}</button>}
+        {enlaceAbonar && <Link className="btn btn-primario btn-chico" to={enlaceAbonar}>{nombreAbonar}</Link>}
       </div>
       {historial && (
         <HistorialPagos deudorId={deudorId} cobranzaId={cobranzaId} alCerrar={() => setHistorial(false)} />
@@ -73,8 +76,7 @@ export function ResumenDeuda({ original, saldo, pagos, alAbonar, enlaceAbonar, d
 export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
   deudorId?: string; cobranzaId?: string; alCerrar: () => void
 }) {
-  const { data: pagos, isLoading } = usePagos(deudorId ? { deudor_id: deudorId } : { cobranza_id: cobranzaId })
-  const [abierto, setAbierto] = useState<string | null>(null)
+  const { data: pagos } = usePagos(deudorId ? { deudor_id: deudorId } : { cobranza_id: cobranzaId })
   const total = (pagos ?? []).filter(vigente).reduce((s, p) => s + Number(p.monto), 0)
 
   useEffect(() => {
@@ -90,51 +92,61 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
           <h3>Historial de pagos</h3>
           <span>Total pagado: <strong><Plata valor={total} /></strong></span>
         </div>
-        {isLoading ? <p className="suave">Cargando…</p> : (
-          <ul className="historial-pagos">
-            {pagos?.map((p) => {
-              const abiertoEste = abierto === p.id
-              return (
-                <li key={p.id} className={[abiertoEste ? 'abierto' : '', p.anulado_at ? 'pago-anulado' : ''].join(' ')}>
-                  <button className="historial-pago" aria-expanded={abiertoEste}
-                    onClick={() => setAbierto(abiertoEste ? null : p.id)}>
-                    <span className="historial-fecha">{fechaLegible(p.fecha_pago)}</span>
-                    <span className="historial-detalle">
-                      {p.numero_cuota != null ? nombreCuota(p.numero_cuota, null, 'Cuota ') : p.estado_pago === 'abono' ? 'Abono' : 'Pago'}
-                      {deudorId && p.numero_cobranza && ` · Cobranza N° ${p.numero_cobranza}`}
-                      {p.forma_pago && ` · ${NOMBRE_FORMA[p.forma_pago] ?? p.forma_pago}`}
-                      {p.anulado_at && <span className="etiqueta etiqueta-castigo">Anulado</span>}
-                    </span>
-                    <strong className="historial-monto"><Plata valor={p.monto} /></strong>
-                  </button>
-                  {abiertoEste && (
-                    <dl className="datos historial-desglose">
-                      <dt>Capital</dt><dd><Plata valor={p.capital} /></dd>
-                      {Number(p.honorarios) > 0 && <><dt>Honorarios</dt><dd><Plata valor={p.honorarios} /></dd></>}
-                      {Number(p.intereses) > 0 && <><dt>Interés</dt><dd><Plata valor={p.intereses} /></dd></>}
-                      {Number(p.gastos_judiciales) > 0 && <><dt>Gastos</dt><dd><Plata valor={p.gastos_judiciales} /></dd></>}
-                      {p.numero_comprobante && <><dt>Comprobante</dt><dd className="mono">{p.numero_comprobante}</dd></>}
-                      {p.usuario_nombre && <><dt>Registró</dt><dd>{p.usuario_nombre}{p.created_at && ` · ${fechaHoraLegible(p.created_at)}`}</dd></>}
-                      {p.observaciones && <><dt>Comentario</dt><dd>{p.observaciones}</dd></>}
-                      {deudorId && <><dt>Cobranza</dt><dd><Link to={`/cobranzas/${p.cobranza_id}`} onClick={alCerrar}>Ver cobranza N° {p.numero_cobranza}</Link></dd></>}
-                      {p.anulado_at && (
-                        <><dt>Anulado</dt><dd>{fechaHoraLegible(p.anulado_at)}{p.anulado_por_nombre && ` por ${p.anulado_por_nombre}`}
-                          {p.motivo_anulacion && <div className="suave">Motivo: {p.motivo_anulacion}</div>}</dd></>
-                      )}
-                    </dl>
-                  )}
-                  {abiertoEste && !p.anulado_at && <AnularPago pago={p} />}
-                </li>
-              )
-            })}
-            {pagos?.length === 0 && <li className="vacio">Aún no hay pagos registrados.</li>}
-          </ul>
-        )}
+        <ListaPagos deudorId={deudorId} cobranzaId={cobranzaId} alNavegar={alCerrar} />
         <div className="acciones-fila">
           <button className="btn btn-secundario" onClick={alCerrar}>Cerrar</button>
         </div>
       </div>
     </div>
+  )
+}
+
+/** Los pagos con su fecha; al abrir uno, su desglose y (con permiso) "Anular este pago". */
+export function ListaPagos({ deudorId, cobranzaId, alNavegar }: {
+  deudorId?: string; cobranzaId?: string; alNavegar?: () => void
+}) {
+  const { data: pagos, isLoading } = usePagos(deudorId ? { deudor_id: deudorId } : { cobranza_id: cobranzaId })
+  const [abierto, setAbierto] = useState<string | null>(null)
+  if (isLoading) return <p className="suave">Cargando…</p>
+  return (
+    <ul className="historial-pagos">
+      {pagos?.map((p) => {
+        const abiertoEste = abierto === p.id
+        return (
+          <li key={p.id} className={[abiertoEste ? 'abierto' : '', p.anulado_at ? 'pago-anulado' : ''].join(' ')}>
+            <button className="historial-pago" aria-expanded={abiertoEste}
+              onClick={() => setAbierto(abiertoEste ? null : p.id)}>
+              <span className="historial-fecha">{fechaLegible(p.fecha_pago)}</span>
+              <span className="historial-detalle">
+                {p.numero_cuota != null ? nombreCuota(p.numero_cuota, null, 'Cuota ') : p.estado_pago === 'abono' ? 'Abono' : 'Pago'}
+                {deudorId && p.numero_cobranza && ` · Cobranza N° ${p.numero_cobranza}`}
+                {p.forma_pago && ` · ${NOMBRE_FORMA[p.forma_pago] ?? p.forma_pago}`}
+                {p.anulado_at && <span className="etiqueta etiqueta-castigo">Anulado</span>}
+              </span>
+              <strong className="historial-monto"><Plata valor={p.monto} /></strong>
+            </button>
+            {abiertoEste && (
+              <dl className="datos historial-desglose">
+                <dt>Capital</dt><dd><Plata valor={p.capital} /></dd>
+                {Number(p.honorarios) > 0 && <><dt>Honorarios</dt><dd><Plata valor={p.honorarios} /></dd></>}
+                {Number(p.intereses) > 0 && <><dt>Interés</dt><dd><Plata valor={p.intereses} /></dd></>}
+                {Number(p.gastos_judiciales) > 0 && <><dt>Gastos</dt><dd><Plata valor={p.gastos_judiciales} /></dd></>}
+                {p.numero_comprobante && <><dt>Comprobante</dt><dd className="mono">{p.numero_comprobante}</dd></>}
+                {p.usuario_nombre && <><dt>Registró</dt><dd>{p.usuario_nombre}{p.created_at && ` · ${fechaHoraLegible(p.created_at)}`}</dd></>}
+                {p.observaciones && <><dt>Comentario</dt><dd>{p.observaciones}</dd></>}
+                {deudorId && <><dt>Cobranza</dt><dd><Link to={`/cobranzas/${p.cobranza_id}`} onClick={alNavegar}>Ver cobranza N° {p.numero_cobranza}</Link></dd></>}
+                {p.anulado_at && (
+                  <><dt>Anulado</dt><dd>{fechaHoraLegible(p.anulado_at)}{p.anulado_por_nombre && ` por ${p.anulado_por_nombre}`}
+                    {p.motivo_anulacion && <div className="suave">Motivo: {p.motivo_anulacion}</div>}</dd></>
+                )}
+              </dl>
+            )}
+            {abiertoEste && !p.anulado_at && <AnularPago pago={p} />}
+          </li>
+        )
+      })}
+      {pagos?.length === 0 && <li className="vacio">Aún no hay pagos registrados.</li>}
+    </ul>
   )
 }
 

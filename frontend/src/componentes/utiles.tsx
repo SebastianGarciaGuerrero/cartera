@@ -133,3 +133,19 @@ export function EtiquetaReincidente({ cerradas }: { cerradas: number }) {
     </span>
   )
 }
+
+export const NOMBRE_FORMA: Record<string, string> = {
+  transferencia: 'Transferencia', cheque: 'Cheque', efectivo: 'Efectivo', deposito: 'Depósito',
+  flow: 'Pago en línea', presencial: 'Presencial', bonificacion: 'Bonificación', otro: 'Otro',
+}
+
+export const NOMBRE_CONTACTO: Record<string, string> = {
+  telefono: 'Teléfono', celular: 'Celular', email: 'Correo', whatsapp: 'WhatsApp', otro: 'Otro',
+}
+
+/** Número para wa.me: con 56 delante (acepta 9 1234 5678, 1234 5678 o +56 9 …). */
+export function soloDigitos(v: string) {
+  const d = v.replace(/\D/g, '')
+  return d.length === 9 && d.startsWith('9') ? '56' + d : d.length === 8 ? '569' + d : d
+}
+

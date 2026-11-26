@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
 import type { Cobranza, Contacto, DeudorBusqueda, DeudorDetalle, Gestion } from '../api/tipos'
 import NuevoDeudor from '../componentes/NuevoDeudor'
-import { EtiquetaEstado, EtiquetaReincidente, Plata, rutConPuntos } from '../componentes/utiles'
+import { EtiquetaEstado, EtiquetaReincidente, NOMBRE_CONTACTO, Plata, rutConPuntos, soloDigitos } from '../componentes/utiles'
 import { useCampos, VistaCamposExtra } from '../componentes/CamposExtra'
 import { ResumenDeuda, usePagos } from '../componentes/HistorialPagos'
 import LineaTiempo from '../componentes/LineaTiempo'
@@ -20,23 +20,17 @@ import { useConfirmacion } from '../componentes/ConfirmarGestion'
 
 const ABIERTAS = ['activa', 'acuerdo_pago', 'judicial']
 
-const NOMBRE_CONTACTO: Record<string, string> = {
-  telefono: 'Teléfono', celular: 'Celular', email: 'Correo', whatsapp: 'WhatsApp', otro: 'Otro',
-}
 // Como lo nombra la gestión que deja el servidor.
 const CONTACTO_GESTION: Record<string, string> = {
   telefono: 'teléfono', celular: 'celular', email: 'correo', whatsapp: 'WhatsApp', otro: 'contacto',
 }
 
-function soloDigitos(v: string) {
-  const d = v.replace(/\D/g, '')
-  return d.length === 9 && d.startsWith('9') ? '56' + d : d.length === 8 ? '569' + d : d
-}
-
 export default function Deudores() {
   const { etiqueta } = useAuth()
+  const [params] = useSearchParams()
   const [busqueda, setBusqueda] = useState('')
-  const [seleccionado, setSeleccionado] = useState<string | null>(null)
+  // Desde la ficha de una cobranza se llega con ?id= (el deudor abierto).
+  const [seleccionado, setSeleccionado] = useState<string | null>(params.get('id'))
   const hayBusqueda = busqueda.trim().length >= 2
 
   const { data: deudores, isFetching } = useQuery({

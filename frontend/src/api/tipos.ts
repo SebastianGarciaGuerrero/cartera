@@ -195,6 +195,8 @@ export interface TipoGestion {
   categoria: 'contacto' | 'pago' | 'negativo' | 'judicial' | 'otro'
   activo: boolean
   propio: boolean
+  /** Cuántas veces lo usó quien consulta en los últimos 90 días (para mostrar primero los más usados). */
+  usos?: number
 }
 
 export interface Gestion {

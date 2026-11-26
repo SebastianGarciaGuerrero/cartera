@@ -299,3 +299,22 @@ def test_fecha_y_tipo_de_columna_extra():
     assert estado_desde_texto("Deudor fallecido") == ("archivada", "fallecido")
     assert reconocer("Correo electrónico paciente")[:2] == ("t_email", "paciente")
     assert telefono(56912345678)[1] == "+56 9 1234 5678" and telefono("22") is None
+
+
+def test_tipos_de_gestion_con_los_usos_de_cada_persona(cliente_http, org_a):
+    """La ficha muestra primero los tipos que más usa quien registra (no cuentan los de otros)."""
+    h = login(cliente_http, org_a["email"])
+    cartera = crear_cartera(cliente_http, h, n=560)
+    tipos = {t["codigo"]: t["id"] for t in cliente_http.get("/api/gestiones/tipos", headers=h).json()}
+    for codigo in ("llamada", "llamada", "whatsapp"):
+        r = cliente_http.post("/api/gestiones/", headers=h, json={
+            "cobranza_id": cartera["cobranza_id"], "tipo_id": tipos[codigo], "descripcion": "Gestión de prueba"})
+        assert r.status_code == 201, r.text
+    ho = login(cliente_http, agregar_usuario(org_a["org_id"], "operador"))
+    cliente_http.post("/api/gestiones/", headers=ho, json={
+        "cobranza_id": cartera["cobranza_id"], "tipo_id": tipos["email"], "descripcion": "Correo enviado"})
+
+    usos = {t["codigo"]: t["usos"] for t in cliente_http.get("/api/gestiones/tipos", headers=h).json()}
+    assert usos["llamada"] == 2 and usos["whatsapp"] == 1 and usos["email"] == 0
+    usos_otro = {t["codigo"]: t["usos"] for t in cliente_http.get("/api/gestiones/tipos", headers=ho).json()}
+    assert usos_otro["email"] == 1 and usos_otro["llamada"] == 0

@@ -12,8 +12,20 @@
   propio, en informes); anular pagos sin borrar; acuerdos sin pago 3 meses →
   "para dar de baja"; agenda y avisos por secciones; paso a producción con
   numeración desde 40.000.
-- Pendiente: replicar estas funciones en la demo sin servidor; servidor MCP
-  propio (consultas de Claude por organización, solo lectura).
+- Pendiente: servidor MCP propio (consultas de Claude por organización,
+  solo lectura).
+
+## Interfaz más simple ✅ (noviembre 2026)
+
+- Fase A: menú por áreas y según el rol, con íconos y grupos plegables;
+  los pendientes en un solo lugar (campana, inicio y recordatorio del día).
+- Fase B: la ficha de la cobranza en pestañas con una cabecera fija
+  (deudor, contacto, etapa y saldo); un solo camino para registrar pagos;
+  ciclo de vida en una línea (el detalle, en la pestaña Judicial); los 5
+  tipos de gestión que más usa cada persona y "Más…"; renegociar y dar de
+  baja un acuerdo con confirmación.
+- Pendiente (Fase C): barra inferior en el celular, pantallas vacías con
+  ayuda y "primeros pasos" para el administrador.
 
 ## Pendientes en pausa
 

@@ -35,6 +35,20 @@ const RESULTADOS: { valor: ResultadoGestion; nombre: string; ayuda: string }[] =
 const TIPOS_AUTOMATICOS = new Set(['automatica', 'ingreso', 'acuerdo', 'abono', 'pagado', 'promesa_pago', 'demanda',
   'gasto', 'tramite', 'embargo', 'etapa', 'cambio_datos', 'pago_anulado', 'eliminada_cartera', 'acuerdo_baja'])
 
+// Se ven primero los 5 tipos que más usa cada persona (últimos 90 días);
+// el resto, con "Más…". Sin historial, este orden.
+const PRIORIDAD = ['llamada', 'no_contesta', 'whatsapp', 'email', 'sms', 'visita', 'carta', 'negativa_pago', 'nota']
+const TIPOS_VISIBLES = 5
+
+function ordenarTipos(tipos: TipoGestion[]): TipoGestion[] {
+  const lugar = (t: TipoGestion) => {
+    const i = PRIORIDAD.indexOf(t.codigo ?? '')
+    return i < 0 ? PRIORIDAD.length : i
+  }
+  return [...tipos].sort((a, b) => (b.usos ?? 0) - (a.usos ?? 0) || lugar(a) - lugar(b)
+    || a.nombre.localeCompare(b.nombre, 'es'))
+}
+
 interface CuotaEditable { fecha: string; monto: string }
 
 /** Reparte lo que queda después del pie en N cuotas mensuales; el resto de pesos va en la última. */
@@ -65,10 +79,13 @@ const ATAJOS_FECHA: [string, () => string][] = [
   ['Próximo viernes', proximoViernes], ['En una semana', () => enDias(7)], ['Fin de mes', finDeMes],
 ]
 
-export default function RegistrarGestion({ cobranza, resultado, setResultado }: {
+export default function RegistrarGestion({ cobranza, resultado, setResultado, cuota, setCuota }: {
   cobranza: CobranzaDetalle
   resultado: ResultadoGestion
   setResultado: (r: ResultadoGestion) => void
+  /** Cuota elegida para el pago ('' = la próxima; 'libre' = abono sin cuota). La ficha la elige al pulsar "Pagar" en una cuota. */
+  cuota: string
+  setCuota: (id: string) => void
 }) {
   const qc = useQueryClient()
   const { tiene } = useAuth()
@@ -100,8 +117,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
   const cuadra = cuotas.length > 0 && Math.round(sumaCuotas) === enCuotas
     && cuotas.every((c) => c.fecha && Number(c.monto) > 0)
 
-  // Pago
-  const [cuotaElegida, setCuotaElegida] = useState('')
+  const [todosLosTipos, setTodosLosTipos] = useState(false)
 
   const { data: tipos } = useQuery({
     queryKey: ['tipos-gestion'],
@@ -119,15 +135,19 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
   })
   const pendientes = vigente && detalle
     ? detalle.cuotas.filter((c) => c.estado !== 'pagada').sort((a, b) => a.numero_cuota - b.numero_cuota) : []
-  const idCuota = cuotaElegida || pendientes[0]?.id || 'libre'
+  const idCuota = (cuota && (cuota === 'libre' || pendientes.some((c) => c.id === cuota)) ? cuota : '')
+    || pendientes[0]?.id || 'libre'
   const cuotaPago = pendientes.find((c) => c.id === idCuota) ?? null
 
-  const opcionesTipo = (tipos ?? []).filter((t) => t.activo && !TIPOS_AUTOMATICOS.has(t.codigo ?? '')
-    && (resultado === 'gestion' || (t.categoria === 'contacto' && t.codigo !== 'no_contesta')))
+  const opcionesTipo = ordenarTipos((tipos ?? []).filter((t) => t.activo && !TIPOS_AUTOMATICOS.has(t.codigo ?? '')
+    && (resultado === 'gestion' || (t.categoria === 'contacto' && t.codigo !== 'no_contesta'))))
+  const tiposVisibles = todosLosTipos ? opcionesTipo
+    : opcionesTipo.filter((t, i) => i < TIPOS_VISIBLES || t.id === tipoId)
+  const tiposOcultos = opcionesTipo.length - tiposVisibles.length
 
   function terminar(texto: string) {
     setDescripcion(''); setProximo(''); setPromesaFecha(''); setPromesaMonto('')
-    setTipoId(null); setCuotasEditadas(null); setCuotaElegida(''); setError('')
+    setTipoId(null); setCuotasEditadas(null); setCuota(''); setTodosLosTipos(false); setError('')
     setListo(texto)
     setResultado('gestion')
     refrescarCaso(qc, cobranza.id)
@@ -210,7 +230,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
             <div className="opciones-cuota">
               {pendientes.map((c) => (
                 <label key={c.id} className={`opcion ${idCuota === c.id ? 'elegida' : ''}`}>
-                  <input type="radio" name="cuota-gestion" checked={idCuota === c.id} onChange={() => setCuotaElegida(c.id)} />
+                  <input type="radio" name="cuota-gestion" checked={idCuota === c.id} onChange={() => setCuota(c.id)} />
                   <span>{nombreCuota(c.numero_cuota, vigente?.numero_cuotas, 'Cuota ')}</span>
                   <span className={c.fecha_vencimiento < fechaLocal() ? 'texto-rojo' : 'suave'}>
                     vence {fechaLegible(c.fecha_vencimiento)}
@@ -219,7 +239,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
                 </label>
               ))}
               <label className={`opcion ${idCuota === 'libre' ? 'elegida' : ''}`}>
-                <input type="radio" name="cuota-gestion" checked={idCuota === 'libre'} onChange={() => setCuotaElegida('libre')} />
+                <input type="radio" name="cuota-gestion" checked={idCuota === 'libre'} onChange={() => setCuota('libre')} />
                 <span>Abono libre</span>
                 <span className="suave">sin imputar a una cuota</span>
               </label>
@@ -228,7 +248,7 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
           <FormPago key={idCuota} cobranzaId={cobranza.id} saldo={cobranza.monto_actual} modalidad={cobranza.tipo}
             cuota={cuotaPago}
             alTerminar={(p) => terminar(`Pago de ${clp(p.monto)} registrado${p.cuota != null ? ` (${nombreCuota(p.cuota, null, 'cuota ')})` : ''}.`)}
-            alCancelar={() => setResultado('gestion')} />
+            alCancelar={() => { setCuota(''); setResultado('gestion') }} />
         </>
       ) : (
         <form className="form-gestion" onSubmit={(e: FormEvent) => {
@@ -239,12 +259,20 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
           <div>
             <span className="etiqueta-campo">{resultado === 'gestion' ? 'Tipo' : 'Canal (opcional)'}</span>
             <div className="chips">
-              {opcionesTipo.map((t) => (
+              {tiposVisibles.map((t) => (
                 <button key={t.id} type="button" className={`chip ${tipoId === t.id ? 'elegido' : ''}`}
                   aria-pressed={tipoId === t.id} onClick={() => setTipoId(tipoId === t.id ? null : t.id)}>
                   {t.nombre}
                 </button>
               ))}
+              {tiposOcultos > 0 && (
+                <button type="button" className="chip chip-mas" onClick={() => setTodosLosTipos(true)}>
+                  Más… ({tiposOcultos})
+                </button>
+              )}
+              {todosLosTipos && opcionesTipo.length > TIPOS_VISIBLES && (
+                <button type="button" className="chip chip-mas" onClick={() => setTodosLosTipos(false)}>Menos</button>
+              )}
             </div>
           </div>
 
@@ -270,8 +298,8 @@ export default function RegistrarGestion({ cobranza, resultado, setResultado }: 
 
           {resultado === 'acuerdo' && (vigente ? (
             <div className="alerta-error">
-              Esta cobranza ya tiene un acuerdo vigente. Para renegociar, márcalo como renegociado en
-              "Acuerdo de pago y pagos" y vuelve a registrar el nuevo.
+              Esta cobranza ya tiene un acuerdo vigente. Para hacer uno nuevo, primero dalo de baja en la
+              pestaña "Acuerdo y pagos".
             </div>
           ) : (<>
             {conCalculadora && (

@@ -12,10 +12,12 @@ Endpoints:
 Si una gestión quedó mal, se registra una gestión correctiva nueva.
 """
 
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 from typing import List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -45,19 +47,38 @@ router = APIRouter(
 )
 
 
+# Ventana para contar los tipos que más usa cada persona (los primeros que ve al registrar).
+DIAS_USOS = 90
+
+
 @router.get("/tipos", response_model=List[TipoGestionResponse])
 def listar_tipos_gestion(
     solo_activos: bool = True,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(get_current_user),
 ):
     """
     Tipos de gestión: los de sistema más los propios de la organización
-    (el filtro lo pone app/tenancy.py).
+    (el filtro lo pone app/tenancy.py). `usos`: cuántas gestiones de ese tipo
+    registró quien consulta en los últimos 90 días (las cargas masivas no
+    cuentan), para mostrarle primero los que más usa.
     """
     query = db.query(TipoGestion)
     if solo_activos:
         query = query.filter(TipoGestion.activo.is_(True))
-    return query.order_by(TipoGestion.nombre).all()
+    tipos = query.order_by(TipoGestion.nombre).all()
+    desde = datetime.now(timezone.utc) - timedelta(days=DIAS_USOS)
+    usos = dict(
+        db.query(Gestion.tipo_id, func.count())
+        .filter(Gestion.usuario_id == usuario.id, Gestion.fecha_gestion >= desde,
+                Gestion.es_masivo.is_(False), Gestion.tipo_id.isnot(None))
+        .group_by(Gestion.tipo_id)
+        .all()
+    )
+    return [
+        TipoGestionResponse.model_validate(t).model_copy(update={"usos": usos.get(t.id, 0)})
+        for t in tipos
+    ]
 
 
 class TipoGestionEntrada(BaseModel):

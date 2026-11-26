@@ -130,7 +130,11 @@ export default function Agenda() {
           {i.detalle && <div className="suave">{i.detalle}</div>}
           <div className="agenda-acciones">
             {i.causa_id && <Link to={`/judicial/causas/${i.causa_id}`}>Ver causa</Link>}
-            {i.cobranza_id && <Link to={`/cobranzas/${i.cobranza_id}`}>Cobranza N° {i.numero_cobranza}</Link>}
+            {i.cobranza_id && (
+              <Link to={`/cobranzas/${i.cobranza_id}${i.tipo === 'cuota' || i.tipo === 'baja' ? '?ver=pagos' : ''}`}>
+                Cobranza N° {i.numero_cobranza}
+              </Link>
+            )}
             {i.monto != null && i.tipo !== 'recordatorio' && <span className="suave"><Plata valor={i.monto} /></span>}
             {i.tipo === 'baja' && i.acuerdo_id && (
               <button className="btn btn-chico btn-peligro" disabled={darDeBaja.isPending} onClick={() => {

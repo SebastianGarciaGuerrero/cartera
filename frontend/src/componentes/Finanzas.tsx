@@ -1,20 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError, descargarArchivo } from '../api/client'
 import { refrescarCaso } from '../api/refrescar'
 import type {
-  Cobranza, Acuerdo, AcuerdoDetalle, Cuota, Pago, EstadoCuota,
+  Cobranza, Acuerdo, AcuerdoDetalle, Cuota, EstadoCuota,
 } from '../api/tipos'
-import { Plata, clp, fechaLegible, fechaLocal, nombreCuota } from './utiles'
-import ConfirmarGestion from './ConfirmarGestion'
+import { NOMBRE_FORMA, Plata, clp, fechaLegible, fechaLocal, nombreCuota } from './utiles'
+import ConfirmarGestion, { useConfirmacion } from './ConfirmarGestion'
+import { ListaPagos, usePagos } from './HistorialPagos'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useUF } from './UF'
 import type { Modalidad, ResultadoHonorarios } from '../api/tipos'
 
-// Sección financiera de la ficha de cobranza: acuerdo de pago con sus
-// cuotas, historial de pagos, y registro de pagos (por cuota o directos).
+// Pestaña "Acuerdo y pagos" de la ficha: el acuerdo con sus cuotas y los
+// pagos recibidos (con su desglose y la anulación). Los pagos se registran
+// por UN solo camino, el de "Registrar gestión" (deja la gestión del pago):
+// "Pagar" en una cuota lleva allá con esa cuota elegida.
 // El backend aplica la cascada: saldo, estado de cuota, acuerdo y cobranza.
 
 const FORMAS_PAGO = [
@@ -37,13 +40,20 @@ export const CLASE_CUOTA: Record<EstadoCuota, string> = {
   pagada_parcial: 'etiqueta-acuerdo_pago',
 }
 
-export default function Finanzas({ cobranza, alPedirAcuerdo }: {
+/** '2026-10-06' → '06-10-2026' (como lo escribe el servidor en las gestiones). */
+const ddmmaaaa = (iso: string) => iso.slice(0, 10).split('-').reverse().join('-')
+
+export default function Finanzas({ cobranza, alPedirAcuerdo, alPagar }: {
   cobranza: Cobranza
   /** Abre "Registrar gestión" en modo acuerdo (gestión + acuerdo en un paso). */
   alPedirAcuerdo?: () => void
+  /** Abre "Registrar gestión" en modo pago, con esa cuota elegida. */
+  alPagar?: (cuotaId?: string) => void
 }) {
   const qc = useQueryClient()
   const cobranzaId = cobranza.id
+  const { pedir, modal } = useConfirmacion()
+  const motivoBaja = useRef<HTMLInputElement>(null)
 
   const { data: acuerdos } = useQuery({
     queryKey: ['acuerdos', cobranzaId],
@@ -61,153 +71,168 @@ export default function Finanzas({ cobranza, alPedirAcuerdo }: {
       (await api.get<AcuerdoDetalle>(`/acuerdos/${acuerdo!.id}`)).data,
   })
 
-  const { data: pagos } = useQuery({
-    queryKey: ['pagos', cobranzaId],
-    queryFn: async () =>
-      (await api.get<Pago[]>('/pagos/', { params: { cobranza_id: cobranzaId } })).data,
-  })
+  const { data: pagos } = usePagos({ cobranza_id: cobranzaId })
+  const vigentes = (pagos ?? []).filter((p) => !p.anulado_at)
 
   // Refresca todo lo que la cascada del backend puede haber cambiado.
   const refrescarTodo = () => refrescarCaso(qc, cobranzaId)
 
-  const baja = useMutation({
-    mutationFn: (motivo: string) => api.post(`/acuerdos/${acuerdoDetalle!.id}/baja`, { motivo: motivo.trim() || null }),
-    onSuccess: refrescarTodo,
-    onError: (e) => alert(mensajeDeError(e)),
-  })
+  function pedirBaja(a: AcuerdoDetalle) {
+    const hoy = fechaLocal()
+    const atrasadas = a.cuotas.filter((c) => c.estado !== 'pagada' && c.fecha_vencimiento < hoy)
+    const monto = atrasadas.reduce((s, c) => s + Number(c.monto) - Number(c.monto_pagado), 0)
+    const ids = new Set(a.cuotas.map((c) => c.id))
+    const ultimo = vigentes.filter((p) => p.cuota_id && ids.has(p.cuota_id)).map((p) => p.fecha_pago).sort().at(-1)
+    pedir({
+      titulo: 'Dar de baja el acuerdo',
+      gestion: `ACUERDO DADO DE BAJA por no pago: ${atrasadas.length} cuota(s) atrasada(s) por ${clp(monto)}; `
+        + `último pago de cuota: ${ultimo ? ddmmaaaa(ultimo) : 'ninguno'}.`,
+      detalle: (
+        <>
+          <p className="suave">El acuerdo pasa a incumplido y la cobranza vuelve a gestión.</p>
+          <label className="campo-ancho">
+            Motivo (opcional, se agrega a la gestión)
+            <input ref={motivoBaja} maxLength={500} placeholder="Ej.: no contesta desde agosto" />
+          </label>
+        </>
+      ),
+      confirmar: 'Sí, dar de baja',
+      accion: async () => {
+        await api.post(`/acuerdos/${a.id}/baja`, { motivo: motivoBaja.current?.value.trim() || null })
+        refrescarTodo()
+      },
+    })
+  }
 
-  // --- Estado del formulario de pago (por cuota o directo) ---
-  const [pagando, setPagando] = useState<Cuota | 'directo' | null>(null)
+  function pedirRenegociar(a: AcuerdoDetalle) {
+    pedir({
+      titulo: 'Renegociar el acuerdo',
+      gestion: 'ACUERDO DE PAGO MODIFICADO: Estado: vigente → renegociado.',
+      detalle: (
+        <p className="suave">
+          Este acuerdo queda como renegociado (no cuenta como incumplido) y se abre el formulario para
+          registrar el nuevo.
+        </p>
+      ),
+      confirmar: 'Sí, renegociar',
+      accion: async () => {
+        await api.put(`/acuerdos/${a.id}`, { estado: 'renegociado' })
+        refrescarTodo()
+        alPedirAcuerdo?.()
+      },
+    })
+  }
 
   return (
-    <section className="tarjeta finanzas">
-      <h2>Acuerdo de pago y pagos</h2>
+    <div className="finanzas">
+      <section className="tarjeta">
+        <h2>Acuerdo de pago</h2>
+        {acuerdoDetalle ? (
+          <>
+            <div className="acuerdo-resumen">
+              <div>
+                <span className="suave">Acuerdo del {fechaLegible(acuerdoDetalle.fecha_acuerdo)}</span>{' '}
+                <span className={`etiqueta ${acuerdoDetalle.estado === 'vigente'
+                  ? 'etiqueta-activa'
+                  : acuerdoDetalle.estado === 'cumplido'
+                    ? 'etiqueta-pagada'
+                    : 'etiqueta-castigo'}`}>
+                  {acuerdoDetalle.estado}
+                </span>
+              </div>
+              <div>
+                <Plata valor={acuerdoDetalle.monto_total_acordado} /> en{' '}
+                {acuerdoDetalle.numero_cuotas} cuota(s)
+                {Number(acuerdoDetalle.pie) > 0 && (
+                  <span className="suave"> · pie <Plata valor={acuerdoDetalle.pie} /></span>
+                )}
+              </div>
+              <div className="acuerdo-acciones">
+                <button className="btn btn-chico btn-secundario"
+                  onClick={() => descargarArchivo(`/documentos/acuerdo/${acuerdoDetalle.id}`)}>
+                  {cobranza.tipo === 'judicial' ? 'Avenimiento' : 'Acuerdo'} (Word)
+                </button>
+                {acuerdoDetalle.estado === 'vigente' && alPedirAcuerdo && (
+                  <button className="btn btn-chico btn-secundario" onClick={() => pedirRenegociar(acuerdoDetalle)}>
+                    Renegociar
+                  </button>
+                )}
+                {acuerdoDetalle.estado === 'vigente' && (
+                  <button className="btn btn-chico btn-peligro" onClick={() => pedirBaja(acuerdoDetalle)}>
+                    Dar de baja
+                  </button>
+                )}
+              </div>
+            </div>
 
-      {acuerdoDetalle ? (
-        <>
-          <div className="acuerdo-resumen">
-            <div>
-              <span className="suave">Acuerdo del {fechaLegible(acuerdoDetalle.fecha_acuerdo)}</span>{' '}
-              <span className={`etiqueta ${acuerdoDetalle.estado === 'vigente'
-                ? 'etiqueta-activa'
-                : acuerdoDetalle.estado === 'cumplido'
-                  ? 'etiqueta-pagada'
-                  : 'etiqueta-castigo'}`}>
-                {acuerdoDetalle.estado}
-              </span>
+            <div className="tabla-desplazable">
+              <table className="tabla tabla-cuotas">
+                <thead>
+                  <tr>
+                    <th>Cuota</th><th>Vence</th>
+                    <th className="der">Monto</th><th className="der">Pagado</th>
+                    <th>Estado</th><th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acuerdoDetalle.cuotas.map((c) => (
+                    <tr key={c.id}>
+                      <td className="mono">{nombreCuota(c.numero_cuota, acuerdoDetalle.numero_cuotas)}</td>
+                      <td>{fechaLegible(c.fecha_vencimiento)}</td>
+                      <td className="der"><Plata valor={c.monto} /></td>
+                      <td className="der"><Plata valor={c.monto_pagado} /></td>
+                      <td>
+                        <span className={`etiqueta ${CLASE_CUOTA[c.estado]}`}>
+                          {NOMBRE_CUOTA[c.estado]}
+                        </span>
+                      </td>
+                      <td className="der">
+                        {c.estado !== 'pagada' && acuerdoDetalle.estado === 'vigente' && alPagar && (
+                          <button className="btn btn-chico btn-secundario" onClick={() => alPagar(c.id)}>
+                            Pagar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div>
-              <Plata valor={acuerdoDetalle.monto_total_acordado} /> en{' '}
-              {acuerdoDetalle.numero_cuotas} cuota(s)
-              {Number(acuerdoDetalle.pie) > 0 && (
-                <span className="suave"> · pie <Plata valor={acuerdoDetalle.pie} /></span>
-              )}
-            </div>
-            <button className="btn btn-chico btn-secundario"
-              onClick={() => descargarArchivo(`/documentos/acuerdo/${acuerdoDetalle.id}`)}>
-              {cobranza.tipo === 'judicial' ? 'Avenimiento' : 'Acuerdo'} (Word)
-            </button>
-            {acuerdoDetalle.estado === 'vigente' && (
-              <button className="btn btn-chico btn-peligro" disabled={baja.isPending} onClick={() => {
-                const motivo = prompt('¿Dar de baja el acuerdo? Pasa a incumplido y la cobranza vuelve a gestión.\nMotivo (opcional):')
-                if (motivo !== null) baja.mutate(motivo)
-              }}>Dar de baja</button>
+            {acuerdos && acuerdos.length > 1 && (
+              <p className="nota">
+                Acuerdos anteriores: {acuerdos.filter((a) => a.id !== acuerdoDetalle.id)
+                  .map((a) => `${fechaLegible(a.fecha_acuerdo)} (${a.estado})`).join(' · ')}.
+              </p>
             )}
+          </>
+        ) : (
+          <div className="sin-acuerdo">
+            <p className="suave">Esta cobranza no tiene un acuerdo de pago.</p>
+            {alPedirAcuerdo && (
+              <button className="btn btn-secundario" onClick={alPedirAcuerdo}>+ Registrar acuerdo de pago</button>
+            )}
+            <LinkCalculadora cobranzaId={cobranzaId} />
           </div>
-
-          <table className="tabla tabla-cuotas">
-            <thead>
-              <tr>
-                <th>Cuota</th><th>Vence</th>
-                <th className="der">Monto</th><th className="der">Pagado</th>
-                <th>Estado</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {acuerdoDetalle.cuotas.map((c) => (
-                <tr key={c.id}>
-                  <td className="mono">{nombreCuota(c.numero_cuota, acuerdoDetalle.numero_cuotas)}</td>
-                  <td>{fechaLegible(c.fecha_vencimiento)}</td>
-                  <td className="der"><Plata valor={c.monto} /></td>
-                  <td className="der"><Plata valor={c.monto_pagado} /></td>
-                  <td>
-                    <span className={`etiqueta ${CLASE_CUOTA[c.estado]}`}>
-                      {NOMBRE_CUOTA[c.estado]}
-                    </span>
-                  </td>
-                  <td>
-                    {c.estado !== 'pagada' && acuerdoDetalle.estado === 'vigente' && (
-                      <button
-                        className="btn btn-chico btn-secundario"
-                        onClick={() => setPagando(c)}
-                      >
-                        Registrar pago
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      ) : (
-        <div className="sin-acuerdo">
-          <p className="suave">Esta cobranza no tiene un acuerdo de pago vigente.</p>
-          {alPedirAcuerdo && (
-            <button className="btn btn-secundario" onClick={alPedirAcuerdo}>+ Registrar acuerdo de pago</button>
-          )}
-          <LinkCalculadora cobranzaId={cobranzaId} />
-        </div>
-      )}
-
-      {pagando && (
-        <FormPago
-          cobranzaId={cobranzaId}
-          saldo={cobranza.monto_actual}
-          modalidad={cobranza.tipo}
-          cuota={pagando === 'directo' ? null : pagando}
-          alTerminar={() => { setPagando(null); refrescarTodo() }}
-          alCancelar={() => setPagando(null)}
-        />
-      )}
-
-      <div className="finanzas-pie">
-        <h2>Pagos recibidos ({pagos?.length ?? 0})</h2>
-        {!pagando && (
-          <button className="btn btn-chico btn-secundario" onClick={() => setPagando('directo')}>
-            + Registrar abono
-          </button>
         )}
-      </div>
+      </section>
 
-      {pagos && pagos.length > 0 ? (
-        <table className="tabla">
-          <thead>
-            <tr>
-              <th>Fecha</th><th className="der">Total</th>
-              <th className="der">Capital</th><th className="der">Honorarios</th>
-              <th>Tipo</th><th>Forma</th><th>Comprobante</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pagos.map((p) => (
-              <tr key={p.id} className={p.anulado_at ? 'pago-anulado' : ''}
-                title={p.anulado_at ? `Anulado: ${p.motivo_anulacion ?? ''}` : undefined}>
-                <td>{fechaLegible(p.fecha_pago)}</td>
-                <td className="der"><Plata valor={p.monto} /></td>
-                <td className="der"><Plata valor={p.capital} /></td>
-                <td className="der"><Plata valor={p.honorarios} /></td>
-                <td>{p.anulado_at ? <span className="etiqueta etiqueta-castigo">Anulado</span> : p.estado_pago}</td>
-                <td>{p.forma_pago ?? '—'}</td>
-                <td className="mono">{p.numero_comprobante ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <p className="suave">Aún no hay pagos registrados.</p>
-      )}
-    </section>
+      <section className="tarjeta">
+        <div className="tarjeta-cabecera">
+          <h2>Pagos recibidos ({vigentes.length})</h2>
+          {vigentes.length > 0 && (
+            <span className="suave">
+              Total: <strong><Plata valor={vigentes.reduce((s, p) => s + Number(p.monto), 0)} /></strong>
+            </span>
+          )}
+        </div>
+        <ListaPagos cobranzaId={cobranzaId} />
+        <p className="nota">
+          Abre un pago para ver su desglose. Un pago mal ingresado se anula (no se borra): queda tachado,
+          fuera de los totales, y su gestión sigue en el historial.
+        </p>
+      </section>
+      {modal}
+    </div>
   )
 }
 
@@ -541,7 +566,4 @@ function formatoPct(v: number): string {
   return `${(Math.round(v * 100) / 100).toLocaleString('es-CL')} %`
 }
 
-export const NOMBRE_FORMA: Record<string, string> = {
-  transferencia: 'Transferencia', cheque: 'Cheque', efectivo: 'Efectivo', deposito: 'Depósito',
-  flow: 'Pago en línea', presencial: 'Presencial', bonificacion: 'Bonificación', otro: 'Otro',
-}
+export { NOMBRE_FORMA }

@@ -94,6 +94,13 @@ FastAPI con capas por dominio: `backend/app/{models,schemas,routers}/<entidad>.p
 - **Agenda**: ítems con `seccion` (llamadas, whatsapp, correos, cuotas_vencidas, bajas…); tipo `baja` = acuerdo vigente sin pagos de cuota en `MESES_SIN_PAGO_BAJA` (3) meses → `POST /api/acuerdos/{id}/baja`. Recordatorios con `tipo`.
 - **Pasar a producción** (`app/produccion.py`, `/api/organizacion/produccion`): única vez, borra la cartera de prueba de la organización con los triggers de inmutabilidad apagados SOLO en esa transacción y fija `numero_cobranza_siguiente`.
 
+### Interfaz por rol: menú y ficha de la cobranza
+
+- **Menú** (`componentes/MenuLateral.tsx`): por áreas (Extrajudicial, Judicial, Ingresos y cargas, Reportes, Administración) y según el rol; abogado/procurador ven primero lo judicial. Grupos plegables recordados por persona en `localStorage` (`cartera.menu.<usuarioId>`). `useVeJudicial()` decide si alguien trabaja lo judicial.
+- **Ficha de la cobranza** (`paginas/CobranzaDetalle.tsx`): cabecera fija (deudor, cliente, ejecutivo, contacto, `CicloVida` compacto y `ResumenDeuda`) y pestañas Gestiones · Acuerdo y pagos · Datos del caso · Documentos · Judicial. La pestaña va en la URL (`?ver=pagos|judicial|…`); avisos, agenda y seguimiento enlazan directo a la que corresponde. Abogado/procurador abren en Judicial.
+- **Un solo camino para pagar**: "Registrar pago" (cabecera) y "Pagar" en una cuota abren el mismo formulario de `RegistrarGestion` (modo pago, con la cuota elegida); `Finanzas` ya no registra pagos por su cuenta. La lista de pagos con anulación es `ListaPagos` (`HistorialPagos.tsx`).
+- **Tipos de gestión**: `GET /api/gestiones/tipos` trae `usos` (gestiones de quien consulta en 90 días, sin las masivas); el formulario muestra los 5 más usados y "Más…".
+
 ## Reglas de negocio (no negociables)
 
 - **Nunca DELETE físico.** Soft delete con `activo`. La base lo impone (sin permiso DELETE para `cartera_app`).

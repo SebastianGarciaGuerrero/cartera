@@ -5,13 +5,17 @@ import { api, mensajeDeError } from '../api/client'
 import type { CicloVida as Ciclo, PasoCiclo } from '../api/judicial'
 import type { CobranzaDetalle } from '../api/tipos'
 import { useAuth } from '../auth'
-import { fechaLegible } from './utiles'
+import { fechaHoraLegible, fechaLegible } from './utiles'
+import { useCatalogos } from './usarJudicial'
 import NuevaDemanda from './NuevaDemanda'
 import ConfirmarGestion from './ConfirmarGestion'
 
-// Barra con el ciclo de vida de la cobranza: de dónde viene, en qué etapa
-// está y qué le queda. Debajo, el dato clave de la etapa y la acción que la
-// hace avanzar (preparar la demanda, presentarla, ir a la causa).
+// Ciclo de vida de la cobranza: de dónde viene, en qué etapa está y qué le
+// queda.
+//  - CicloVida (arriba de la ficha, compacto): la etapa, cuánto lleva en ella,
+//    el paso que sigue y la acción que la hace avanzar (preparar la demanda,
+//    presentarla, ir a la causa). "Ver etapas" despliega la barra completa.
+//  - DetalleCiclo (pestaña Judicial): la barra, las causas y los cambios de etapa.
 
 // Como las nombra la gestión que deja el servidor.
 const ETAPA_GESTION: Record<string, string> = {
@@ -23,6 +27,13 @@ const NOMBRE_ETAPA: Record<string, string> = {
   extrajudicial: 'Extrajudicial',
   para_demanda: 'Preparación de demanda',
   judicial: 'Judicial',
+}
+
+export function useCiclo(cobranzaId: string) {
+  return useQuery({
+    queryKey: ['ciclo', cobranzaId],
+    queryFn: async () => (await api.get<Ciclo>(`/cobranzas/${cobranzaId}/ciclo`)).data,
+  })
 }
 
 function Paso({ paso, numero, inicio, anterior }: {
@@ -69,17 +80,25 @@ export function BarraCiclo({ pasos }: { pasos: PasoCiclo[] }) {
   )
 }
 
+/** Puntos chicos, uno por paso: el camino de un vistazo (el detalle, en "Ver etapas"). */
+function PuntosCiclo({ pasos }: { pasos: PasoCiclo[] }) {
+  return (
+    <ol className="ciclo-mini" aria-hidden="true">
+      {pasos.map((p) => (
+        <li key={p.clave} className={`${p.estado}${p.grupo === 'judicial' ? ' judicial' : ''}`} title={p.nombre} />
+      ))}
+    </ol>
+  )
+}
+
 export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
   const { tiene, puede } = useAuth()
   const qc = useQueryClient()
   const [demanda, setDemanda] = useState(false)
+  const [etapas, setEtapas] = useState(false)
   const [error, setError] = useState('')
   const judicial = tiene('judicial')
-
-  const { data: ciclo } = useQuery({
-    queryKey: ['ciclo', cobranza.id],
-    queryFn: async () => (await api.get<Ciclo>(`/cobranzas/${cobranza.id}/ciclo`)).data,
-  })
+  const { data: ciclo } = useCiclo(cobranza.id)
 
   // Cambio de etapa: se confirma con su motivo (queda como gestión).
   const [moviendo, setMoviendo] = useState<'extrajudicial' | 'para_demanda' | null>(null)
@@ -97,18 +116,19 @@ export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
     onError: (e) => setError(mensajeDeError(e)),
   })
 
-  if (!ciclo) return <section className="ciclo ciclo-cargando" aria-busy="true" />
+  if (!ciclo) return <section className="ciclo ciclo-compacto ciclo-cargando" aria-busy="true" />
 
   const cerrada = ciclo.paso_actual === 'termino'
   const causaVigente = ciclo.causas.find((c) => c.estado === 'vigente')
   const ultimoCambio = ciclo.historial[ciclo.historial.length - 1]
+  const iActual = ciclo.pasos.findIndex((p) => p.clave === ciclo.paso_actual)
+  const siguiente = cerrada ? undefined : ciclo.pasos.slice(iActual + 1).find((p) => p.estado === 'pendiente')
 
   return (
-    <section className="ciclo" aria-label="Ciclo de vida de la cobranza">
-      <BarraCiclo pasos={ciclo.pasos} />
-
-      <div className="ciclo-pie">
-        <div className="ciclo-estado">
+    <section className="ciclo ciclo-compacto" aria-label="Ciclo de vida de la cobranza">
+      <div className="ciclo-linea">
+        <PuntosCiclo pasos={ciclo.pasos} />
+        <div className="ciclo-texto">
           {cerrada ? (
             <>
               <strong>Terminada: {ciclo.motivo_cierre_nombre ?? ciclo.estado}</strong>
@@ -121,56 +141,58 @@ export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
                 {' '}desde el {fechaLegible(ciclo.etapa_desde)}
                 {ciclo.dias_en_etapa != null && ` (${ciclo.dias_en_etapa} día${ciclo.dias_en_etapa === 1 ? '' : 's'})`}
               </span>
+              {siguiente && <span className="ciclo-siguiente"> · Sigue: {siguiente.nombre}</span>}
               {ultimoCambio?.motivo && ciclo.etapa !== 'ingreso' && (
-                <span className="suave"> · {ultimoCambio.motivo}</span>
+                <span className="suave ciclo-motivo"> · {ultimoCambio.motivo}</span>
               )}
             </>
           )}
-          {ciclo.causas.map((c) => (
-            <div key={c.id} className="ciclo-causa">
-              Causa {c.rol ? `rol ${c.rol}` : 'sin rol aún'}
-              {c.tribunal && <span className="suave"> · {c.tribunal}</span>}
-              {c.estado === 'terminada' && <span className="etiqueta etiqueta-archivada">terminada</span>}
-              {judicial && <Link to={`/judicial/causas/${c.id}`}>Ver causa</Link>}
-            </div>
-          ))}
-          {ciclo.prescripcion_proxima && ciclo.fecha_prescripcion && (
-            <div className="ciclo-alerta">
-              La acción podría prescribir el {fechaLegible(ciclo.fecha_prescripcion)}: conviene demandar antes.
+          {causaVigente && (
+            <div className="ciclo-causa">
+              Causa {causaVigente.rol ? `rol ${causaVigente.rol}` : 'sin rol aún'}
+              {causaVigente.tribunal && <span className="suave"> · {causaVigente.tribunal}</span>}
             </div>
           )}
-          {error && <div className="alerta-error">{error}</div>}
         </div>
 
-        {!cerrada && judicial && (
-          <div className="ciclo-acciones">
-            {(ciclo.etapa === 'ingreso' || ciclo.etapa === 'extrajudicial') && (
-              <button className="btn btn-secundario btn-chico" disabled={mover.isPending}
-                onClick={() => { setMotivo('No responde a la cobranza extrajudicial'); setMoviendo('para_demanda') }}>
-                {puede('judicial_causas') ? 'Preparar demanda' : 'Recomendar demanda'}
-              </button>
-            )}
-            {ciclo.etapa === 'para_demanda' && (
-              <>
-                {puede('judicial_causas') && (
-                  <button className="btn btn-primario btn-chico" onClick={() => setDemanda(true)}>
-                    Presentar demanda
-                  </button>
-                )}
-                <button className="btn btn-secundario btn-chico" disabled={mover.isPending}
-                  onClick={() => { setMotivo(''); setMoviendo('extrajudicial') }}>
-                  Volver a extrajudicial
+        <div className="ciclo-acciones">
+          {!cerrada && judicial && (ciclo.etapa === 'ingreso' || ciclo.etapa === 'extrajudicial') && (
+            <button className="btn btn-secundario btn-chico" disabled={mover.isPending}
+              onClick={() => { setMotivo('No responde a la cobranza extrajudicial'); setMoviendo('para_demanda') }}>
+              {puede('judicial_causas') ? 'Preparar demanda' : 'Recomendar demanda'}
+            </button>
+          )}
+          {!cerrada && judicial && ciclo.etapa === 'para_demanda' && (
+            <>
+              {puede('judicial_causas') && (
+                <button className="btn btn-primario btn-chico" onClick={() => setDemanda(true)}>
+                  Presentar demanda
                 </button>
-              </>
-            )}
-            {ciclo.etapa === 'judicial' && causaVigente && (
-              <Link className="btn btn-primario btn-chico" to={`/judicial/causas/${causaVigente.id}`}>
-                Registrar trámite
-              </Link>
-            )}
-          </div>
-        )}
+              )}
+              <button className="btn btn-secundario btn-chico" disabled={mover.isPending}
+                onClick={() => { setMotivo(''); setMoviendo('extrajudicial') }}>
+                Volver a extrajudicial
+              </button>
+            </>
+          )}
+          {judicial && causaVigente && (
+            <Link className={`btn btn-chico ${cerrada ? 'btn-secundario' : 'btn-primario'}`} to={`/judicial/causas/${causaVigente.id}`}>
+              {cerrada ? 'Ver causa' : 'Registrar trámite'}
+            </Link>
+          )}
+          <button type="button" className="btn-enlace" aria-expanded={etapas} onClick={() => setEtapas(!etapas)}>
+            {etapas ? 'Ocultar etapas' : 'Ver etapas'}
+          </button>
+        </div>
       </div>
+
+      {ciclo.prescripcion_proxima && ciclo.fecha_prescripcion && (
+        <div className="ciclo-alerta">
+          La acción podría prescribir el {fechaLegible(ciclo.fecha_prescripcion)}: conviene demandar antes.
+        </div>
+      )}
+      {error && !moviendo && <div className="alerta-error">{error}</div>}
+      {etapas && <div className="ciclo-desplegado"><BarraCiclo pasos={ciclo.pasos} /></div>}
 
       {demanda && <NuevaDemanda cobranza={cobranza} alCerrar={() => setDemanda(false)} />}
       {moviendo && (
@@ -192,5 +214,80 @@ export default function CicloVida({ cobranza }: { cobranza: CobranzaDetalle }) {
         />
       )}
     </section>
+  )
+}
+
+/** Pestaña Judicial de la ficha: la barra de etapas, las causas y los cambios de etapa. */
+export function DetalleCiclo({ cobranzaId }: { cobranzaId: string }) {
+  const { tiene } = useAuth()
+  const { data: ciclo } = useCiclo(cobranzaId)
+  const { data: catalogos } = useCatalogos()
+  if (!ciclo) return <section className="tarjeta"><p className="suave">Cargando…</p></section>
+  const cambios = [...ciclo.historial].reverse()
+
+  return (
+    <div className="detalle-ciclo">
+      <section className="tarjeta">
+        <h2>Etapas</h2>
+        <BarraCiclo pasos={ciclo.pasos} />
+        {ciclo.fecha_prescripcion && (
+          <p className={ciclo.prescripcion_proxima ? 'ciclo-alerta' : 'nota'}>
+            Prescripción estimada de la acción: {fechaLegible(ciclo.fecha_prescripcion)}.
+          </p>
+        )}
+      </section>
+
+      <section className="tarjeta">
+        <h2>Causas ({ciclo.causas.length})</h2>
+        {ciclo.causas.length === 0 ? (
+          <p className="vacio">
+            Aún no hay demanda.
+            {ciclo.etapa === 'para_demanda' ? ' Se presenta con "Presentar demanda", arriba.'
+              : ciclo.paso_actual !== 'termino' ? ' Cuando no responda a la cobranza, usa "Preparar demanda", arriba.' : ''}
+          </p>
+        ) : (
+          <ul className="lista-causas">
+            {ciclo.causas.map((c) => (
+              <li key={c.id}>
+                <div>
+                  <strong>{c.rol ? `Rol ${c.rol}` : 'Sin rol aún'}</strong>
+                  {c.tribunal && <span className="suave"> · {c.tribunal}</span>}
+                  <span className={`etiqueta ${c.estado === 'vigente' ? 'etiqueta-judicial' : 'etiqueta-archivada'}`}>
+                    {c.estado}
+                  </span>
+                </div>
+                <div className="suave">
+                  {catalogos?.procedimientos[c.procedimiento] ?? c.procedimiento}
+                  {' · '}etapa {catalogos?.etapas[c.etapa_procesal] ?? c.etapa_procesal}
+                  {' · '}ingresó el {fechaLegible(c.fecha_ingreso)}
+                  {c.fecha_termino && ` · terminó el ${fechaLegible(c.fecha_termino)}`}
+                  {c.resultado && ` · ${catalogos?.resultados[c.resultado] ?? c.resultado}`}
+                </div>
+                {tiene('judicial') && <Link to={`/judicial/causas/${c.id}`}>Ver causa y trámites</Link>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="tarjeta">
+        <h2>Cambios de etapa</h2>
+        {cambios.length === 0 ? <p className="vacio">Sin cambios de etapa.</p> : (
+          <ul className="lista-cambios-etapa">
+            {cambios.map((h, i) => (
+              <li key={`${h.created_at}-${i}`}>
+                <span className="mono suave">{fechaHoraLegible(h.created_at)}</span>
+                <span>
+                  {h.etapa_anterior ? `${ETAPA_GESTION[h.etapa_anterior] ?? h.etapa_anterior} → ` : ''}
+                  <strong>{ETAPA_GESTION[h.etapa_nueva] ?? h.etapa_nueva}</strong>
+                  {h.motivo && <span className="suave"> · {h.motivo}</span>}
+                  {h.usuario && <span className="suave"> · {h.usuario}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   )
 }

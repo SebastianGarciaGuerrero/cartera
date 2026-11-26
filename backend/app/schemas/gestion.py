@@ -22,6 +22,7 @@ class TipoGestionResponse(BaseModel):
     categoria: str = "otro"          # contacto / pago / negativo / judicial / otro
     activo: bool
     propio: bool = False             # creado por la organización (editable)
+    usos: int = 0                    # cuántas veces lo usó quien consulta (últimos 90 días)
 
     model_config = ConfigDict(from_attributes=True)
 

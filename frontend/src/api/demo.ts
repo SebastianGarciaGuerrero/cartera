@@ -936,7 +936,17 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     return ok(config, lista)
   }
   if (metodo === 'GET' && url === '/gestiones/tipos') {
-    return ok(config, params.solo_activos === 'false' ? db.tiposGestion : db.tiposGestion.filter((t) => t.activo))
+    // usos: cuántas gestiones de ese tipo registró quien consulta en los últimos 90 días.
+    const yo = usuarioDelToken(config, db).id
+    const desde = Date.now() - 90 * 86_400_000
+    const usos = new Map<number, number>()
+    for (const g of db.gestiones) {
+      if (g.usuario_id !== yo || g.tipo_id == null || (g as { es_masivo?: boolean }).es_masivo) continue
+      if (new Date(g.fecha_gestion).getTime() < desde) continue
+      usos.set(g.tipo_id, (usos.get(g.tipo_id) ?? 0) + 1)
+    }
+    const lista = params.solo_activos === 'false' ? db.tiposGestion : db.tiposGestion.filter((t) => t.activo)
+    return ok(config, lista.map((t) => ({ ...t, usos: usos.get(t.id) ?? 0 })))
   }
   if (metodo === 'POST' && url === '/gestiones/tipos') {
     const datos = cuerpo(config) as { nombre: string; categoria: string }
@@ -1701,6 +1711,21 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       `PAGO ANULADO: el pago de ${clp(Number(pago.monto))} del ${pago.fecha_pago} se anula. Motivo: ${motivo}. Saldo capital: ${clp(Number(cob.monto_actual))}.`)
     guardarDB(db)
     return ok(config, { ...pago, anulado_por_nombre: u.nombre })
+  }
+
+  // ---- cambiar el estado de un acuerdo (renegociar): queda su gestión ----
+  const acuerdoPut = /^\/acuerdos\/([^/]+)$/.exec(url)
+  if (metodo === 'PUT' && acuerdoPut) {
+    const a = db.acuerdos.find((x) => x.id === acuerdoPut[1])
+    if (!a) return error(404, 'Acuerdo no encontrado')
+    const datos = cuerpo(config) as { estado?: string }
+    if (datos.estado && datos.estado !== a.estado) {
+      gestionAutomatica(db, a.cobranza_id, usuarioDelToken(config, db).id, 'cambio_datos',
+        `ACUERDO DE PAGO MODIFICADO: Estado: ${a.estado} → ${datos.estado}.`)
+      a.estado = datos.estado as typeof a.estado
+      guardarDB(db)
+    }
+    return ok(config, a)
   }
 
   // ---- dar de baja un acuerdo que dejó de pagarse ----

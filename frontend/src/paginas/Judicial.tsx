@@ -228,7 +228,7 @@ function ParaDemandar() {
         <h2>En preparación ({data.preparacion.length})</h2>
         <p className="suave">Cobranzas que el equipo decidió demandar. Desde la ficha se presenta la demanda.</p>
         <TablaDemanda filas={data.preparacion} accion={(c) => (
-          <Link className="btn btn-chico btn-primario" to={`/cobranzas/${c.id}`}>Presentar demanda</Link>
+          <Link className="btn btn-chico btn-primario" to={`/cobranzas/${c.id}?ver=judicial`}>Presentar demanda</Link>
         )} />
       </section>
 

@@ -101,7 +101,7 @@ export default function Seguimiento() {
               <ul className="lista-simple">
                 {s.atrasados.map((a) => (
                   <li key={a.cobranza_id}>
-                    <Link to={`/cobranzas/${a.cobranza_id}`}>N° {a.numero} · {a.deudor}</Link>
+                    <Link to={`/cobranzas/${a.cobranza_id}?ver=pagos`}>N° {a.numero} · {a.deudor}</Link>
                     <span className="texto-rojo">{a.cuotas_atrasadas} cuota(s) · {clp(Number(a.monto_atrasado))}</span>
                   </li>
                 ))}
@@ -113,7 +113,7 @@ export default function Seguimiento() {
               <ul className="lista-simple">
                 {s.proximas_cuotas.map((c) => (
                   <li key={`${c.cobranza_id}-${c.cuota}`}>
-                    <Link to={`/cobranzas/${c.cobranza_id}`}>{c.deudor} · {nombreCuota(c.cuota, c.de, 'cuota ')}</Link>
+                    <Link to={`/cobranzas/${c.cobranza_id}?ver=pagos`}>{c.deudor} · {nombreCuota(c.cuota, c.de, 'cuota ')}</Link>
                     <span>{fechaLegible(c.fecha)} · {clp(Number(c.monto))}</span>
                   </li>
                 ))}

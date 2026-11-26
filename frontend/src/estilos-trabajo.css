@@ -318,3 +318,64 @@
 .calc-grupo .fila .check { flex-direction: row; align-items: center; gap: 8px; align-self: center; }
 .calc-grupo .fila .check input { width: auto; }
 .inicio-cabecera { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ---------- Ficha de la cobranza en pestañas (Fase B) ---------- */
+/* Arriba, siempre a la vista: quién, a quién, cuánto, etapa y contacto. */
+.ficha-caso { margin-bottom: 14px; }
+.ficha-caso-fila { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px 20px; flex-wrap: wrap; margin-top: 4px; }
+.ficha-caso-identidad { min-width: 0; }
+.ficha-caso h1 { margin: 0; font-size: 22px; line-height: 1.3; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.ficha-caso-numero {
+  font-size: 13px; font-weight: 700; color: var(--texto-suave); background: var(--tarjeta);
+  border: 1px solid var(--borde); border-radius: 6px; padding: 2px 8px; font-variant-numeric: tabular-nums;
+}
+.ficha-caso-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--texto-suave); margin-top: 6px; }
+.ficha-caso-meta a { color: inherit; }
+.ficha-caso-meta a:hover { color: var(--acento); }
+.ficha-caso-contacto { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ficha-caso + .ciclo-compacto + .resumen-deuda { padding: 10px 16px; margin-bottom: 0; }
+
+/* Ciclo de vida compacto: una línea con la etapa y lo que sigue. */
+.ciclo-compacto { padding: 10px 14px; margin-bottom: 12px; }
+.ciclo-compacto.ciclo-cargando { min-height: 48px; }
+.ciclo-linea { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.ciclo-mini { list-style: none; margin: 0; padding: 0; display: flex; gap: 5px; align-items: center; flex: none; }
+.ciclo-mini li { width: 8px; height: 8px; border-radius: 50%; background: var(--borde); }
+.ciclo-mini li.hecho { background: var(--verde); }
+.ciclo-mini li.actual { width: 12px; height: 12px; background: var(--acento); box-shadow: 0 0 0 3px rgba(63, 63, 70, 0.16); }
+.ciclo-mini li.omitido { background: transparent; border: 1px dashed var(--texto-suave); }
+.ciclo-texto { flex: 1 1 280px; min-width: 0; font-size: 14px; }
+.ciclo-siguiente { color: var(--texto); }
+.ciclo-compacto .ciclo-causa { font-size: 13px; margin-top: 2px; }
+.ciclo-compacto .ciclo-acciones { align-items: center; }
+.ciclo-compacto .ciclo-acciones .btn-enlace { font-size: 13px; color: var(--texto-suave); margin-left: 4px; }
+.ciclo-compacto .ciclo-alerta { margin-top: 8px; }
+.ciclo-desplegado { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--borde); }
+
+/* Pestañas de la ficha */
+.ficha-gestiones { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.finanzas { display: flex; flex-direction: column; gap: 20px; margin-top: 0; }
+.acuerdo-acciones { display: flex; gap: 6px; flex-wrap: wrap; }
+.documentos-generar { margin-bottom: 20px; }
+.detalle-ciclo { display: flex; flex-direction: column; gap: 20px; }
+.lista-causas, .lista-cambios-etapa { list-style: none; margin: 0; padding: 0; }
+.lista-causas li { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--borde); font-size: 14px; }
+.lista-causas .etiqueta { margin-left: 8px; }
+.lista-cambios-etapa li { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--borde); font-size: 14px; }
+.lista-causas li:last-child, .lista-cambios-etapa li:last-child { border-bottom: none; }
+.chip-mas { border-style: dashed; color: var(--texto-suave); }
+@media (max-width: 900px) {
+  .ficha-gestiones { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .ficha-caso h1 { font-size: 19px; }
+  .ficha-caso-fila { align-items: flex-start; }
+  .lista-cambios-etapa li { grid-template-columns: 1fr; gap: 2px; }
+}
+/* Los 4 resultados de "Registrar gestión" en 2×2 (en pantallas muy anchas, en una fila). */
+.ficha-gestiones .resultados { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1500px) {
+  .ficha-gestiones .resultados { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.ficha-grilla .lista-contactos { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.ficha-grilla .lista-contactos .suave { min-width: 70px; font-size: 13px; }
