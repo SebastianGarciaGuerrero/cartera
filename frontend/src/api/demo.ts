@@ -20,12 +20,18 @@ import { etapaDe as etapaJudicial, manejarJudicial, plazosDemo, semillaJudicial 
 import type { BaseDemo, JudicialDemo } from './demoJudicial'
 
 const CLAVE_DB = 'cartera_demo_db'
-const VERSION_SEMILLA = 12
+const VERSION_SEMILLA = 13
 const UF_DEMO = '39841.72'
 const CLAVE_SESION = 'cartera_demo_sesion'
 const PLANTILLA_DEMO = 'Estimado(a) {deudor}:\n\nLe escribimos de {empresa} por la deuda N° {numero} con {cliente}, cuyo saldo a la fecha es de {saldo}.\n\nPuede pagar por transferencia a:\n{datos_pago}\n\nUna vez realizado el pago, envíenos el comprobante por este medio para registrarlo y dar por cerrada su cobranza.\n\nAtentamente,\n{empresa}'
 
 // ---------- utilidades ----------
+
+// Sección de la agenda según el canal (código del tipo de gestión o tipo de recordatorio).
+const SECCION_CANAL: Record<string, string> = {
+  llamada: 'llamadas', no_contesta: 'llamadas', negativa_pago: 'llamadas', whatsapp: 'whatsapp', sms: 'whatsapp',
+  email: 'correos', correo: 'correos', carta: 'correos', visita: 'visitas', tarea: 'tareas',
+}
 
 let secuencia = 1000
 const uid = () => `demo-${++secuencia}-${Math.random().toString(36).slice(2, 8)}`
@@ -69,6 +75,8 @@ const TIPOS_SISTEMA: [string, string, string][] = [
   ['SMS enviado', 'sms', 'contacto'],
   ['Gasto judicial', 'gasto', 'judicial'], ['Trámite judicial', 'tramite', 'judicial'],
   ['Embargo', 'embargo', 'judicial'], ['Cambio de etapa', 'etapa', 'otro'], ['Cambio de datos', 'cambio_datos', 'otro'],
+  ['Pago anulado', 'pago_anulado', 'pago'], ['Eliminada de cartera', 'eliminada_cartera', 'otro'],
+  ['Acuerdo dado de baja', 'acuerdo_baja', 'negativo'],
 ]
 
 // Quita la contraseña antes de devolver un usuario (nunca se expone) y
@@ -423,6 +431,8 @@ const PERMISOS: Record<string, string> = {
   judicial_tramites: 'Registrar trámites y embargos',
   ver_totales: 'Ver los totales de toda la cartera',
   gastos_rendir: 'Rendir y reembolsar gastos',
+  cartera_gestionar: 'Asignar cartera y eliminar de cartera',
+  pagos_anular: 'Anular pagos mal ingresados',
 }
 const ROLES_AJUSTABLES = ['supervisor', 'abogado', 'procurador', 'operador', 'viewer']
 const PERMISOS_DEFECTO: Record<string, string[]> = {
@@ -453,6 +463,8 @@ const RUTAS_CON_PERMISO: [string, RegExp, string][] = [
   ['GET', /^\/gastos\/resumen$/, 'ver_totales'],
   ['*', /^\/gastos\/(reembolsar|rendiciones)/, 'gastos_rendir'],
   ['GET', /^\/exportar\//, 'ver_totales'],
+  ['*', /^\/cartera\//, 'cartera_gestionar'],
+  ['POST', /^\/pagos\/[^/]+\/anular$/, 'pagos_anular'],
 ]
 
 function usuarioDelToken(config: InternalAxiosRequestConfig, db: DB) {
@@ -693,15 +705,33 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       if (!f || !enRango(f)) continue
       const d = db.deudores.find((x) => x.id === c.deudor_id)
       const promesa = db.tiposGestion.find((t) => t.id === ultima.tipo_id)?.codigo === 'promesa_pago'
+      const canal = db.tiposGestion.find((t) => t.id === ultima.tipo_id)?.codigo ?? ''
       items.push({ tipo: promesa ? 'promesa' : 'contacto', fecha: f, hora: null,
+        seccion: promesa ? 'promesas' : (SECCION_CANAL[canal] ?? 'llamadas'),
         titulo: promesa ? `Promesa de pago: ${d?.nombre}` : `Contactar a ${d?.nombre}`,
         detalle: ultima.descripcion, atrasado: f < hoyIso, cobranza_id: c.id, numero_cobranza: c.numero,
         deudor: d?.nombre, monto: Number(c.monto_actual), responsable_id: ultima.usuario_id,
         recordatorio_id: null, cuota_id: null })
     }
+    const limiteBaja = sumarMeses(hoyIso, -3)
     for (const a of db.acuerdos.filter((x) => x.estado === 'vigente')) {
       const c = db.cobranzas.find((x) => x.id === a.cobranza_id)
+      if (!c || !['activa', 'acuerdo_pago', 'judicial'].includes(c.estado)) continue
       const d = db.deudores.find((x) => x.id === c?.deudor_id)
+      // Acuerdo para dar de baja: cuotas atrasadas y 3 meses sin pagos de cuota.
+      const impagas = a.cuotas.filter((q) => q.estado !== 'pagada')
+      const atrasadas = impagas.filter((q) => q.fecha_vencimiento < hoyIso)
+      const ultimoPago = db.pagos.filter((x) => !(x as { anulado_at?: string }).anulado_at
+        && a.cuotas.some((q) => q.id === x.cuota_id)).map((x) => x.fecha_pago).sort().pop()
+      const desdeCuando = ultimoPago ?? impagas.map((q) => q.fecha_vencimiento).sort()[0]
+      if (atrasadas.length && desdeCuando && desdeCuando <= limiteBaja && enRango(hoyIso)) {
+        const monto = atrasadas.reduce((s, q) => s + Number(q.monto) - Number(q.monto_pagado), 0)
+        items.push({ tipo: 'baja', seccion: 'bajas', fecha: hoyIso, hora: null, atrasado: false,
+          titulo: `Acuerdo para dar de baja: ${d?.nombre}`,
+          detalle: `${atrasadas.length} cuota(s) atrasada(s) por ${clp(monto)}; ${ultimoPago ? `sin pagos de cuota desde el ${ultimoPago}` : 'nunca pagó'}.`,
+          cobranza_id: c.id, numero_cobranza: c.numero, deudor: d?.nombre, monto, responsable_id: a.usuario_id,
+          recordatorio_id: null, cuota_id: null, acuerdo_id: a.id })
+      }
       for (const cu of a.cuotas) {
         if (cu.estado === 'pagada' || !enRango(cu.fecha_vencimiento)) continue
         const saldo = Number(cu.monto) - Number(cu.monto_pagado)
@@ -709,16 +739,18 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
           titulo: cu.numero_cuota === 0 ? `Pie del acuerdo: ${d?.nombre}` : `Cuota ${cu.numero_cuota}/${a.numero_cuotas}: ${d?.nombre}`,
           detalle: `Por pagar ${clp(saldo)}`,
           atrasado: cu.fecha_vencimiento < hoyIso, cobranza_id: c?.id, numero_cobranza: c?.numero, deudor: d?.nombre,
-          monto: saldo, responsable_id: a.usuario_id, recordatorio_id: null, cuota_id: cu.id })
+          monto: saldo, responsable_id: a.usuario_id, recordatorio_id: null, cuota_id: cu.id,
+          seccion: cu.fecha_vencimiento < hoyIso ? 'cuotas_vencidas' : 'cuotas' })
       }
     }
     for (const r of db.recordatorios.filter((x) => x.estado === 'pendiente' && enRango(x.fecha))) {
       const c = db.cobranzas.find((x) => x.id === r.cobranza_id)
       items.push({ tipo: 'recordatorio', fecha: r.fecha, hora: r.hora, titulo: r.titulo, detalle: r.nota,
+        seccion: SECCION_CANAL[(r as { tipo?: string }).tipo ?? 'tarea'] ?? 'tareas',
         atrasado: r.fecha < hoyIso, cobranza_id: r.cobranza_id, numero_cobranza: c?.numero ?? null,
         deudor: null, monto: null, responsable_id: r.usuario_id, recordatorio_id: r.id, cuota_id: null })
     }
-    items.push(...plazosDemo(db as unknown as BaseDemo, desde, hasta, hoyIso))
+    items.push(...plazosDemo(db as unknown as BaseDemo, desde, hasta, hoyIso).map((i) => ({ ...i, seccion: 'plazos' })))
     items.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)))
     if (url === '/agenda/avisos') {
       return ok(config, { atrasados: items.filter((i) => String(i.fecha) < hoyIso), hoy: items.filter((i) => i.fecha === hoyIso),
@@ -735,6 +767,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const u = usuarioDelToken(config, db)
     const nuevo = { id: uid(), usuario_id: u.id, cobranza_id: datos.cobranza_id ?? null, fecha: String(datos.fecha),
       hora: datos.hora ?? null, titulo: String(datos.titulo), nota: datos.nota ?? null, estado: 'pendiente',
+      tipo: datos.tipo ?? 'tarea',
       creado_por: u.id, created_at: ahora() }
     db.recordatorios.push(nuevo)
     guardarDB(db)
@@ -1089,13 +1122,16 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
 
   // ---- cobranzas ----
   // Etapa del ciclo de vida (en la demo se deduce del estado y las gestiones).
-  const TERMINALES = ['pagada', 'archivada', 'castigo']
+  const TERMINALES = ['pagada', 'archivada', 'castigo', 'eliminada']
+  const ejecutivoDe = (c: DB['cobranzas'][number]) => (c as { ejecutivo_id?: string | null }).ejecutivo_id ?? null
   const etapaDe = (c: DB['cobranzas'][number]) => etapaJudicial(db as unknown as BaseDemo, c as never)
   const conNombres = (c: DB['cobranzas'][number]) => {
     const d = db.deudores.find((x) => x.id === c.deudor_id)
     const cl = db.clientes.find((x) => x.id === c.cliente_id)
     return { ...c, etapa: etapaDe(c), deudor_nombre: d?.nombre ?? null, deudor_rut: d?.rut ?? null,
-      cliente_nombre: cl ? (cl.nombre_fantasia ?? cl.razon_social) : null }
+      cliente_nombre: cl ? (cl.nombre_fantasia ?? cl.razon_social) : null,
+      ejecutivo_id: ejecutivoDe(c), ejecutivo_nombre: db.usuarios.find((u) => u.id === ejecutivoDe(c))?.nombre ?? null,
+      filial_nombre: db.filiales.find((f) => f.id === c.filial_id)?.nombre ?? null }
   }
   if (metodo === 'GET' && url === '/cobranzas/buscar') {
     const q = (params.q ?? '').toLowerCase()
@@ -1116,6 +1152,8 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     if (params.estado) lista = lista.filter((c) => c.estado === params.estado)
     if (params.cliente_id) lista = lista.filter((c) => c.cliente_id === params.cliente_id)
     if (params.deudor_id) lista = lista.filter((c) => c.deudor_id === params.deudor_id)
+    if (String(params.sin_ejecutivo) === 'true') lista = lista.filter((c) => !ejecutivoDe(c))
+    else if (params.ejecutivo_id) lista = lista.filter((c) => ejecutivoDe(c) === params.ejecutivo_id)
     if (params.etapa === 'termino') lista = lista.filter((c) => TERMINALES.includes(c.estado))
     else if (params.etapa) lista = lista.filter((c) => !TERMINALES.includes(c.estado) && etapaDe(c) === params.etapa)
     if (params.saldo_min) lista = lista.filter((c) => Number(c.monto_actual) >= Number(params.saldo_min))
@@ -1137,7 +1175,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     const c = db.cobranzas.find((x) => x.id === url.split('/')[2])
     if (!c) return error(404, 'Cobranza no encontrada')
     return ok(config, {
-      ...c,
+      ...conNombres(c),
       cliente: db.clientes.find((x) => x.id === c.cliente_id) ?? null,
       filial: db.filiales.find((x) => x.id === c.filial_id) ?? null,
       deudor: db.deudores.find((x) => x.id === c.deudor_id) ?? null,
@@ -1257,7 +1295,8 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       .sort((a, b) => b.fecha_pago.localeCompare(a.fecha_pago))
       .map((p) => ({ ...p, numero_cobranza: db.cobranzas.find((c) => c.id === p.cobranza_id)?.numero ?? null,
         numero_cuota: p.cuota_id ? cuotas.get(p.cuota_id) ?? null : null,
-        usuario_nombre: db.usuarios.find((x) => x.id === p.usuario_id)?.nombre ?? null })))
+        usuario_nombre: db.usuarios.find((x) => x.id === p.usuario_id)?.nombre ?? null,
+        anulado_por_nombre: db.usuarios.find((x) => x.id === (p as { anulado_por?: string }).anulado_por)?.nombre ?? null })))
   }
   if (metodo === 'POST' && url === '/pagos/') {
     const datos = cuerpo(config) as Record<string, string | null>
@@ -1346,7 +1385,7 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       intereses: String(lista.reduce((s, x) => s + Number(x.intereses), 0)),
       pagos: lista.length,
     })
-    const pagos = db.pagos.filter((x) => delCliente(x.cobranza_id))
+    const pagos = db.pagos.filter((x) => delCliente(x.cobranza_id) && !(x as { anulado_at?: string }).anulado_at)
     const dias = (Date.parse(hasta) - Date.parse(desde)) / 86400000 + 1
     const desdeAnt = new Date(Date.parse(desde) - dias * 86400000).toISOString().slice(0, 10)
     const cobs = db.cobranzas.filter((c) => !params.cliente_id || c.cliente_id === params.cliente_id)
@@ -1578,6 +1617,117 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
       guardarDB(db)
       return ok(config, null, 204)
     }
+  }
+
+  // ---- cartera: asignar, repartir, eliminar; ficha: ejecutivo ----
+  if (metodo === 'GET' && url === '/cartera/ejecutivos') {
+    return ok(config, db.usuarios.filter((u) => u.activo && ![7].includes(u.rol_id)).map((u) => ({
+      id: u.id, nombre: u.nombre, rol: ROLES.find((r) => r.id === u.rol_id)?.nombre ?? null,
+      abiertas: db.cobranzas.filter((c) => (c as { ejecutivo_id?: string }).ejecutivo_id === u.id
+        && ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado)).length,
+    })))
+  }
+  if (metodo === 'POST' && (url === '/cartera/asignar' || url === '/cartera/eliminar')) {
+    const datos = cuerpo(config) as { cobranza_ids?: string[]; filtro?: Record<string, string | boolean>;
+      ejecutivo_ids?: string[]; motivo?: string }
+    const u = usuarioDelToken(config, db)
+    const f = datos.filtro ?? {}
+    const elegidas = db.cobranzas.filter((c) => datos.cobranza_ids ? datos.cobranza_ids.includes(c.id)
+      : (!f.cliente_id || c.cliente_id === f.cliente_id) && (!f.estado || c.estado === f.estado)
+        && (!f.sin_ejecutivo || !(c as { ejecutivo_id?: string }).ejecutivo_id)
+        && (!f.ejecutivo_id || (c as { ejecutivo_id?: string }).ejecutivo_id === f.ejecutivo_id))
+    const abiertas = elegidas.filter((c) => ['activa', 'acuerdo_pago', 'judicial'].includes(c.estado))
+    let cambiadas = 0
+    const reparto: Record<string, number> = {}
+    abiertas.forEach((c, i) => {
+      const cob = c as { ejecutivo_id?: string | null; estado: string; motivo_cierre?: string | null; fecha_cierre?: string | null }
+      if (url === '/cartera/eliminar') {
+        Object.assign(cob, { estado: 'eliminada', motivo_cierre: 'eliminada_cartera', fecha_cierre: hoy() })
+        gestionAutomatica(db, c.id, u.id, 'eliminada_cartera',
+          `ELIMINADA DE CARTERA por indicación del cliente. Motivo: ${(datos.motivo ?? '').trim()}`)
+        cambiadas++
+        return
+      }
+      const ids = datos.ejecutivo_ids ?? []
+      const nuevo = ids.length ? ids[i % ids.length] : null
+      const nombre = db.usuarios.find((x) => x.id === nuevo)?.nombre ?? null
+      if (nombre) reparto[nombre] = (reparto[nombre] ?? 0) + 1
+      if ((cob.ejecutivo_id ?? null) === nuevo) return
+      cob.ejecutivo_id = nuevo
+      gestionAutomatica(db, c.id, u.id, 'cambio_datos', nombre ? `ASIGNADA A ${nombre}.` : 'SE QUITA LA ASIGNACIÓN.')
+      cambiadas++
+    })
+    guardarDB(db)
+    return ok(config, { seleccionadas: elegidas.length, cambiadas, omitidas: elegidas.length - cambiadas, por_ejecutivo: reparto })
+  }
+  if (metodo === 'PUT' && /^\/cobranzas\/[^/]+$/.test(url)) {
+    const c = db.cobranzas.find((x) => x.id === url.split('/')[2])
+    if (!c) return error(404, 'Cobranza no encontrada')
+    const datos = cuerpo(config) as { ejecutivo_id?: string | null }
+    if ('ejecutivo_id' in datos) {
+      const nombre = db.usuarios.find((x) => x.id === datos.ejecutivo_id)?.nombre ?? 'sin ejecutivo'
+      ;(c as { ejecutivo_id?: string | null }).ejecutivo_id = datos.ejecutivo_id ?? null
+      gestionAutomatica(db, c.id, usuarioDelToken(config, db).id, 'cambio_datos', `DATOS DE LA COBRANZA MODIFICADOS: Ejecutivo → ${nombre}.`)
+    }
+    guardarDB(db)
+    return ok(config, conNombres(c))
+  }
+
+  // ---- anular un pago (no se borra: se revierte su efecto y queda la gestión) ----
+  const anulacion = /^\/pagos\/([^/]+)\/anular$/.exec(url)
+  if (metodo === 'POST' && anulacion) {
+    const pago = db.pagos.find((x) => x.id === anulacion[1]) as (DB['pagos'][number] & {
+      anulado_at?: string; anulado_por?: string; motivo_anulacion?: string }) | undefined
+    if (!pago) return error(404, 'Pago no encontrado')
+    if (pago.anulado_at) return error(400, 'Este pago ya estaba anulado.')
+    const motivo = String((cuerpo(config) as { motivo?: string }).motivo ?? '').trim()
+    if (motivo.length < 3) return error(422, 'Indica el motivo de la anulación.')
+    const u = usuarioDelToken(config, db)
+    const cob = db.cobranzas.find((c) => c.id === pago.cobranza_id)!
+    cob.monto_actual = String(Number(cob.monto_actual) + Number(pago.capital))
+    const acuerdo = db.acuerdos.find((a) => a.cuotas.some((q) => q.id === pago.cuota_id))
+    const cuota = acuerdo?.cuotas.find((q) => q.id === pago.cuota_id)
+    if (acuerdo && cuota) {
+      cuota.monto_pagado = String(Math.max(0, Number(cuota.monto_pagado) - Number(pago.monto)))
+      cuota.estado = Number(cuota.monto_pagado) >= Number(cuota.monto) ? 'pagada' : Number(cuota.monto_pagado) > 0 ? 'pagada_parcial' : 'pendiente'
+      if (acuerdo.estado === 'cumplido' && cuota.estado !== 'pagada') acuerdo.estado = 'vigente'
+    }
+    if (cob.estado === 'pagada') {
+      cob.estado = db.acuerdos.some((a) => a.cobranza_id === cob.id && a.estado === 'vigente') ? 'acuerdo_pago' : 'activa'
+      Object.assign(cob, { motivo_cierre: null, fecha_cierre: null })
+    }
+    Object.assign(pago, { anulado_at: ahora(), anulado_por: u.id, motivo_anulacion: motivo })
+    gestionAutomatica(db, cob.id, u.id, 'pago_anulado',
+      `PAGO ANULADO: el pago de ${clp(Number(pago.monto))} del ${pago.fecha_pago} se anula. Motivo: ${motivo}. Saldo capital: ${clp(Number(cob.monto_actual))}.`)
+    guardarDB(db)
+    return ok(config, { ...pago, anulado_por_nombre: u.nombre })
+  }
+
+  // ---- dar de baja un acuerdo que dejó de pagarse ----
+  const baja = /^\/acuerdos\/([^/]+)\/baja$/.exec(url)
+  if (metodo === 'POST' && baja) {
+    const a = db.acuerdos.find((x) => x.id === baja[1])
+    if (!a) return error(404, 'Acuerdo no encontrado')
+    if (a.estado !== 'vigente') return error(400, 'Solo se da de baja un acuerdo vigente.')
+    a.estado = 'incumplido'
+    const cob = db.cobranzas.find((c) => c.id === a.cobranza_id)
+    if (cob && cob.estado === 'acuerdo_pago') cob.estado = 'activa'
+    const atrasadas = a.cuotas.filter((q) => q.estado !== 'pagada' && q.fecha_vencimiento < hoy())
+    const motivo = String((cuerpo(config) as { motivo?: string | null }).motivo ?? '').trim()
+    gestionAutomatica(db, a.cobranza_id, usuarioDelToken(config, db).id, 'acuerdo_baja',
+      `ACUERDO DADO DE BAJA por no pago: ${atrasadas.length} cuota(s) atrasada(s).${motivo ? '\n' + motivo : ''}`)
+    guardarDB(db)
+    return ok(config, a)
+  }
+
+  // ---- paso a producción: en la demo no se borran los datos de práctica ----
+  if (url === '/organizacion/produccion') {
+    if (metodo === 'GET') {
+      return ok(config, { en_produccion: null, numero_siguiente: db.proximoNumero, datos_de_prueba: {
+        cobranzas: db.cobranzas.length, deudores: db.deudores.length, gestiones: db.gestiones.length,
+        pagos: db.pagos.length, acuerdos_pago: db.acuerdos.length, causas: 0, clientes: db.clientes.length } })
+    }
+    return error(400, 'En la demo no se borran los datos de práctica: esto se hace en la versión con servidor.')
   }
 
   // ---- lo que necesita servidor de verdad ----
