@@ -131,6 +131,18 @@ def test_gestiones_masivas_con_tipo_rut_y_numero(cliente_http, org_a):
     assert sorted(tipos[g["tipo_id"]] for g in historial if g["es_masivo"]) == ["no_contesta", "whatsapp"]
     assert any(g["fecha_proximo_contacto"] for g in historial)
 
+    # Las dos filas con error vuelven en el Excel para corregir, con la casilla mala en amarillo.
+    trabajos = cliente_http.post("/api/importar/gestiones", headers=h,
+                                 files={"archivo": ("g.xlsx", buf.getvalue(), XLSX)}).json()
+    xlsx = cliente_http.get(f"/api/importar/trabajos/{trabajos['trabajo_id']}/errores", headers=h)
+    assert xlsx.status_code == 200
+    from openpyxl import load_workbook
+    hoja = load_workbook(BytesIO(xlsx.content)).active
+    assert hoja.max_row == 3 and hoja.cell(1, 6).value == "Motivo del error"
+    amarillas = [(c.row, c.column) for fila in hoja.iter_rows(min_row=2) for c in fila
+                 if c.fill.fgColor.rgb in ("00FFEB3B", "FFFFEB3B")]
+    assert amarillas == [(2, 2), (3, 3)]  # el N° que no existe y el tipo inventado
+
 
 def test_asignar_repartir_y_eliminar_de_cartera(cliente_http, org_a):
     h = login(cliente_http, org_a["email"])
@@ -318,3 +330,71 @@ def test_tipos_de_gestion_con_los_usos_de_cada_persona(cliente_http, org_a):
     assert usos["llamada"] == 2 and usos["whatsapp"] == 1 and usos["email"] == 0
     usos_otro = {t["codigo"]: t["usos"] for t in cliente_http.get("/api/gestiones/tipos", headers=ho).json()}
     assert usos_otro["email"] == 1 and usos_otro["llamada"] == 0
+
+
+def test_paciente_de_respaldo_y_excel_para_corregir(cliente_http, org_a):
+    """Sin RUT o nombre del deudor se usa el paciente; lo que no entra vuelve en un Excel con lo faltante en amarillo."""
+    from openpyxl import load_workbook
+
+    h = login(cliente_http, org_a["email"])
+    cliente = _cliente(cliente_http, h, 570)
+    sin_deudor = _fila("SANTIAGO", "2001-1", 571, paciente=rut_valido(571))
+    sin_deudor[6], sin_deudor[7] = None, None                       # sin RUT ni nombre del deudor
+    sin_nombre = _fila("SANTIAGO", "2002-2", 572)                    # RUT deudor = RUT paciente
+    sin_nombre[7] = None
+    otro_sin_nombre = _fila("SANTIAGO", "2003-3", 573, paciente=rut_valido(574))
+    otro_sin_nombre[7] = None                                        # el deudor es otra persona: no se adivina
+    sin_saldo = _fila("SANTIAGO", "2004-4", 575, monto=None)
+    rut_malo = _fila("SANTIAGO", "2005-5", 576)
+    rut_malo[6] = "12345678-9"
+    contenido = _libro({"Santiago": [sin_deudor, sin_nombre, otro_sin_nombre, sin_saldo, rut_malo]})
+
+    r = cliente_http.post("/api/importar/cobranzas", headers=h, data={"cliente_id": cliente},
+                          files={"archivo": ("filial.xlsx", contenido, XLSX)})
+    trabajo_id = r.json()["trabajo_id"]
+    trabajo = cliente_http.get(f"/api/importar/trabajos/{trabajo_id}", headers=h).json()
+    res = trabajo["resultado"]
+    assert res["cobranzas_creadas"] == 2 and res["total_errores"] == 3
+    assert res["excel_errores"] is True and "correccion" not in res
+    assert any("se tomó al paciente" in a for a in res["avisos"])
+
+    cobs = {c["id_externo"]: c for c in cliente_http.get("/api/cobranzas/", params={"cliente_id": cliente},
+                                                          headers=h).json()}
+    deudor = cliente_http.get(f"/api/deudores/{cobs['2001-1']['deudor_id']}", headers=h).json()
+    assert deudor["nombre"] == "Paciente 571"
+    deudor = cliente_http.get(f"/api/deudores/{cobs['2002-2']['deudor_id']}", headers=h).json()
+    assert deudor["nombre"] == "Paciente 572"
+
+    # El Excel para corregir: misma hoja y títulos, lo faltante en amarillo y el motivo al final.
+    r = cliente_http.get(f"/api/importar/trabajos/{trabajo_id}/errores", headers=h)
+    assert r.status_code == 200 and "corregir_filial.xlsx" in r.headers["content-disposition"]
+    ws = load_workbook(BytesIO(r.content))["Santiago"]
+    titulos = [c.value for c in ws[1]]
+    assert titulos[:len(TITULOS)] == TITULOS and titulos[-1] == "Motivo del error"
+    filas = {ws.cell(i, 2).value: i for i in range(2, ws.max_row + 1)}
+    assert set(filas) == {"2003-3", "2004-4", "2005-5"}
+    amarillas = {(fila, c.column - 1) for fila, i in filas.items() for c in ws[i]
+                 if c.fill.fgColor.rgb in ("00FFEB3B", "FFFFEB3B")}
+    assert amarillas == {("2003-3", 7), ("2004-4", 4), ("2005-5", 6)}
+
+    # Se completa y se sube tal cual: entran las 3 (el motivo se ignora).
+    ws.cell(filas["2003-3"], 8).value = "Deudor 573"
+    ws.cell(filas["2004-4"], 5).value = 120000
+    ws.cell(filas["2005-5"], 7).value = rut_valido(576)
+    salida = BytesIO()
+    ws.parent.save(salida)
+    res = cargar(cliente_http, h, "/api/importar/cobranzas", salida.getvalue(), {"cliente_id": cliente})
+    assert res["cobranzas_creadas"] == 3 and res["total_errores"] == 0 and res["campos_creados"] == []
+
+
+def test_fila_que_falla_no_deja_rastros_en_la_carga(cliente_http, org_a):
+    """Si la primera fila de una filial nueva falla, la filial se deshace y las filas siguientes la crean bien."""
+    h = login(cliente_http, org_a["email"])
+    cliente = _cliente(cliente_http, h, 580)
+    contenido = _libro({"Vitacura": [_fila("VITACURA", "3001-1", 581, monto=None),   # sin saldo: no entra
+                                     _fila("VITACURA", "3002-2", 582)]})
+    res = cargar(cliente_http, h, "/api/importar/cobranzas", contenido, {"cliente_id": cliente})
+    assert res["cobranzas_creadas"] == 1 and res["total_errores"] == 1
+    assert res["deudores_nuevos"] == 1 and res["filiales_creadas"] == ["Vitacura"]
+    cobs = cliente_http.get("/api/cobranzas/", params={"cliente_id": cliente}, headers=h).json()
+    assert [c["filial_nombre"] for c in cobs] == ["Vitacura"]

@@ -110,8 +110,23 @@ function Progreso({ trabajoId, alTerminar }: { trabajoId: string; alTerminar?: (
           )}
           {r.errores.length > 0 && (
             <>
+              {r.excel_errores && (
+                <div className="aviso-corregir separado">
+                  <div>
+                    <strong>Excel para corregir</strong>
+                    <p className="suave">
+                      Trae solo las filas que no entraron, con las casillas que faltan o están malas en
+                      <span className="marca-amarilla"> amarillo</span> y el motivo en la última columna. Complétalo
+                      (o mándaselo a la filial) y súbelo aquí mismo: entran esas filas y el motivo se ignora.
+                    </p>
+                  </div>
+                  <button className="btn btn-primario" onClick={() => descargarArchivo(`/importar/trabajos/${t.id}/errores`)}>
+                    Descargar Excel para corregir
+                  </button>
+                </div>
+              )}
               <div className="acciones-fila separado">
-                <button className="btn btn-chico btn-secundario" onClick={() => descargarErrores(r)}>Descargar errores (Excel/CSV)</button>
+                <button className="btn btn-chico btn-secundario" onClick={() => descargarErrores(r)}>Lista de errores (CSV)</button>
               </div>
               <div className="tabla-desplazable errores-carga">
                 <table className="tabla">
@@ -244,6 +259,10 @@ function CargaCobranzas() {
           Sirve la planilla del cliente tal como viene (varias hojas, títulos en cualquier fila) o el formato
           de Cartera. Se reconocen títulos como <em>Rut Deudor, Nombre Deudor, Mail Deudor, Teléfono 1, Saldo Capital,
           ID, Filial, N° Pagaré, Dicom, Etapas de cobranza, Rut Paciente…</em>
+        </p>
+        <p className="nota">
+          Si a una fila le falta el RUT o el nombre del deudor, se usa el del paciente. Las filas que igual no
+          puedan entrar vuelven en un Excel para corregir, con lo que falta marcado en amarillo.
         </p>
         <div className="acciones-fila envoltura">
           <label className="btn btn-primario subir-archivo">

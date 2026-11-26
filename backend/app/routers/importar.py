@@ -10,6 +10,7 @@ Carga masiva desde Excel (el motor está en app/carga_masiva.py).
   GET  /api/importar/plantilla-gestiones  → plantilla de gestiones
   POST /api/importar/gestiones            → carga de gestiones en segundo plano
   GET  /api/importar/trabajos/{id}        → avance y resultado de una carga
+  GET  /api/importar/trabajos/{id}/errores → Excel con las filas que no entraron (para corregir)
 
 Actualizar cobranzas que ya existen (modo "actualizar") es solo para el
 administrador: cada cambio queda como gestión en el caso.
@@ -235,5 +236,25 @@ def ver_trabajo(trabajo_id: UUID, db: Session = Depends(get_db)):
     if trabajo is None:
         raise HTTPException(status_code=404, detail="Carga no encontrada")
     trabajos.revisar_cortado(db, trabajo)
+    # Las filas para corregir no viajan en cada consulta del avance: se descargan aparte.
+    resultado = dict(trabajo.resultado) if trabajo.resultado else None
+    if resultado is not None:
+        resultado["excel_errores"] = bool(resultado.pop("correccion", None))
     return EstadoTrabajo(id=trabajo.id, tipo=trabajo.tipo, estado=trabajo.estado, archivo=trabajo.archivo,
-                         total=trabajo.total, procesadas=trabajo.procesadas, resultado=trabajo.resultado)
+                         total=trabajo.total, procesadas=trabajo.procesadas, resultado=resultado)
+
+
+@router.get("/trabajos/{trabajo_id}/errores")
+def excel_para_corregir(trabajo_id: UUID, db: Session = Depends(get_db)):
+    """Las filas que no entraron, con las casillas a completar en amarillo, para corregir y volver a subir."""
+    trabajo = db.get(Trabajo, trabajo_id)
+    correccion = (trabajo.resultado or {}).get("correccion") if trabajo is not None else None
+    if not correccion:
+        raise HTTPException(status_code=404, detail="Esa carga no tiene filas con error.")
+    base = (trabajo.archivo or "carga").rsplit(".", 1)[0][:60] or "carga"
+    nombre = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in base).strip() or "carga"
+    return StreamingResponse(
+        BytesIO(carga_masiva.excel_para_corregir(correccion)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="corregir_{nombre}.xlsx"'},
+    )

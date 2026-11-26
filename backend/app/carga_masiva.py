@@ -32,7 +32,8 @@ from typing import Callable, Optional
 from uuid import UUID
 
 import openpyxl.worksheet._reader as _lector_excel
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy.orm import Session, selectinload
 
 from app import ciclo
@@ -52,6 +53,31 @@ from app.rut import normalizar_rut
 
 LOTE = 200
 MAX_ERRORES = 1000
+# Filas con error que se devuelven en el Excel para corregir (con sus datos).
+MAX_CORRECCION = 5000
+# Columna con el motivo en el Excel para corregir: al volver a subirlo se ignora.
+TITULO_ERROR = "Motivo del error"
+# Título de la columna que se agrega al Excel para corregir cuando la planilla no la traía.
+TITULO_CLAVE = {
+    "rut": "RUT deudor", "nombre": "Nombre deudor", "monto": "Saldo capital", "cliente": "Cliente",
+    "filial": "Filial", "id_externo": "ID", "tipo_documento": "Tipo documento", "t_rut": "RUT paciente",
+    "t_nombre": "Nombre paciente", "numero": "N° cobranza", "tipo": "Tipo", "descripcion": "Gestión",
+    "persona": "Persona",
+}
+
+
+class ErrorFila(ValueError):
+    """
+    Error de una fila, con las columnas que hay que completar o corregir (se
+    marcan en amarillo en el Excel para corregir). `campos`: claves internas
+    ("rut", "monto"…); con "?" delante solo se marca si la planilla trae la
+    columna. `extras`: (índice de columna o None, título) de campos adicionales.
+    """
+
+    def __init__(self, mensaje: str, *campos: str, extras: tuple = ()):
+        super().__init__(mensaje)
+        self.campos = campos
+        self.extras = extras
 
 
 # ------------------------------------------------------------ lectura
@@ -248,8 +274,24 @@ class Hoja:
         return {c.clave for c in self.columnas if c.clave}
 
     @property
+    def con_paciente(self) -> bool:
+        """¿Trae columnas del paciente? (sirven de deudor cuando faltan sus datos)."""
+        return any(c.rol == "paciente" for c in self.columnas)
+
+    def tiene(self, clave: str) -> bool:
+        """RUT y nombre del deudor pueden venir solo del paciente."""
+        return clave in self.claves or (
+            clave in ("rut", "nombre") and self.con_paciente and f"t_{clave}" in self.claves)
+
+    @property
     def sirve(self) -> bool:
-        return {"rut", "nombre"} <= self.claves
+        return self.tiene("rut") and self.tiene("nombre")
+
+    def titulos(self) -> list:
+        """La fila de títulos completa (con los vacíos), para el Excel para corregir."""
+        ancho = max([c.indice + 1 for c in self.columnas] + [len(f) for _, f in self.filas[:1]], default=0)
+        porcion = {c.indice: c.titulo for c in self.columnas}
+        return [porcion.get(i, "") for i in range(ancho)]
 
     def mapa(self) -> dict:
         """clave → índice (o lista de índices para las que admiten varias)."""
@@ -281,7 +323,7 @@ def leer_hojas(libro, campos_existentes: list[CampoPersonalizado]) -> list[Hoja]
         titulos = filas[mejor] if filas else ()
         columnas = []
         for i, titulo in enumerate(titulos):
-            if titulo in (None, ""):
+            if titulo in (None, "") or normalizar(titulo) == normalizar(TITULO_ERROR):
                 continue
             clave, rol, _ = reconocer(titulo)
             columnas.append(Columna(i, str(titulo).strip(), clave,
@@ -345,10 +387,39 @@ class Resultado:
     filiales_creadas: list = field(default_factory=list)
     errores: list = field(default_factory=list)
     avisos: Counter = field(default_factory=Counter)
+    # hoja → {"titulos": [...], "filas": [{fila, valores, marcar, agregar, error}]}
+    correccion: dict = field(default_factory=dict)
+    _en_correccion: int = 0
 
     def error(self, hoja: str, fila: int, mensaje: str):
         if len(self.errores) < MAX_ERRORES:
             self.errores.append({"hoja": hoja, "fila": fila, "error": mensaje[:250]})
+
+    def para_corregir(self, hoja: str, titulos: list, m: dict, numero_fila: int, valores: tuple,
+                      mensaje: str, error: Optional[Exception] = None):
+        """Guarda la fila tal como venía, con las casillas a completar, para el Excel para corregir."""
+        if self._en_correccion >= MAX_CORRECCION:
+            return
+        self._en_correccion += 1
+        marcar, agregar = [], []
+        for campo in getattr(error, "campos", ()):
+            opcional = campo.startswith("?")
+            clave = campo.lstrip("?")
+            indice = m.get(clave)
+            if isinstance(indice, list):
+                indice = indice[0] if indice else None
+            if isinstance(indice, int):
+                marcar.append(indice)
+            elif not opcional:
+                agregar.append(TITULO_CLAVE.get(clave, clave))
+        for indice, titulo in getattr(error, "extras", ()):
+            if indice is None:
+                agregar.append(titulo)
+            else:
+                marcar.append(indice)
+        datos = self.correccion.setdefault(hoja, {"titulos": [_a_json(x) for x in titulos], "filas": []})
+        datos["filas"].append({"fila": numero_fila, "valores": [_a_json(x) for x in valores],
+                               "marcar": marcar, "agregar": agregar, "error": mensaje[:250]})
 
     def dict(self) -> dict:
         return {
@@ -359,6 +430,7 @@ class Resultado:
             "campos_creados": self.campos_creados, "filiales_creadas": self.filiales_creadas,
             "errores": self.errores, "total_errores": self._total_errores,
             "avisos": [f"{n} × {texto_aviso}" for texto_aviso, n in self.avisos.most_common()],
+            **({"correccion": self.correccion} if self.correccion else {}),
         }
 
     _total_errores: int = 0
@@ -410,7 +482,7 @@ def preparar_hojas(db: Session, contenido: bytes, op: "OpcionesCarga") -> list[H
         raise ValueError("No hay hojas para cargar: el archivo necesita al menos las columnas RUT y nombre del deudor.")
     for h in hojas:
         faltan = [n for n, c in (("RUT deudor", "rut"), ("Nombre deudor", "nombre"), ("Monto", "monto"))
-                  if c not in h.claves]
+                  if not h.tiene(c)]
         if faltan:
             raise ValueError(f"A la hoja «{h.nombre}» le faltan columnas: {', '.join(faltan)}.")
         if "cliente" not in h.claves and op.cliente_id is None:
@@ -482,6 +554,13 @@ def cargar_cobranzas(db: Session, usuario: Usuario, contenido: bytes, op: Opcion
                         pass
             if "id_externo" in m and m["id_externo"] < len(f) and texto(f[m["id_externo"]]):
                 ids.add(texto(f[m["id_externo"]]))
+            # Sin RUT de deudor se usa el del paciente: también hay que buscarlo como deudor.
+            sin_rut = "rut" not in m or m["rut"] >= len(f) or not texto(f[m["rut"]])
+            if sin_rut and h.con_paciente and "t_rut" in m and m["t_rut"] < len(f):
+                try:
+                    ruts.add(normalizar_rut(f[m["t_rut"]]))
+                except ValueError:
+                    pass
     deudores: dict[str, Deudor] = {}
     for parte in _partes(sorted(ruts)):
         for d in db.query(Deudor).options(selectinload(Deudor.contactos)).filter(Deudor.rut.in_(parte)):
@@ -502,6 +581,7 @@ def cargar_cobranzas(db: Session, usuario: Usuario, contenido: bytes, op: Opcion
     hechas = 0
     for h in hojas:
         m = h.mapa()
+        titulos = h.titulos()
         extras = [c for c in h.columnas if c.campo is not None]
         for numero_fila, fila in h.filas:
             res.filas += 1
@@ -515,26 +595,43 @@ def cargar_cobranzas(db: Session, usuario: Usuario, contenido: bytes, op: Opcion
                 return [fila[i] for i in m.get(clave, []) if i < len(fila) and fila[i] not in (None, "")]
 
             punto = db.begin_nested()
+            # Si la fila falla se deshace en la base (savepoint) y también aquí:
+            # contadores y lo que agregó a los catálogos en memoria (una filial
+            # nueva que no quedó no puede seguir usándose en las filas siguientes).
+            deshacer: list = []
+            contadores = (len(res.filiales_creadas), res.deudores_nuevos, res.contactos_agregados)
+
+            def revertir():
+                punto.rollback()
+                for catalogo, clave in deshacer:
+                    catalogo.pop(clave, None)
+                del res.filiales_creadas[contadores[0]:]
+                res.deudores_nuevos, res.contactos_agregados = contadores[1], contadores[2]
+
             try:
                 nuevo_deudor = _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
                                               buscar_cliente, filiales, usuarios, deudores, terceros, existentes,
-                                              obligatorios, vistos)
+                                              obligatorios, vistos, deshacer)
                 punto.commit()
                 if nuevo_deudor is not None:
                     deudores[nuevo_deudor.rut] = nuevo_deudor
             except (ValueError, ErrorCampo) as e:
-                punto.rollback()
+                revertir()
                 res._total_errores += 1
                 res.error(h.nombre, numero_fila, str(e))
+                res.para_corregir(h.nombre, titulos, m, numero_fila, fila, str(e), e)
             except Exception as e:  # noqa: BLE001 — una fila mala no frena la carga
-                punto.rollback()
+                revertir()
                 res._total_errores += 1
                 mensaje = str(e)
+                marcar = None
                 if "uq_cobranza_id_externo" in mensaje:
                     mensaje = f"El ID cliente '{texto(v('id_externo'))}' ya existe en esa filial"
+                    marcar = ErrorFila(mensaje, "id_externo")
                 else:
                     mensaje = "No se pudo guardar la fila (dato inválido o repetido)."
                 res.error(h.nombre, numero_fila, mensaje)
+                res.para_corregir(h.nombre, titulos, m, numero_fila, fila, mensaje, marcar)
             if hechas % LOTE == 0:
                 avance(hechas)
                 db.commit()
@@ -548,21 +645,142 @@ def _partes(lista, tamano=1000):
         yield lista[i:i + tamano]
 
 
-def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
-                   buscar_cliente, filiales, usuarios, deudores, terceros, existentes, obligatorios, vistos):
-    """Procesa una fila. Devuelve el deudor si es nuevo (para reutilizarlo en las filas siguientes)."""
+def _rut_o_none(valor) -> Optional[str]:
+    try:
+        return normalizar_rut(valor)
+    except ValueError:
+        return None
+
+
+def _deudor_de_la_fila(h: "Hoja", v, deudores: dict, res: "Resultado") -> tuple[str, str, Optional[str]]:
+    """
+    RUT y nombre del deudor de una fila, con el paciente como respaldo:
+      - sin RUT de deudor: el deudor es el paciente (su RUT y su nombre);
+      - sin nombre: el que ya tiene ese RUT en el sistema o, si el RUT es el
+        del paciente, el nombre del paciente. Si el RUT es de otra persona no
+        se le pone el nombre del paciente (quedaría con un nombre equivocado):
+        la fila va al Excel para corregir.
+    Devuelve (rut, nombre, nota para las observaciones de la cobranza).
+    """
     rut_crudo, nombre = texto(v("rut")), texto(v("nombre"))
+    rut_pac, nombre_pac = (texto(v("t_rut")), texto(v("t_nombre"))) if h.con_paciente else ("", "")
+    nota = None
     if not rut_crudo:
-        raise ValueError("Falta el RUT del deudor")
-    rut = normalizar_rut(rut_crudo)
+        if not rut_pac:
+            raise ErrorFila("Falta el RUT del deudor" + (" (y el del paciente)" if h.con_paciente else ""), "rut")
+        try:
+            rut = normalizar_rut(rut_pac)
+        except ValueError as e:
+            raise ErrorFila(f"Falta el RUT del deudor y el del paciente no sirve: {e}", "rut", "t_rut")
+        if nombre and nombre_pac and normalizar(nombre) != normalizar(nombre_pac):
+            nota = f"Deudor según la planilla: {nombre} (sin RUT); se tomó al paciente como deudor."
+        conocido = deudores.get(rut)
+        nombre = nombre_pac or (conocido.nombre if conocido is not None else "")
+        if not nombre:
+            raise ErrorFila("Falta el RUT del deudor y el nombre del paciente", "rut", "t_nombre")
+        res.avisos["sin RUT de deudor: se tomó al paciente como deudor"] += 1
+        return rut, nombre, nota
+    try:
+        rut = normalizar_rut(rut_crudo)
+    except ValueError as e:
+        raise ErrorFila(str(e), "rut")
     if not nombre:
-        raise ValueError("Falta el nombre del deudor")
+        conocido = deudores.get(rut)
+        if conocido is not None:
+            nombre = conocido.nombre
+        elif nombre_pac and _rut_o_none(rut_pac) == rut:
+            nombre = nombre_pac
+            res.avisos["sin nombre de deudor: se usó el del paciente"] += 1
+        else:
+            raise ErrorFila("Falta el nombre del deudor", "nombre")
+    return rut, nombre, nota
+
+
+def _a_json(valor):
+    """Valor de una celda guardable en el resultado (las fechas, marcadas)."""
+    if isinstance(valor, datetime):
+        return {"fecha": valor.isoformat()}
+    if isinstance(valor, date):
+        return {"fecha": valor.isoformat()}
+    if isinstance(valor, Decimal):
+        return float(valor)
+    if valor is None or isinstance(valor, (str, int, float, bool)):
+        return valor
+    return str(valor)
+
+
+def _de_json(valor):
+    if isinstance(valor, dict) and "fecha" in valor:
+        f = datetime.fromisoformat(valor["fecha"])
+        return f if "T" in valor["fecha"] and f.time() != time(0) else f.date()
+    return valor
+
+
+AMARILLO = PatternFill("solid", fgColor="FFEB3B")
+GRIS = PatternFill("solid", fgColor="E4E4E7")
+ROJO_CLARO = PatternFill("solid", fgColor="FDE2E1")
+
+
+def excel_para_corregir(correccion: dict) -> bytes:
+    """
+    Las filas que no entraron, tal como venían (misma hoja y mismos títulos),
+    con las casillas a completar en amarillo y el motivo en la última columna.
+    Se completa y se vuelve a subir tal cual: el motivo se ignora.
+    """
+    wb = Workbook()
+    wb.remove(wb.active)
+    for hoja, datos in correccion.items():
+        ws = wb.create_sheet((hoja or "Hoja")[:31])
+        filas = datos["filas"]
+        titulos = [_de_json(x) for x in datos["titulos"]]
+        ancho = max([len(titulos)] + [len(f["valores"]) for f in filas])
+        agregadas: list[str] = []
+        for f in filas:
+            for titulo in f["agregar"]:
+                if titulo not in agregadas:
+                    agregadas.append(titulo)
+        ws.append([*titulos, *[""] * (ancho - len(titulos)), *agregadas, TITULO_ERROR])
+        for i, celda in enumerate(ws[1], start=1):
+            celda.font = Font(bold=True)
+            celda.fill = AMARILLO if ancho < i <= ancho + len(agregadas) else ROJO_CLARO if i == ancho + len(agregadas) + 1 else GRIS
+        for f in filas:
+            valores = [_de_json(x) for x in f["valores"]]
+            ws.append([*valores, *[None] * (ancho - len(valores)), *[None] * len(agregadas), f["error"]])
+            r = ws.max_row
+            for celda in ws[r]:
+                if isinstance(celda.value, datetime):
+                    celda.number_format = "DD-MM-YYYY HH:MM"
+                elif isinstance(celda.value, date):
+                    celda.number_format = "DD-MM-YYYY"
+                elif isinstance(celda.value, int) and abs(celda.value) >= 10**11:
+                    celda.number_format = "0"  # teléfonos y N° largos, sin notación científica
+            for i in f["marcar"]:
+                ws.cell(r, i + 1).fill = AMARILLO
+            for titulo in f["agregar"]:
+                ws.cell(r, ancho + agregadas.index(titulo) + 1).fill = AMARILLO
+            motivo = ws.cell(r, ancho + len(agregadas) + 1)
+            motivo.fill = ROJO_CLARO
+            motivo.alignment = Alignment(wrap_text=True, vertical="top")
+        for i, titulo in enumerate([*titulos, *[""] * (ancho - len(titulos)), *agregadas, TITULO_ERROR], start=1):
+            letra = ws.cell(1, i).column_letter
+            ws.column_dimensions[letra].width = 60 if titulo == TITULO_ERROR else min(max(len(str(titulo or "")) + 4, 12), 40)
+        ws.freeze_panes = "A2"
+    salida = BytesIO()
+    wb.save(salida)
+    return salida.getvalue()
+
+
+def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
+                   buscar_cliente, filiales, usuarios, deudores, terceros, existentes, obligatorios, vistos,
+                   deshacer: list):
+    """Procesa una fila. Devuelve el deudor si es nuevo (para reutilizarlo en las filas siguientes)."""
+    rut, nombre, nota_deudor = _deudor_de_la_fila(h, v, deudores, res)
 
     cliente_id = op.cliente_id
     if texto(v("cliente")):
         cliente_id = buscar_cliente(texto(v("cliente")))
         if cliente_id is None:
-            raise ValueError(f"El cliente '{texto(v('cliente'))}' no existe en el sistema")
+            raise ErrorFila(f"El cliente '{texto(v('cliente'))}' no existe en el sistema", "cliente")
 
     filial_id = None
     nombre_filial = texto(v("filial"))
@@ -570,11 +788,12 @@ def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
         filial_id = filiales.get((cliente_id, normalizar(nombre_filial)))
         if filial_id is None:
             if not op.crear_filiales:
-                raise ValueError(f"La filial '{nombre_filial}' no existe para ese cliente")
+                raise ErrorFila(f"La filial '{nombre_filial}' no existe para ese cliente", "filial")
             filial = Filial(cliente_id=cliente_id, nombre=nombre_filial.strip().title()[:100])
             db.add(filial)
             db.flush()
             filiales[(cliente_id, normalizar(nombre_filial))] = filial.id
+            deshacer.append((filiales, (cliente_id, normalizar(nombre_filial))))
             filial_id = filial.id
             res.filiales_creadas.append(filial.nombre)
 
@@ -593,8 +812,8 @@ def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
     tipo_doc = normalizar(v("tipo_documento")).replace(" ", "") or TIPO_POR_COLUMNA.get(numero_doc_clave or "")
     if tipo_doc:
         if tipo_doc not in TIPOS_DOCUMENTO:
-            raise ValueError(f"Tipo de documento inválido: '{texto(v('tipo_documento'))}' "
-                             f"(usar: {', '.join(sorted(TIPOS_DOCUMENTO))})")
+            raise ErrorFila(f"Tipo de documento inválido: '{texto(v('tipo_documento'))}' "
+                            f"(usar: {', '.join(sorted(TIPOS_DOCUMENTO))})", "tipo_documento")
         datos["tipo_documento"] = tipo_doc
     for clave in ("fecha_vencimiento_documento", "fecha_origen", "fecha_ingreso", "fecha_traspaso",
                   "fecha_envio_documentos"):
@@ -631,8 +850,8 @@ def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
     # ---- deudor (el de la cobranza existente, que debe ser el mismo RUT)
     if existente is not None:
         if existente.deudor.rut != rut:
-            raise ValueError(f"El RUT {rut} no coincide con el de la cobranza ID '{id_externo}' "
-                             f"({existente.deudor.rut}): no se actualizó")
+            raise ErrorFila(f"El RUT {rut} no coincide con el de la cobranza ID '{id_externo}' "
+                            f"({existente.deudor.rut}): no se actualizó", "rut", "id_externo")
         deudores.setdefault(rut, existente.deudor)
     deudor = deudores.get(rut)
     nuevo = deudor is None
@@ -678,21 +897,28 @@ def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
 
     # ---- cobranza nueva o actualizada
     if existente is None:
-        valor_monto = monto(v("monto"))
+        try:
+            valor_monto = monto(v("monto"))
+        except ValueError:
+            valor_monto = None
         if valor_monto is None or valor_monto <= 0:
-            raise ValueError(f"Monto inválido o vacío: {v('monto')!r}")
+            raise ErrorFila("Falta el saldo capital" if texto(v("monto")) == ""
+                            else f"Saldo capital inválido: {v('monto')!r}", "monto")
         estado, motivo = estado_desde_texto(v("estado")) if texto(v("estado")) else ("activa", None)
         if cliente_id not in obligatorios:
             obligatorios[cliente_id] = [(c.clave, c.etiqueta) for c in campos_aplicables(db, "cobranza", cliente_id)
                                         if c.obligatorio]
-        faltan = [etiqueta for clave, etiqueta in obligatorios[cliente_id] if clave not in datos_extra]
+        faltan = [(clave, etiqueta) for clave, etiqueta in obligatorios[cliente_id] if clave not in datos_extra]
         if faltan:
-            raise ValueError("Falta: " + ", ".join(faltan))
+            raise ErrorFila("Falta: " + ", ".join(etiqueta for _, etiqueta in faltan), extras=tuple(
+                (next((c.indice for c in extras if c.campo.clave == clave), None), etiqueta)
+                for clave, etiqueta in faltan))
         cobranza = Cobranza(
             cliente_id=cliente_id, filial_id=filial_id, deudor_id=deudor.id, id_externo=id_externo,
             monto_original=valor_monto, monto_actual=Decimal(0) if estado == "pagada" else valor_monto,
             tipo_documento=datos.pop("tipo_documento", "pagare"),
-            observaciones=texto(v("observaciones")) or None, datos_extra=datos_extra,
+            observaciones="\n".join(x for x in (texto(v("observaciones")), nota_deudor) if x) or None,
+            datos_extra=datos_extra,
             estado=estado, motivo_cierre=motivo,
             fecha_cierre=hoy_chile() if estado in ciclo.ESTADOS_TERMINALES else None,
             **datos,
@@ -701,6 +927,7 @@ def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
         db.flush()
         if id_externo:
             existentes[(cliente_id, filial_id, id_externo)] = cobranza
+            deshacer.append((existentes, (cliente_id, filial_id, id_externo)))
         res.creadas += 1
     else:
         cobranza = existente
@@ -709,7 +936,10 @@ def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
             fusion = {**(cobranza.datos_extra or {}), **datos_extra}
             if fusion != (cobranza.datos_extra or {}):
                 cambios["datos_extra"] = fusion
-        nuevo_monto = monto(v("monto"))
+        try:
+            nuevo_monto = monto(v("monto"))
+        except ValueError:
+            raise ErrorFila(f"Saldo capital inválido: {v('monto')!r}", "monto")
         if nuevo_monto and nuevo_monto != cobranza.monto_original:
             tiene_pagos = db.query(Pago.id).filter(Pago.cobranza_id == cobranza.id, PAGO_VIGENTE).first()
             if tiene_pagos:
@@ -749,6 +979,7 @@ def _fila_cobranza(db, usuario, op, res, h, m, v, varios, extras, fila,
             tercero.contactos = []
             db.add(tercero)
             terceros[rut_tercero] = tercero
+            deshacer.append((terceros, rut_tercero))
         for campo in ("direccion", "comuna", "ciudad", "region"):
             if texto(v(f"t_{campo}")) and not getattr(tercero, campo):
                 setattr(tercero, campo, texto(v(f"t_{campo}")))
@@ -826,8 +1057,9 @@ def cargar_gestiones(db: Session, usuario: Usuario, contenido: bytes, cliente_id
     if not reconocidas or max(reconocidas) < 2:
         raise ValueError("No se reconocen las columnas: usa la plantilla de gestiones.")
     i_titulos = reconocidas.index(max(reconocidas))
+    titulos = ["" if normalizar(x) == normalizar(TITULO_ERROR) else x for x in filas[i_titulos]]
     m: dict = {}
-    for i, titulo in enumerate(filas[i_titulos]):
+    for i, titulo in enumerate(titulos):
         n = normalizar(titulo)
         for clave, titulos in COLUMNAS_GESTION.items():
             if n in titulos and clave not in m:
@@ -872,7 +1104,7 @@ def cargar_gestiones(db: Session, usuario: Usuario, contenido: bytes, cliente_id
                 n = texto(v("cliente")).lower()
                 cid = next((c for c, nombres in clientes if n in nombres), None)
                 if cid is None:
-                    raise ValueError(f"El cliente '{texto(v('cliente'))}' no existe")
+                    raise ErrorFila(f"El cliente '{texto(v('cliente'))}' no existe", "cliente")
             cobranza = _buscar_cobranza(db, v, cid, filiales)
 
             tipo_id = None
@@ -880,15 +1112,15 @@ def cargar_gestiones(db: Session, usuario: Usuario, contenido: bytes, cliente_id
                 n = normalizar(v("tipo"))
                 tipo_id = tipos.get(n) or por_codigo.get(SINONIMOS_TIPO.get(n, ""))
                 if tipo_id is None:
-                    raise ValueError(f"Tipo de gestión desconocido: '{texto(v('tipo'))}'")
+                    raise ErrorFila(f"Tipo de gestión desconocido: '{texto(v('tipo'))}'", "tipo")
             descripcion = texto(v("descripcion")) or texto(v("tipo"))
             if not descripcion:
-                raise ValueError("Falta el texto de la gestión")
+                raise ErrorFila("Falta el texto de la gestión", "descripcion")
             autor = usuario.id
             if texto(v("persona")):
                 autor = usuarios.get(normalizar(v("persona"))) or usuarios.get(texto(v("persona")).lower())
                 if autor is None:
-                    raise ValueError(f"La persona '{texto(v('persona'))}' no es un usuario del sistema")
+                    raise ErrorFila(f"La persona '{texto(v('persona'))}' no es un usuario del sistema", "persona")
             gestion = Gestion(cobranza_id=cobranza.id, usuario_id=autor, tipo_id=tipo_id,
                               descripcion=descripcion, es_masivo=True,
                               fecha_proximo_contacto=fecha(v("proximo")))
@@ -906,10 +1138,12 @@ def cargar_gestiones(db: Session, usuario: Usuario, contenido: bytes, cliente_id
             punto.rollback()
             res._total_errores += 1
             res.error(ws.title, numero_fila, str(e))
+            res.para_corregir(ws.title, titulos, m, numero_fila, fila, str(e), e)
         except Exception:  # noqa: BLE001
             punto.rollback()
             res._total_errores += 1
             res.error(ws.title, numero_fila, "No se pudo guardar la fila.")
+            res.para_corregir(ws.title, titulos, m, numero_fila, fila, "No se pudo guardar la fila.")
         if hechas % LOTE == 0:
             avance(hechas)
             db.commit()
@@ -925,9 +1159,9 @@ def _buscar_cobranza(db: Session, v, cliente_id, filiales) -> Cobranza:
         try:
             cob = db.query(Cobranza).filter(Cobranza.numero == int(numero)).first()
         except ValueError:
-            raise ValueError(f"N° de cobranza inválido: '{numero}'")
+            raise ErrorFila(f"N° de cobranza inválido: '{numero}'", "numero")
         if cob is None:
-            raise ValueError(f"No existe la cobranza N° {numero}")
+            raise ErrorFila(f"No existe la cobranza N° {numero}", "numero")
         return cob
     q = db.query(Cobranza)
     if cliente_id is not None:
@@ -938,22 +1172,27 @@ def _buscar_cobranza(db: Session, v, cliente_id, filiales) -> Cobranza:
         if texto(v("filial")):
             filial_id = filiales.get((cliente_id, normalizar(v("filial"))))
             if filial_id is None:
-                raise ValueError(f"La filial '{texto(v('filial'))}' no existe para ese cliente")
+                raise ErrorFila(f"La filial '{texto(v('filial'))}' no existe para ese cliente", "filial")
             q = q.filter(Cobranza.filial_id == filial_id)
         encontradas = q.limit(3).all()
         if not encontradas:
-            raise ValueError(f"No existe una cobranza con ID cliente '{id_externo}'")
+            raise ErrorFila(f"No existe una cobranza con ID cliente '{id_externo}'", "id_externo")
         if len(encontradas) > 1:
-            raise ValueError(f"El ID cliente '{id_externo}' está en varias filiales o clientes: indica la filial")
+            raise ErrorFila(f"El ID cliente '{id_externo}' está en varias filiales o clientes: indica la filial",
+                            "filial")
         return encontradas[0]
     rut_crudo = texto(v("rut"))
     if not rut_crudo:
-        raise ValueError("La fila no trae N° de cobranza, ID cliente ni RUT")
-    rut = normalizar_rut(rut_crudo)
+        raise ErrorFila("La fila no trae N° de cobranza, ID cliente ni RUT", "?numero", "?id_externo", "?rut")
+    try:
+        rut = normalizar_rut(rut_crudo)
+    except ValueError as e:
+        raise ErrorFila(str(e), "rut")
     abiertas = (q.join(Deudor, Deudor.id == Cobranza.deudor_id)
                 .filter(Deudor.rut == rut, Cobranza.estado.in_(ABIERTAS)).limit(3).all())
     if not abiertas:
-        raise ValueError(f"El RUT {rut} no tiene cobranzas abiertas")
+        raise ErrorFila(f"El RUT {rut} no tiene cobranzas abiertas", "rut")
     if len(abiertas) > 1:
-        raise ValueError(f"El RUT {rut} tiene varias cobranzas abiertas: indica el ID cliente o el N°")
+        raise ErrorFila(f"El RUT {rut} tiene varias cobranzas abiertas: indica el ID cliente o el N°",
+                        "?numero", "id_externo")
     return abiertas[0]

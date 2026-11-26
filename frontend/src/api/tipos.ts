@@ -612,6 +612,8 @@ export interface ResultadoCarga {
   total_errores: number
   avisos: string[]
   error?: string
+  /** Hay un Excel con las filas que no entraron (lo faltante en amarillo): GET /importar/trabajos/{id}/errores. */
+  excel_errores?: boolean
 }
 
 export interface Trabajo {
