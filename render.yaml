@@ -10,7 +10,8 @@ services:
     # Misma región que la base de Supabase (us-east-2, Ohio): cada consulta
     # cruzando a Oregon sumaba ~0,7 s por pantalla.
     region: ohio
-    plan: free
+    # Starter (US$7/mes): no se duerme (el gratuito se apagaba a los 15 min y tardaba ~50 s en despertar).
+    plan: starter
     branch: main
     autoDeploy: true
     healthCheckPath: /api/health
@@ -23,7 +24,7 @@ services:
         value: production
       - key: URL_PUBLICA
         sync: false          # la URL que asigne Render, ej. https://cartera-xxxx.onrender.com
-      # El pooler gratuito de Supabase admite pocas conexiones: pool chico.
+      # Pool chico: alcanza para el equipo y no agota las conexiones del pooler de Supabase.
       - key: POOL_SIZE
         value: "3"
       - key: POOL_MAX_OVERFLOW
