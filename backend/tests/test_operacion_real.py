@@ -433,3 +433,21 @@ def test_pasar_a_produccion_no_espera_para_siempre(cliente_http, monkeypatch):
     assert trabajo["estado"] == "terminado", trabajo
     assert cliente_http.get("/api/organizacion/produccion", headers=h).json()["datos_de_prueba"]["cobranzas"] == 0
 
+
+
+def test_columnas_extra_por_clinica(cliente_http, org_a):
+    """Cada clínica (cliente) guarda sus columnas extra aunque otra ya haya creado una con el mismo título."""
+    h = login(cliente_http, org_a["email"])
+    santiago, vitacura = _cliente(cliente_http, h, 600), _cliente(cliente_http, h, 610)
+    extra = {"columnas_extra": '["Previsión"]'}
+    cargar(cliente_http, h, "/api/importar/cobranzas", _libro({"Santiago": [_fila("SANTIAGO", "7001-1", 601)]}),
+           {"cliente_id": santiago, **extra})
+    vista = cliente_http.post("/api/importar/analizar", headers=h, files={"archivo": (
+        "v.xlsx", _libro({"Vitacura": [_fila("VITACURA", "7101-1", 611)]}), XLSX)}).json()["hojas"][0]
+    assert next(c for c in vista["columnas"] if c["titulo"] == "Previsión")["campo"] is None  # se ofrece para marcar
+    res = cargar(cliente_http, h, "/api/importar/cobranzas", _libro({"Vitacura": [_fila("VITACURA", "7101-1", 611)]}),
+                 {"cliente_id": vitacura, **extra})
+    assert res["cobranzas_creadas"] == 1 and res["campos_creados"] == ["Previsión"]
+    cob = cliente_http.get("/api/cobranzas/", params={"cliente_id": vitacura}, headers=h).json()[0]
+    ficha = cliente_http.get(f"/api/cobranzas/{cob['id']}", headers=h).json()
+    assert "FONASA" in ficha["datos_extra"].values()

@@ -34,6 +34,7 @@ from uuid import UUID
 import openpyxl.worksheet._reader as _lector_excel
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from app import ciclo
@@ -336,8 +337,11 @@ def leer_hojas(libro, campos_existentes: list[CampoPersonalizado]) -> list[Hoja]
 
 def analizar(db: Session, contenido: bytes) -> list[dict]:
     """Vista previa: hojas, filas y qué se reconoció de cada columna."""
+    # Todavía no se sabe el cliente: solo los campos generales cuentan como ya existentes; una
+    # columna que coincide con un campo de OTRO cliente se ofrece para marcar (cada cliente, los suyos).
     campos = db.query(CampoPersonalizado).filter(CampoPersonalizado.entidad == "cobranza",
-                                                 CampoPersonalizado.activo.is_(True)).all()
+                                                 CampoPersonalizado.activo.is_(True),
+                                                 CampoPersonalizado.cliente_id.is_(None)).all()
     resultado = []
     for h in leer_hojas(abrir_libro(contenido), campos):
         columnas = []
@@ -470,8 +474,13 @@ def _tipo_campo(titulo: str, valores: list) -> str:
 
 def preparar_hojas(db: Session, contenido: bytes, op: "OpcionesCarga") -> list[Hoja]:
     """Las hojas a cargar, ya revisadas (ValueError con el problema si no se puede)."""
+    # Campos que valen para este cliente: los generales y los suyos. Uno de otro cliente con el
+    # mismo título no sirve (sus valores se descartaban): si se marcó la columna, se crea el suyo.
+    del_cliente = CampoPersonalizado.cliente_id.is_(None)
+    if op.cliente_id is not None:
+        del_cliente = or_(del_cliente, CampoPersonalizado.cliente_id == op.cliente_id)
     campos = db.query(CampoPersonalizado).filter(CampoPersonalizado.entidad == "cobranza",
-                                                 CampoPersonalizado.activo.is_(True)).all()
+                                                 CampoPersonalizado.activo.is_(True), del_cliente).all()
     try:
         libro = abrir_libro(contenido)
     except Exception:
