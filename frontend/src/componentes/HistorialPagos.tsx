@@ -6,7 +6,7 @@ import { api, mensajeDeError } from '../api/client'
 import { refrescarCaso } from '../api/refrescar'
 import { useAuth } from '../auth'
 import type { Pago } from '../api/tipos'
-import { NOMBRE_FORMA, Plata, fechaHoraLegible, fechaLegible, nombreCuota } from './utiles'
+import { cierreDeFondo, fechaHoraLegible, fechaLegible, NOMBRE_FORMA, nombreCuota, Plata } from './utiles'
 
 // Cuánto debía al llegar, cuánto ha pagado y cuánto debe hoy, con el
 // historial de pagos a un clic: solo los pagos, con su fecha, y al abrir uno
@@ -86,7 +86,7 @@ export default function HistorialPagos({ deudorId, cobranzaId, alCerrar }: {
   }, [alCerrar])
 
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <div className="modal modal-ancho" role="dialog" aria-label="Historial de pagos" onClick={(e) => e.stopPropagation()}>
         <div className="tarjeta-cabecera">
           <h3>Historial de pagos</h3>

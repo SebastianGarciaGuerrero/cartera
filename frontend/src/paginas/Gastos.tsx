@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { Gasto, Rendicion, RendicionDetalle, ResumenGastosCliente } from '../api/judicial'
-import { Plata, clp, fechaLegible, fechaLocal } from '../componentes/utiles'
+import { cierreDeFondo, clp, fechaLegible, fechaLocal, Plata } from '../componentes/utiles'
 import { useCatalogos } from '../componentes/usarJudicial'
 
 // Gastos que pone el estudio (receptor, notificaciones, embargos…) y que el
@@ -236,7 +236,7 @@ function DetalleRendicion({ id, alCerrar }: { id: string; alCerrar: () => void }
     queryFn: async () => (await api.get<RendicionDetalle>(`/gastos/rendiciones/${id}`)).data,
   })
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <div className="modal modal-ancho rendicion-imprimible" onClick={(e) => e.stopPropagation()}>
         {!r ? <p className="suave">Cargando…</p> : (
           <>

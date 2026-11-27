@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Avisos } from '../api/tipos'
-import { fechaLocal } from './utiles'
+import { cierreDeFondo, fechaLocal } from './utiles'
 import { ListaItems } from './BarraSuperior'
 
 // Al entrar, una vez al día: lo que la persona tiene para hoy (promesas de
@@ -35,7 +35,7 @@ export default function RecordatorioDelDia({ usuarioId, nombre, avisos }: {
   const primerNombre = nombre.split(/\s+/)[0]
 
   return (
-    <div className="modal-fondo" onClick={cerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(cerrar)}>
       <div className="modal modal-ancho recordatorio-dia" role="dialog" aria-label="Tus pendientes de hoy"
         onClick={(e) => e.stopPropagation()}>
         <h3>Hola, {primerNombre}. Esto tienes para hoy</h3>

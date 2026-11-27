@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
 import type { Cliente, Filial } from '../api/tipos'
+import { cierreDeFondo } from '../componentes/utiles'
 
 // Mandantes (clientes) del estudio: quienes entregan cartera para cobrar.
 // Cada uno con sus filiales/sucursales y, si el deudor le paga directo a
@@ -137,7 +138,7 @@ function FormCliente({ cliente, alCerrar }: { cliente: ClienteCompleto | null; a
   })
 
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <form className="modal modal-ancho" onClick={(e) => e.stopPropagation()}
         onSubmit={(e: FormEvent) => { e.preventDefault(); setError(''); guardar.mutate() }}>
         <h3>{cliente ? 'Editar' : 'Nuevo'} {etiqueta('cliente', 'Cliente').toLowerCase()}</h3>

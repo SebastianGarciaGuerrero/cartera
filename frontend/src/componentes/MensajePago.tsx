@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { MensajePago as Mensaje, TipoGestion } from '../api/tipos'
+import { cierreDeFondo } from './utiles'
 
 // Mensaje de cobro listo para enviar: saldo + datos de transferencia del
 // estudio (o del mandante). Se revisa/edita, se abre en WhatsApp o en el
@@ -50,7 +51,7 @@ export default function MensajePago({ cobranzaId, alCerrar }: { cobranzaId: stri
   }
 
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <div className="modal modal-ancho" onClick={(e) => e.stopPropagation()}>
         <h3>Mensaje de pago</h3>
         {isLoading && <p className="suave">Preparando el mensaje…</p>}

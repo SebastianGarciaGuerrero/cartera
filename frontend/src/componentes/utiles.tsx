@@ -1,3 +1,4 @@
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { EstadoCobranza, TipoDocumento } from '../api/tipos'
 
 // Piezas chicas reutilizables: montos en pesos y etiquetas de estado.
@@ -160,5 +161,25 @@ export const ORDEN_ROLES = Object.keys(NOMBRE_ROL)
 
 export function nombreRol(codigo: string | null | undefined): string {
   return codigo ? NOMBRE_ROL[codigo] ?? codigo : '—'
+}
+
+/**
+ * Props para el fondo oscuro de un cuadro (modal-fondo): se cierra solo con
+ * un clic que EMPIEZA y termina en el fondo. Si se selecciona texto dentro
+ * del cuadro y se suelta el mouse afuera, el navegador lo toma como un clic
+ * en el fondo: así ya no se cierra.
+ */
+export function cierreDeFondo(cerrar: () => void) {
+  return {
+    onMouseDown: (e: ReactMouseEvent<HTMLElement>) => {
+      e.currentTarget.dataset.desdeFondo = e.target === e.currentTarget ? '1' : ''
+    },
+    onClick: (e: ReactMouseEvent<HTMLElement>) => {
+      e.stopPropagation()
+      const desdeFondo = e.currentTarget.dataset.desdeFondo === '1'
+      e.currentTarget.dataset.desdeFondo = ''
+      if (desdeFondo && e.target === e.currentTarget) cerrar()
+    },
+  }
 }
 

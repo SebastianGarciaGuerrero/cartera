@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
 import type { Cobranza, Cliente, EstadoCobranza, ResultadoMasivo } from '../api/tipos'
-import { EtiquetaEstado, NOMBRE_ESTADO, Plata, compacto, fechaLegible } from '../componentes/utiles'
+import { cierreDeFondo, compacto, EtiquetaEstado, fechaLegible, NOMBRE_ESTADO, Plata } from '../componentes/utiles'
 
 const ESTADOS: EstadoCobranza[] = [
   'activa', 'acuerdo_pago', 'judicial', 'pagada', 'archivada', 'castigo', 'eliminada',
@@ -309,7 +309,7 @@ function AccionMasiva({ accion, cantidad, seleccion, ejecutivos, alCerrar, alTer
   const porCabeza = elegidos.length > 1 ? Math.ceil(cantidad / elegidos.length) : null
 
   return (
-    <div className="modal-fondo" onClick={resultado ? alTerminar : alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(resultado ? alTerminar : alCerrar)}>
       <form className="modal modal-ancho" role="dialog" onClick={(e) => e.stopPropagation()}
         onSubmit={(e: FormEvent) => { e.preventDefault(); setError(''); ejecutar.mutate() }}>
         <h3>{accion === 'asignar' ? 'Asignar o repartir cartera' : 'Eliminar de cartera'}</h3>

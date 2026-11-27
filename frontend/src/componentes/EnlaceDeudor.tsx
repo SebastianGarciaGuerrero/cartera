@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { EnlaceDeudor as Enlace, EnlaceDeudorNuevo, TipoGestion } from '../api/tipos'
-import { fechaHoraLegible, fechaLegible } from './utiles'
+import { cierreDeFondo, fechaHoraLegible, fechaLegible } from './utiles'
 
 // Enlace personal para que el deudor vea su estado (portal del deudor).
 // El token se muestra una sola vez, al generarlo: después solo se ve si
@@ -56,7 +56,7 @@ export default function EnlaceDeudor({ deudorId, deudorNombre, cobranzaId, alCer
   const activo = nuevo ?? vigente
 
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <div className="modal modal-ancho" onClick={(e) => e.stopPropagation()}>
         <h3>Enlace para el deudor</h3>
         <p className="suave">

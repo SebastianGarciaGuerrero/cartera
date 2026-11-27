@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { Usuario, Rol, Cliente } from '../api/tipos'
-import { ORDEN_ROLES, fechaHoraLegible, nombreRol } from '../componentes/utiles'
+import { cierreDeFondo, fechaHoraLegible, nombreRol, ORDEN_ROLES } from '../componentes/utiles'
 import RolesPermisos from '../componentes/RolesPermisos'
 
 // Gestión de usuarios (solo admin): crear cuentas del equipo (por invitación
@@ -291,7 +291,7 @@ function EditarUsuario({ usuario, roles, alCerrar, alGuardar }: {
   })
 
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <form className="modal" onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => { e.preventDefault(); setError(''); guardar.mutate() }}>
         <h3>Editar usuario</h3>
@@ -347,7 +347,7 @@ function ClaveTemporal({ usuario, alCerrar }: { usuario: Usuario; alCerrar: () =
   })
 
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <form className="modal" onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => { e.preventDefault(); setError(''); resetear.mutate() }}>
         <h3>Clave temporal</h3>

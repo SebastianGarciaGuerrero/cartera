@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { CausaDetalle, Embargo, EtapaProcesal, TipoTramite, TramiteRegistrado } from '../api/judicial'
-import { Plata, clp, describirCambios, fechaHoraLegible, fechaLegible, fechaLocal, rutConPuntos } from '../componentes/utiles'
+import { cierreDeFondo, clp, describirCambios, fechaHoraLegible, fechaLegible, fechaLocal, Plata, rutConPuntos } from '../componentes/utiles'
 import { useConfirmacion } from '../componentes/ConfirmarGestion'
 import { useAuth } from '../auth'
 import {
@@ -548,7 +548,7 @@ function Embargos({ causa, alCambiar }: { causa: CausaDetalle; alCambiar: () => 
       )}
       {causa.embargos.length === 0 && !nuevo && <p className="suave">Sin embargos registrados.</p>}
       {editando && (
-        <div className="modal-fondo" onClick={() => setEditando(null)}>
+        <div className="modal-fondo" {...cierreDeFondo(() => setEditando(null))}>
           <div className="modal modal-ancho" onClick={(ev) => ev.stopPropagation()}>
             <h3>Actualizar embargo</h3>
             <FormEmbargo causaId={causa.id} embargo={editando} alTerminar={() => { setEditando(null); alCambiar() }} />

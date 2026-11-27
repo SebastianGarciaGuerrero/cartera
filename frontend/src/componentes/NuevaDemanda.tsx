@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import type { CausaDetalle } from '../api/judicial'
 import type { Cobranza, CobranzaDetalle } from '../api/tipos'
-import { NOMBRE_DOCUMENTO, Plata, clp, fechaLocal } from './utiles'
+import { cierreDeFondo, clp, fechaLocal, NOMBRE_DOCUMENTO, Plata } from './utiles'
 import { useConfirmacion } from './ConfirmarGestion'
 import {
   procedimientoPorDocumento, useCatalogos, useEquipoJudicial, useTribunales,
@@ -95,7 +95,7 @@ export default function NuevaDemanda({ cobranza, alCerrar }: {
   })
 
   return (
-    <div className="modal-fondo" onClick={alCerrar}>
+    <div className="modal-fondo" {...cierreDeFondo(alCerrar)}>
       <div className="modal modal-ancho" onClick={(e) => e.stopPropagation()}>
         <h3>Presentar demanda</h3>
         <p className="suave">
