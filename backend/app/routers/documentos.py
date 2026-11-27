@@ -379,10 +379,11 @@ def estado_cuenta(cobranza_id: UUID, db: Session = Depends(get_db)):
     _linea(doc, "")
     _linea(doc, "")
 
-    # Formas de pago: texto libre cargado en Configuración → Mi empresa,
-    # una forma de pago por línea.
+    # Formas de pago: las del cliente (cada clínica tiene su cuenta) o, si no
+    # tiene, las del estudio (Configuración → Mi empresa). Una por línea.
     _linea(doc, "    Formas de pago:", tam=9, negrita=True)
-    for forma in (emp.instrucciones_pago or "").splitlines():
+    formas = (cliente.instrucciones_pago if cliente else None) or emp.instrucciones_pago or ""
+    for forma in formas.splitlines():
         forma = forma.strip().lstrip("-").strip()
         if forma:
             _linea(doc, f"    - {forma}", tam=9)

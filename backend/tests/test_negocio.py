@@ -6,6 +6,7 @@ personalizados, carga masiva y documentos.
 from datetime import date
 from io import BytesIO
 
+from docx import Document
 from openpyxl import Workbook, load_workbook
 
 from tests.conftest import crear_cartera, login, rut_valido
@@ -195,6 +196,14 @@ def test_exportaciones_y_documentos(cliente_http, org_a):
     assert len(filas) >= 2
     r = cliente_http.get(f"/api/documentos/estado-cuenta/{cartera['cobranza_id']}", headers=h)
     assert r.status_code == 200 and r.content[:2] == b"PK"
+
+    # Con datos de pago propios del cliente (cada clínica, su cuenta), el estado de cuenta usa esos.
+    r = cliente_http.put(f"/api/clientes/{cartera['cliente_id']}", headers=h, json={
+        "instrucciones_pago": "Transferencia a Clínica de Prueba SpA\nBanco de Chile · Cta. Cte. 00-800-1"})
+    assert r.status_code == 200, r.text
+    r = cliente_http.get(f"/api/documentos/estado-cuenta/{cartera['cobranza_id']}", headers=h)
+    texto = "\n".join(p.text for p in Document(BytesIO(r.content)).paragraphs)
+    assert "Banco de Chile · Cta. Cte. 00-800-1" in texto
 
 
 def test_auditoria_registra_cambios_con_organizacion(cliente_http, org_a, org_b):
