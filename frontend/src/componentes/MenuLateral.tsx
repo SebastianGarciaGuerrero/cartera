@@ -45,11 +45,16 @@ function guardarPlegados(usuarioId: string, plegados: Record<string, boolean>) {
   } catch { /* sin almacenamiento: se usa el valor por defecto */ }
 }
 
-/** ¿La persona trabaja el área judicial? (el plan la incluye y su rol o permisos son judiciales). */
+/**
+ * ¿La persona ve el área judicial? (el plan la incluye y su rol o permisos la usan).
+ * Los ejecutivos también: siguen sus casos cuando pasan a juicio. Ver no da
+ * permiso para actuar: presentar demandas y registrar trámites siguen
+ * dependiendo de judicial_causas / judicial_tramites (los aplica el servidor).
+ */
 export function useVeJudicial(): boolean {
   const { usuario, esAdmin, tiene, puede } = useAuth()
   const rol = usuario?.rol ?? ''
-  return tiene('judicial') && (esAdmin || ['supervisor', 'abogado', 'procurador'].includes(rol)
+  return tiene('judicial') && (esAdmin || ['supervisor', 'abogado', 'procurador', 'operador'].includes(rol)
     || puede('judicial_causas') || puede('judicial_tramites'))
 }
 
