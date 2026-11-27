@@ -387,3 +387,24 @@
 }
 .aviso-corregir p { margin: 4px 0 0; max-width: 640px; }
 .marca-amarilla { background: #ffeb3b; color: var(--texto); border-radius: 3px; padding: 0 4px; margin-right: 2px; }
+
+/* ---------- Cartera: "Ver ficha" siempre a la vista ---------- */
+/* La lista usa el ancho de la pantalla (las demás páginas siguen en 1200 px). */
+.contenido:has(> .pagina-ancha) { max-width: 1640px; }
+/* Toda la fila abre la ficha. */
+.tabla .fila-enlace { cursor: pointer; }
+.enlace-fila { color: inherit; text-decoration: none; }
+.fila-enlace:hover .enlace-fila { text-decoration: underline; }
+/* La columna del botón queda fija a la derecha aunque la tabla se desplace. */
+.tabla .col-accion { position: sticky; right: 0; z-index: 1; text-align: right; }
+.tabla td.col-accion { background: var(--tarjeta); box-shadow: -8px 0 8px -8px rgba(0, 0, 0, 0.25); }
+.tabla tbody tr:hover td.col-accion { background: #f0f5fa; }
+.tabla tr.fila-marcada td.col-accion { background: #eef4fb; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* "hidden" convierte la tabla en su propio contenedor de desplazamiento y anula
+   la columna fija; "clip" recorta igual (esquinas redondeadas) sin eso. */
+.tabla-desplazable > .tabla { overflow: clip; }

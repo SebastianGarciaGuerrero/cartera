@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import type { FormEvent, MouseEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
@@ -26,6 +26,7 @@ interface Ejecutivo { id: string; nombre: string; rol: string | null; abiertas: 
 
 export default function Cobranzas() {
   const { etiqueta, puede } = useAuth()
+  const navegar = useNavigate()
   // El tablero por etapa muestra totales de toda la cartera: solo con permiso.
   const totales = puede('ver_totales')
   const gestionaCartera = puede('cartera_gestionar')
@@ -117,8 +118,16 @@ export default function Cobranzas() {
   }
   const seleccion = todasDelFiltro ? { filtro } : { cobranza_ids: [...marcadas] }
 
+  // Toda la fila abre la ficha (salvo la casilla y los botones); con Ctrl o el
+  // botón del medio, en otra pestaña.
+  function abrirFicha(e: MouseEvent<HTMLTableRowElement>, id: string) {
+    if ((e.target as HTMLElement).closest('a, button, input, label, select')) return
+    if (e.ctrlKey || e.metaKey) window.open(`/cobranzas/${id}`, '_blank')
+    else navegar(`/cobranzas/${id}`)
+  }
+
   return (
-    <>
+    <div className="pagina-ancha">
       <header className="pagina-cabecera">
         <h1>Cobranzas</h1>
       </header>
@@ -209,21 +218,22 @@ export default function Cobranzas() {
                 <th className="der">Deuda original</th>
                 <th className="der">Saldo actual</th>
                 <th>Ingreso</th>
-                <th></th>
+                <th className="col-accion"><span className="sr-only">Abrir</span></th>
               </tr>
             </thead>
             <tbody>
               {cobranzas?.map((c) => (
-                <tr key={c.id} className={marcadas.has(c.id) || todasDelFiltro ? 'fila-marcada' : ''}>
+                <tr key={c.id} className={`fila-enlace${marcadas.has(c.id) || todasDelFiltro ? ' fila-marcada' : ''}`}
+                  onClick={(e) => abrirFicha(e, c.id)}>
                   {gestionaCartera && (
                     <td className="col-check">
                       <input type="checkbox" checked={todasDelFiltro || marcadas.has(c.id)} onChange={() => marcar(c.id)}
                         aria-label={`Seleccionar cobranza ${c.numero}`} />
                     </td>
                   )}
-                  <td className="mono negrita">{c.numero}</td>
+                  <td className="mono negrita"><Link to={`/cobranzas/${c.id}`} className="enlace-fila">{c.numero}</Link></td>
                   <td>
-                    {c.deudor_nombre}
+                    <Link to={`/cobranzas/${c.id}`} className="enlace-fila">{c.deudor_nombre}</Link>
                     <div className="mono suave">{c.deudor_rut}{c.id_externo ? ` · ${etiqueta('id_externo', 'ID')} ${c.id_externo}` : ''}</div>
                   </td>
                   <td>
@@ -236,8 +246,8 @@ export default function Cobranzas() {
                   <td className="der"><Plata valor={c.monto_original} /></td>
                   <td className="der"><Plata valor={c.monto_actual} /></td>
                   <td>{fechaLegible(c.fecha_ingreso)}</td>
-                  <td>
-                    <Link className="btn btn-chico btn-secundario" to={`/cobranzas/${c.id}`}>Ver ficha</Link>
+                  <td className="col-accion">
+                    <Link className="btn btn-chico btn-primario" to={`/cobranzas/${c.id}`}>Ver ficha</Link>
                   </td>
                 </tr>
               ))}
@@ -263,7 +273,7 @@ export default function Cobranzas() {
         <AccionMasiva accion={accion} cantidad={cantidad} seleccion={seleccion} ejecutivos={ejecutivos ?? []}
           alCerrar={() => setAccion(null)} alTerminar={() => { setAccion(null); limpiarSeleccion() }} />
       )}
-    </>
+    </div>
   )
 }
 

@@ -1755,6 +1755,93 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     return error(400, 'En la demo no se borran los datos de práctica: esto se hace en la versión con servidor.')
   }
 
+  // ---- Mi seguimiento (mismo cálculo que backend/app/routers/seguimiento.py) ----
+  if (metodo === 'GET' && url === '/seguimiento') {
+    const yo = usuarioDelToken(config, db)
+    const persona = params.usuario_id ? db.usuarios.find((u) => u.id === params.usuario_id) : yo
+    if (!persona) return error(404, 'Usuario no encontrado')
+    const dias = Math.min(90, Math.max(7, Number(params.dias) || 30))
+    const hoyIso = hoy()
+    const dia = (iso: string) => {
+      const d = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    }
+    const masDias = (iso: string, n: number) => dia(new Date(new Date(`${iso}T12:00:00`).getTime() + n * 86_400_000).toISOString())
+    const desde = masDias(hoyIso, -(dias - 1))
+    const NO_PROPIAS = ['automatica', 'ingreso', 'cambio_datos', 'etapa', 'eliminada_cartera', 'pago_anulado', 'acuerdo_baja']
+    const tipo = (id: number | null) => db.tiposGestion.find((t) => t.id === id)
+    const propias = db.gestiones
+      .filter((g) => g.usuario_id === persona.id && !NO_PROPIAS.includes(tipo(g.tipo_id)?.codigo ?? ''))
+      .map((g) => ({ ...g, dia: dia(g.fecha_gestion), t: tipo(g.tipo_id) }))
+    const gestiones = propias.filter((g) => g.dia >= desde && g.dia <= hoyIso)
+    const contar = (lista: typeof gestiones) => ({
+      gestiones: lista.length,
+      contactos: lista.filter((g) => g.t?.categoria === 'contacto').length,
+      promesas: lista.filter((g) => g.t?.codigo === 'promesa_pago').length,
+    })
+    const acuerdosPeriodo = db.acuerdos.filter((a) => a.usuario_id === persona.id
+      && a.fecha_acuerdo >= desde && a.fecha_acuerdo <= hoyIso)
+    const vigentePago = (p: DB['pagos'][number]) => !(p as { anulado_at?: string }).anulado_at
+    let cumplidas = 0
+    let vencidas = 0
+    for (const g of gestiones.filter((x) => x.t?.codigo === 'promesa_pago' && x.fecha_proximo_contacto)) {
+      const limite = masDias(g.fecha_proximo_contacto!, 3)
+      if (db.pagos.some((p) => vigentePago(p) && p.cobranza_id === g.cobranza_id && p.fecha_pago >= g.dia && p.fecha_pago <= limite)) cumplidas++
+      else if (g.fecha_proximo_contacto! < hoyIso) vencidas++
+    }
+    const pagosPeriodo = db.pagos.filter((p) => vigentePago(p) && p.usuario_id === persona.id
+      && p.fecha_pago >= desde && p.fecha_pago <= hoyIso)
+    const cobranza = (id: string) => db.cobranzas.find((c) => c.id === id)
+    const deudor = (id: string) => db.deudores.find((d) => d.id === cobranza(id)?.deudor_id)?.nombre ?? '—'
+    const mios = db.acuerdos.filter((a) => a.usuario_id === persona.id
+      || (cobranza(a.cobranza_id) as { ejecutivo_id?: string | null } | undefined)?.ejecutivo_id === persona.id)
+    const cuotasPeriodo = mios.filter((a) => ['vigente', 'cumplido', 'incumplido'].includes(a.estado))
+      .flatMap((a) => a.cuotas).filter((q) => q.fecha_vencimiento >= desde && q.fecha_vencimiento <= hoyIso)
+    const vigentes = mios.filter((a) => a.estado === 'vigente')
+    const saldo = (q: { monto: string; monto_pagado: string }) => Number(q.monto) - Number(q.monto_pagado)
+    const atrasados = vigentes.map((a) => {
+      const malas = a.cuotas.filter((q) => q.estado !== 'pagada' && q.fecha_vencimiento < hoyIso)
+      return malas.length === 0 ? null : {
+        cobranza_id: a.cobranza_id, numero: cobranza(a.cobranza_id)?.numero ?? 0, deudor: deudor(a.cobranza_id),
+        cuotas_atrasadas: malas.length, monto_atrasado: String(malas.reduce((s, q) => s + saldo(q), 0)),
+        desde: malas.map((q) => q.fecha_vencimiento).sort()[0],
+      }
+    }).filter((x) => x !== null).sort((a, b) => a!.desde.localeCompare(b!.desde))
+    const enUnaSemana = masDias(hoyIso, 7)
+    const proximas = vigentes.flatMap((a) => a.cuotas
+      .filter((q) => q.estado !== 'pagada' && q.fecha_vencimiento >= hoyIso && q.fecha_vencimiento <= enUnaSemana)
+      .map((q) => ({ cobranza_id: a.cobranza_id, numero: cobranza(a.cobranza_id)?.numero ?? 0, deudor: deudor(a.cobranza_id),
+        cuota: q.numero_cuota, de: a.numero_cuotas, fecha: q.fecha_vencimiento, monto: String(saldo(q)) })))
+      .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.numero - b.numero).slice(0, 30)
+    const porTipo = new Map<string, number>()
+    for (const g of gestiones) porTipo.set(g.t?.nombre ?? 'Sin tipo', (porTipo.get(g.t?.nombre ?? 'Sin tipo') ?? 0) + 1)
+    return ok(config, {
+      usuario_id: persona.id, usuario: persona.nombre, desde, hasta: hoyIso,
+      hoy: { ...contar(gestiones.filter((g) => g.dia === hoyIso)), acuerdos: acuerdosPeriodo.filter((a) => a.fecha_acuerdo === hoyIso).length },
+      periodo: {
+        ...contar(gestiones), acuerdos: acuerdosPeriodo.length,
+        monto_acordado: String(acuerdosPeriodo.reduce((s, a) => s + Number(a.monto_total_acordado), 0)),
+        promesas_cumplidas: cumplidas, promesas_vencidas: vencidas,
+        pagos_registrados: pagosPeriodo.length, monto_pagos: String(pagosPeriodo.reduce((s, p) => s + Number(p.monto), 0)),
+        cuotas_vencidas: cuotasPeriodo.length, cuotas_pagadas: cuotasPeriodo.filter((q) => q.estado === 'pagada').length,
+      },
+      por_dia: Array.from({ length: dias }, (_, i) => {
+        const fecha = masDias(desde, i)
+        return { fecha, gestiones: gestiones.filter((g) => g.dia === fecha).length }
+      }),
+      por_tipo: [...porTipo].map(([t, cantidad]) => ({ tipo: t, cantidad }))
+        .sort((a, b) => b.cantidad - a.cantidad || a.tipo.localeCompare(b.tipo)),
+      acuerdos_vigentes: vigentes.length,
+      acuerdos_al_dia: vigentes.length - atrasados.length,
+      por_cobrar: String(vigentes.flatMap((a) => a.cuotas).filter((q) => q.estado !== 'pagada').reduce((s, q) => s + saldo(q), 0)),
+      atrasados, proximas_cuotas: proximas,
+      ultimas: [...propias].sort((a, b) => b.fecha_gestion.localeCompare(a.fecha_gestion)).slice(0, 10).map((g) => ({
+        cobranza_id: g.cobranza_id, numero: cobranza(g.cobranza_id)?.numero ?? 0, deudor: deudor(g.cobranza_id),
+        tipo: g.t?.nombre ?? null, descripcion: g.descripcion.slice(0, 180), fecha: g.fecha_gestion,
+      })),
+    })
+  }
+
   // ---- lo que necesita servidor de verdad ----
   return error(501, 'Esta función (descargas Excel/Word, carga masiva) está disponible en la versión completa con servidor.')
 }

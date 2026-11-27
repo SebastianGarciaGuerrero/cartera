@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../api/client'
+import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
 import type { Seguimiento as Datos, Usuario } from '../api/tipos'
 import { Plata, clp, fechaHoraLegible, fechaLegible, nombreCuota } from '../componentes/utiles'
@@ -18,7 +18,7 @@ export default function Seguimiento() {
     queryKey: ['usuarios'], enabled: usuario?.rol === 'admin',
     queryFn: async () => (await api.get<Usuario[]>('/usuarios/')).data,
   })
-  const { data: s } = useQuery({
+  const { data: s, isError, error, refetch, isFetching } = useQuery({
     queryKey: ['seguimiento', dias, persona],
     queryFn: async () => (await api.get<Datos>('/seguimiento', {
       params: { dias, ...(persona ? { usuario_id: persona } : {}) } })).data,
@@ -46,7 +46,14 @@ export default function Seguimiento() {
         )}
       </div>
 
-      {!s || !p ? <div className="pantalla-carga">Cargando…</div> : (
+      {isError && !s ? (
+        <div className="alerta-error">
+          No se pudo cargar tu seguimiento: {mensajeDeError(error)}{' '}
+          <button className="btn btn-chico btn-secundario" disabled={isFetching} onClick={() => refetch()}>
+            {isFetching ? 'Reintentando…' : 'Reintentar'}
+          </button>
+        </div>
+      ) : !s || !p ? <div className="pantalla-carga">Cargando…</div> : (
         <>
           <section className="kpis">
             <div className="kpi kpi-hero">
