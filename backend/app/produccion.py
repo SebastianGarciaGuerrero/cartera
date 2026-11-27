@@ -16,6 +16,7 @@ tablas (modo sistema), con las protecciones de inmutabilidad apagadas solo
 dentro de esta transacción, y filtrando siempre por la organización.
 """
 
+from typing import Callable, Optional
 from uuid import UUID
 
 from sqlalchemy import text
@@ -28,8 +29,11 @@ from app.indicadores import hoy_chile
 # pantalla quedaba "Borrando…" sin respuesta.
 ESPERA_BLOQUEO = "20s"
 
+# "trabajos" (el historial de cargas) se conserva: el borrado corre como un trabajo
+# más y va anotando ahí su avance.
 CONSERVAR = {"organizaciones", "usuarios", "empresa", "sesiones", "tokens_un_uso", "eventos_acceso",
-             "audit_log", "tipos_gestion", "tipos_tramite", "tribunales", "campos_personalizados", "roles"}
+             "audit_log", "tipos_gestion", "tipos_tramite", "tribunales", "campos_personalizados", "roles",
+             "trabajos"}
 ESPECIALES = {"clientes", "filiales"}  # se borran aparte (un cliente con usuarios del portal se conserva)
 
 
@@ -67,19 +71,30 @@ def conteos(db: Session, organizacion_id: UUID) -> dict:
     return resultado
 
 
-def pasar_a_produccion(db: Session, organizacion_id: UUID, numero_inicial: int, usuario_id: UUID) -> dict:
-    """db: sesión en modo sistema. No hace commit (lo hace quien llama)."""
+def pasar_a_produccion(db: Session, organizacion_id: UUID, numero_inicial: int, usuario_id: UUID,
+                       avance: Optional[Callable[[int, int], None]] = None) -> dict:
+    """
+    db: sesión en modo sistema. No hace commit (lo hace quien llama).
+    avance(paso, total): para mostrar en qué va (se llama fuera de las tablas que se borran).
+    """
     org = {"org": organizacion_id}
     db.execute(text(f"SET LOCAL lock_timeout = '{ESPERA_BLOQUEO}'"))
     tablas = _tablas_de_cartera(db)
     con_triggers = {r[0] for r in db.execute(text(
         "SELECT DISTINCT tgrelid::regclass::text FROM pg_trigger WHERE NOT tgisinternal"))}
     apagar = [t for t in tablas if t in con_triggers]
+    total = len(tablas) + 3  # preparar, cada tabla, clientes, terminar
+    paso = 1
+    if avance:
+        avance(paso, total)
     for tabla in apagar:
         db.execute(text(f"ALTER TABLE public.{tabla} DISABLE TRIGGER USER"))
     borrado = {}
     for tabla in tablas:
         borrado[tabla] = db.execute(text(f"DELETE FROM public.{tabla} WHERE organizacion_id = :org"), org).rowcount
+        paso += 1
+        if avance:
+            avance(paso, total)
     for tabla in apagar:
         db.execute(text(f"ALTER TABLE public.{tabla} ENABLE TRIGGER USER"))
 
@@ -93,6 +108,9 @@ def pasar_a_produccion(db: Session, organizacion_id: UUID, numero_inicial: int, 
         DELETE FROM filiales WHERE organizacion_id = :org
           AND cliente_id IN (SELECT id FROM clientes WHERE {sin_portal})"""), org).rowcount
     borrado["clientes"] = db.execute(text(f"DELETE FROM clientes WHERE {sin_portal}"), org).rowcount
+    paso += 1
+    if avance:
+        avance(paso, total)
 
     db.execute(text("""
         UPDATE organizaciones
@@ -101,6 +119,8 @@ def pasar_a_produccion(db: Session, organizacion_id: UUID, numero_inicial: int, 
                    'en_produccion', CAST(:desde AS text), 'numero_inicial', :n, 'pasado_por', CAST(:u AS text))
          WHERE id = :org
     """), {**org, "n": numero_inicial, "desde": hoy_chile().isoformat(), "u": str(usuario_id)})
+    if avance:
+        avance(total, total)
     return {k: v for k, v in borrado.items() if v}
 
 

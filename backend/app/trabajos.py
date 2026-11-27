@@ -76,12 +76,19 @@ def _ejecutar(trabajo_id: UUID, organizacion_id: UUID, usuario_id: UUID, ip, fun
         db.close()
 
 
+# El paso a producción es corto: si sigue "procesando" después de esto, el servidor se reinició.
+LIMITE_PRODUCCION = timedelta(minutes=15)
+
+
 def revisar_cortado(db: Session, trabajo: Trabajo) -> Trabajo:
     """Si el servidor se reinició a mitad de camino, el trabajo queda marcado como cortado."""
+    limite = LIMITE_PRODUCCION if trabajo.tipo == "produccion" else LIMITE
     if trabajo.estado in ("en_cola", "procesando") and trabajo.created_at \
-            and datetime.now(timezone.utc) - trabajo.created_at > LIMITE:
+            and datetime.now(timezone.utc) - trabajo.created_at > limite:
         trabajo.estado = "error"
-        trabajo.resultado = {"error": "La carga se interrumpió (el servidor se reinició). "
+        trabajo.resultado = {"error": "El borrado se interrumpió (el servidor se reinició). No se borró nada: "
+                                      "vuelve a intentarlo." if trabajo.tipo == "produccion" else
+                                      "La carga se interrumpió (el servidor se reinició). "
                                       "Lo guardado hasta ese momento quedó; vuelve a subir el archivo: "
                                       "lo que ya estaba se salta."}
         db.commit()

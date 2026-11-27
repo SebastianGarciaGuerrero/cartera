@@ -278,11 +278,16 @@ def test_pasar_a_produccion(cliente_http):
     nombre = cliente_http.get("/api/organizacion", headers=h).json()["nombre"]
     assert cliente_http.post("/api/organizacion/produccion", headers=h,
                              json={"confirmacion": "otro nombre"}).status_code == 422
+    # Corre en segundo plano (como las cargas): responde con el trabajo y su avance.
     r = cliente_http.post("/api/organizacion/produccion", headers=h, json={"confirmacion": nombre})
-    assert r.status_code == 200, r.text
-    assert r.json()["en_produccion"] and r.json()["numero_siguiente"] == 40000
-    assert r.json()["datos_de_prueba"] == {"cobranzas": 0, "deudores": 0, "gestiones": 0, "pagos": 0,
-                                           "acuerdos_pago": 0, "causas": 0, "clientes": 1}
+    assert r.status_code == 202, r.text
+    trabajo = cliente_http.get(f"/api/importar/trabajos/{r.json()['trabajo_id']}", headers=h).json()
+    assert trabajo["estado"] == "terminado" and trabajo["procesadas"] == trabajo["total"] > 3, trabajo
+    assert trabajo["resultado"]["borrado"]["cobranzas"] == 1
+    estado = cliente_http.get("/api/organizacion/produccion", headers=h).json()
+    assert estado["en_produccion"] and estado["numero_siguiente"] == 40000 and estado["en_curso"] is None
+    assert estado["datos_de_prueba"] == {"cobranzas": 0, "deudores": 0, "gestiones": 0, "pagos": 0,
+                                         "acuerdos_pago": 0, "causas": 0, "clientes": 1}
     assert cliente_http.post("/api/organizacion/produccion", headers=h,
                              json={"confirmacion": nombre}).status_code == 409
 
@@ -401,7 +406,7 @@ def test_fila_que_falla_no_deja_rastros_en_la_carga(cliente_http, org_a):
 
 
 def test_pasar_a_produccion_no_espera_para_siempre(cliente_http, monkeypatch):
-    """Si otra conexión tiene tomada una tabla, responde 409 al rato (antes quedaba "Borrando…" sin fin)."""
+    """Si otra conexión tiene tomada una tabla, el borrado termina en error al rato (antes quedaba "Borrando…" sin fin)."""
     from app import produccion
     from app.database import engine
 
@@ -415,13 +420,16 @@ def test_pasar_a_produccion_no_espera_para_siempre(cliente_http, monkeypatch):
         otra.execute(text("LOCK TABLE cobranzas IN ROW EXCLUSIVE MODE"))
         r = cliente_http.post("/api/organizacion/produccion", headers=h,
                               json={"confirmacion": cliente_http.get("/api/organizacion", headers=h).json()["nombre"]})
-        assert r.status_code == 409 and "No se borró nada" in r.json()["detail"]
+        trabajo = cliente_http.get(f"/api/importar/trabajos/{r.json()['trabajo_id']}", headers=h).json()
+        assert trabajo["estado"] == "error" and "No se borró nada" in trabajo["resultado"]["error"], trabajo
     finally:
         transaccion.rollback()
         otra.close()
+    assert cliente_http.get("/api/organizacion/produccion", headers=h).json()["datos_de_prueba"]["cobranzas"] == 1
     # Liberada la tabla, sí se puede.
     r = cliente_http.post("/api/organizacion/produccion", headers=h,
                           json={"confirmacion": cliente_http.get("/api/organizacion", headers=h).json()["nombre"]})
-    assert r.status_code == 200, r.text
-    assert r.json()["datos_de_prueba"]["cobranzas"] == 0
+    trabajo = cliente_http.get(f"/api/importar/trabajos/{r.json()['trabajo_id']}", headers=h).json()
+    assert trabajo["estado"] == "terminado", trabajo
+    assert cliente_http.get("/api/organizacion/produccion", headers=h).json()["datos_de_prueba"]["cobranzas"] == 0
 

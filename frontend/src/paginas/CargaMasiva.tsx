@@ -44,7 +44,7 @@ export default function CargaMasiva() {
 
 // ------------------------------------------------------------ avance
 
-function useTrabajo(id: string | null) {
+export function useTrabajo(id: string | null) {
   return useQuery({
     queryKey: ['trabajo', id],
     enabled: Boolean(id),

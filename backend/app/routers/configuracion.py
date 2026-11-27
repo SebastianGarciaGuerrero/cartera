@@ -21,7 +21,7 @@ from decimal import Decimal
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
@@ -36,7 +36,8 @@ from app.models.organizacion import Organizacion
 from app.permisos import PERMISOS, POR_DEFECTO, ROLES_AJUSTABLES, permisos_de
 from app.planes import funciones_de
 from app.security import require_admin, usuario_autorizado
-from app import produccion
+from app import produccion, trabajos
+from app.models.trabajo import Trabajo
 from app.models.usuario import Usuario
 from app.sesiones import registrar_evento
 from app.tenancy import sesion_sistema
@@ -311,6 +312,17 @@ class EstadoProduccion(BaseModel):
     en_produccion: Optional[str] = None      # fecha en que se pasó
     numero_siguiente: int
     datos_de_prueba: dict                    # cuánto hay hoy (lo que se borraría)
+    en_curso: Optional[UUID] = None          # trabajo de borrado que está corriendo (para ver su avance)
+
+
+class BorradoLanzado(BaseModel):
+    trabajo_id: UUID
+
+
+def _borrado_en_curso(db: Session) -> Optional[Trabajo]:
+    t = (db.query(Trabajo).filter(Trabajo.tipo == "produccion", Trabajo.estado.in_(("en_cola", "procesando")))
+         .order_by(Trabajo.created_at.desc()).first())
+    return trabajos.revisar_cortado(db, t) if t is not None and t.estado in ("en_cola", "procesando") else None
 
 
 class PasarAProduccion(BaseModel):
@@ -324,40 +336,47 @@ def estado_produccion(request: Request, db: Session = Depends(get_db),
     org = request.state.organizacion
     with sesion_sistema() as sis:
         datos = produccion.conteos(sis, org.id)
+    curso = _borrado_en_curso(db)
     return EstadoProduccion(en_produccion=produccion.ya_en_produccion(org.configuracion),
-                            numero_siguiente=org.numero_cobranza_siguiente, datos_de_prueba=datos)
+                            numero_siguiente=org.numero_cobranza_siguiente, datos_de_prueba=datos,
+                            en_curso=curso.id if curso is not None and curso.estado != "error" else None)
 
 
-@router.post("/api/organizacion/produccion", response_model=EstadoProduccion)
-def pasar_a_produccion(datos: PasarAProduccion, request: Request, db: Session = Depends(get_db),
-                       admin: Usuario = Depends(require_admin)):
+@router.post("/api/organizacion/produccion", response_model=BorradoLanzado, status_code=status.HTTP_202_ACCEPTED)
+def pasar_a_produccion(datos: PasarAProduccion, request: Request, tareas: BackgroundTasks,
+                       db: Session = Depends(get_db), admin: Usuario = Depends(require_admin)):
     """
     Borra los datos de prueba de la organización (cartera, clientes de prueba)
     y fija el N° de la primera cobranza real. Una sola vez; no se deshace.
+    Corre en segundo plano (como las cargas): responde de inmediato con el
+    trabajo y la pantalla muestra su avance (GET /api/importar/trabajos/{id}).
     """
     org = request.state.organizacion
     if produccion.ya_en_produccion(org.configuracion):
         raise HTTPException(status_code=409, detail="La organización ya está en producción: esto se hace una sola vez.")
     if " ".join(datos.confirmacion.split()).lower() != " ".join(org.nombre.split()).lower():
         raise HTTPException(status_code=422, detail=f"Para confirmar, escribe el nombre exacto: {org.nombre}")
-    with sesion_sistema() as sis:
-        try:
-            borrado = produccion.pasar_a_produccion(sis, org.id, datos.numero_inicial, admin.id)
-        except OperationalError as e:
-            sis.rollback()
-            # 55P03 = lock_not_available: otra conexión tenía una tabla tomada. No se borró nada.
-            if getattr(e.orig, "pgcode", None) == "55P03":
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="La base está ocupada por otra operación (una carga en curso u otra pestaña). "
-                           "No se borró nada: espera un par de minutos y vuelve a intentarlo.",
-                )
-            raise
-        registrar_evento(sis, "pasar_a_produccion", True, request=request, usuario_id=admin.id,
-                         organizacion_id=org.id, detalle={"borrado": borrado, "numero_inicial": datos.numero_inicial})
-        sis.commit()
-        conteo = produccion.conteos(sis, org.id)
-        fila = sis.get(Organizacion, org.id)
-        en_produccion, siguiente = produccion.ya_en_produccion(fila.configuracion), fila.numero_cobranza_siguiente
-    return EstadoProduccion(en_produccion=en_produccion, numero_siguiente=siguiente, datos_de_prueba=conteo)
+    curso = _borrado_en_curso(db)
+    if curso is not None and curso.estado != "error":
+        return BorradoLanzado(trabajo_id=curso.id)
+    org_id, numero = org.id, datos.numero_inicial
+
+    def borrar(_sesion, usuario: Usuario, avance) -> dict:
+        with sesion_sistema() as sis:
+            try:
+                borrado = produccion.pasar_a_produccion(sis, org_id, numero, usuario.id, avance)
+            except OperationalError as e:
+                sis.rollback()
+                # 55P03 = lock_not_available: otra conexión tenía una tabla tomada. No se borró nada.
+                if getattr(e.orig, "pgcode", None) == "55P03":
+                    raise ValueError("La base está ocupada por otra operación (una carga en curso u otra pestaña). "
+                                     "No se borró nada: espera un par de minutos y vuelve a intentarlo.")
+                raise
+            registrar_evento(sis, "pasar_a_produccion", True, usuario_id=usuario.id, organizacion_id=org_id,
+                             detalle={"borrado": borrado, "numero_inicial": numero})
+            sis.commit()
+        return {"borrado": borrado, "numero_inicial": numero}
+
+    trabajo = trabajos.lanzar(tareas, db, admin, request, "produccion", "Paso a producción", borrar)
+    return BorradoLanzado(trabajo_id=trabajo.id)
 

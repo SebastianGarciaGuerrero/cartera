@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, mensajeDeError } from '../api/client'
 import { useAuth } from '../auth'
 import type { CampoPersonalizado, Cliente, TipoCampo, TipoGestion } from '../api/tipos'
+import { useTrabajo } from './CargaMasiva'
 
 // Configuración (solo admin): lo que cada estudio adapta por su cuenta,
 // sin pedir cambios de código.
@@ -367,6 +368,8 @@ interface EstadoProduccion {
   en_produccion: string | null
   numero_siguiente: number
   datos_de_prueba: Record<string, number>
+  /** Borrado que está corriendo (si se recarga la página, se sigue mostrando su avance). */
+  en_curso?: string | null
 }
 
 const NOMBRE_DATO: Record<string, string> = {
@@ -384,13 +387,29 @@ function Produccion() {
     queryKey: ['produccion'],
     queryFn: async () => (await api.get<EstadoProduccion>('/organizacion/produccion')).data,
   })
+  // El borrado corre en segundo plano (como las cargas): se muestra su avance.
+  const [trabajoId, setTrabajoId] = useState<string | null>(null)
+  const [inicio, setInicio] = useState(() => Date.now())
+  const [ahora, setAhora] = useState(() => Date.now())
+  const { data: trabajo } = useTrabajo(trabajoId ?? estado?.en_curso ?? null)
   const pasar = useMutation({
-    mutationFn: async () => (await api.post<EstadoProduccion>('/organizacion/produccion', {
+    mutationFn: async () => (await api.post<{ trabajo_id: string }>('/organizacion/produccion', {
       confirmacion: confirmacion.trim(), numero_inicial: Number(numero),
     })).data,
-    onSuccess: () => { setError(''); qc.invalidateQueries() },
+    onSuccess: (d) => { setError(''); setInicio(Date.now()); setTrabajoId(d.trabajo_id) },
     onError: (e) => setError(mensajeDeError(e)),
   })
+  const enCurso = pasar.isPending || (trabajo != null && ['en_cola', 'procesando'].includes(trabajo.estado))
+  const termino = trabajo?.estado === 'terminado'
+  // Al terminar, todo se recarga (la pantalla pasa a "En producción").
+  useEffect(() => { if (termino) qc.invalidateQueries() }, [termino, qc])
+  // Reloj de cuánto lleva, mientras corre.
+  useEffect(() => {
+    if (!enCurso) return
+    const reloj = window.setInterval(() => setAhora(Date.now()), 1000)
+    return () => window.clearInterval(reloj)
+  }, [enCurso])
+  const errorTrabajo = trabajo?.estado === 'error' ? (trabajo.resultado?.error ?? 'El borrado no se pudo completar.') : ''
   if (!estado) return <div className="pantalla-carga">Cargando…</div>
   const nombre = usuario?.organizacion.nombre ?? ''
 
@@ -431,13 +450,30 @@ function Produccion() {
           Para confirmar, escribe el nombre de la organización: <strong>{nombre}</strong>
           <input value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} autoComplete="off" />
         </label>
-        {error && <div className="alerta-error">{error}</div>}
-        <div className="fila">
-          <button className="btn btn-peligro" disabled={pasar.isPending
-            || confirmacion.trim().toLowerCase() !== nombre.trim().toLowerCase() || !Number(numero)}>
-            {pasar.isPending ? 'Borrando datos de prueba…' : 'Borrar datos de prueba y comenzar'}
-          </button>
-        </div>
+        {(error || errorTrabajo) && <div className="alerta-error">{error || errorTrabajo}</div>}
+        {enCurso ? (
+          <div className="borrado-en-curso" role="status" aria-live="polite">
+            <span className="girando" aria-hidden="true" />
+            <div className="borrado-en-curso-texto">
+              <strong>Borrando los datos de prueba…</strong>
+              <div className="barra-avance barra-animada">
+                <span style={{ width: `${trabajo && trabajo.total > 0 ? Math.max(6, Math.round((trabajo.procesadas / trabajo.total) * 100)) : 6}%` }} />
+              </div>
+              <span className="suave">
+                {trabajo && trabajo.total > 0 ? `Paso ${trabajo.procesadas} de ${trabajo.total}` : 'Preparando'}
+                {' · '}{Math.max(0, Math.round((ahora - inicio) / 1000))} s. Suele tardar menos de un minuto; deja esta
+                pantalla abierta hasta que termine.
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="fila">
+            <button className="btn btn-peligro" disabled={
+              confirmacion.trim().toLowerCase() !== nombre.trim().toLowerCase() || !Number(numero)}>
+              {errorTrabajo ? 'Intentar de nuevo' : 'Borrar datos de prueba y comenzar'}
+            </button>
+          </div>
+        )}
       </form>
     </section>
   )
