@@ -1755,6 +1755,8 @@ export const adaptadorDemo: AxiosAdapter = async (config) => {
     return error(400, 'En la demo no se borran los datos de práctica: esto se hace en la versión con servidor.')
   }
 
+  if (metodo === 'GET' && url === '/cobranzas/etapas-cliente') return ok(config, [])
+
   // ---- Mi seguimiento (mismo cálculo que backend/app/routers/seguimiento.py) ----
   if (metodo === 'GET' && url === '/seguimiento') {
     const yo = usuarioDelToken(config, db)

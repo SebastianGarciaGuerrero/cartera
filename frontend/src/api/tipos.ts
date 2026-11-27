@@ -144,6 +144,8 @@ export type EtapaCobranza = 'ingreso' | 'extrajudicial' | 'para_demanda' | 'judi
 
 export interface Cobranza {
   id: string
+  /** Etapa que informa el cliente en su planilla (ej. "Judicial", "Pre-judicial"). */
+  etapa_cobranza?: string | null
   numero: number
   cliente_id: string
   deudor_id: string

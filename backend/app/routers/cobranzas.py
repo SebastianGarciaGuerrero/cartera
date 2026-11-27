@@ -105,6 +105,7 @@ def listar_cobranzas(
     deudor_id: Optional[UUID] = None,
     estado: Optional[str] = None,
     etapa: Optional[str] = Query(None, pattern="^(ingreso|extrajudicial|para_demanda|judicial|termino)$"),
+    etapa_cliente: Optional[str] = Query(None, max_length=50, description="Etapa según el cliente (planilla)"),
     saldo_min: Optional[float] = Query(None, ge=0),
     saldo_max: Optional[float] = Query(None, ge=0),
     db: Session = Depends(get_db)
@@ -128,6 +129,8 @@ def listar_cobranzas(
         query = query.filter(Cobranza.deudor_id == deudor_id)
     if estado is not None:
         query = query.filter(Cobranza.estado == estado)
+    if etapa_cliente is not None:
+        query = query.filter(Cobranza.etapa_cobranza == etapa_cliente)
     if etapa is not None:
         if etapa == "termino":
             query = query.filter(Cobranza.estado.in_(ciclo.ESTADOS_TERMINALES))
@@ -200,6 +203,24 @@ def resumen_etapas(cliente_id: Optional[UUID] = None, db: Session = Depends(get_
     por_etapa = {f["etapa"]: {"cantidad": f["cantidad"], "saldo": f["saldo"]} for f in filas}
     return [{"etapa": e, **por_etapa.get(e, {"cantidad": 0, "saldo": 0})}
             for e in (*ciclo.ETAPAS, "termino")]
+
+
+@router.get("/etapas-cliente")
+def etapas_del_cliente(cliente_id: Optional[UUID] = None, db: Session = Depends(get_db),
+                       usuario: Usuario = Depends(get_current_user)):
+    """
+    Las etapas que informa el cliente en su planilla ("Etapas de cobranza":
+    Judicial, Pre-judicial, Envío documentos físicos…) con cuántas cobranzas
+    hay en cada una, para filtrar la cartera por ellas.
+    """
+    params = {"org": usuario.organizacion_id, "cliente": cliente_id}
+    filtro = "AND cliente_id = :cliente" if cliente_id else ""
+    filas = db.execute(text(f"""
+        SELECT etapa_cobranza AS etapa, count(*) AS cantidad FROM cobranzas
+        WHERE organizacion_id = :org AND etapa_cobranza IS NOT NULL AND etapa_cobranza <> '' {filtro}
+        GROUP BY etapa_cobranza ORDER BY count(*) DESC, etapa_cobranza
+    """), params).mappings().all()
+    return [dict(f) for f in filas]
 
 
 @router.get("/{cobranza_id}", response_model=CobranzaDetalle)

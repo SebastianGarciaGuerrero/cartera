@@ -47,6 +47,7 @@ class FiltroCartera(BaseModel):
     sin_ejecutivo: bool = False
     estado: Optional[str] = None
     etapa: Optional[Literal["ingreso", "extrajudicial", "para_demanda", "judicial"]] = None
+    etapa_cliente: Optional[str] = Field(None, max_length=50)
     saldo_min: Optional[float] = Field(None, ge=0)
     saldo_max: Optional[float] = Field(None, ge=0)
 
@@ -92,6 +93,8 @@ def filtrar(query, f: FiltroCartera):
         query = query.filter(Cobranza.estado == f.estado)
     if f.etapa is not None:
         query = query.filter(Cobranza.etapa == f.etapa, Cobranza.estado.notin_(ciclo.ESTADOS_TERMINALES))
+    if f.etapa_cliente is not None:
+        query = query.filter(Cobranza.etapa_cobranza == f.etapa_cliente)
     if f.saldo_min is not None:
         query = query.filter(Cobranza.monto_actual >= f.saldo_min)
     if f.saldo_max is not None:

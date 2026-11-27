@@ -430,4 +430,4 @@
 @media (prefers-reduced-motion: reduce) {
   .girando, .barra-animada span { animation-duration: 3s; }
 }
-
+.etapa-cliente { font-size: 12px; margin-top: 3px; }

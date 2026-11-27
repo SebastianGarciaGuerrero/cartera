@@ -451,3 +451,17 @@ def test_columnas_extra_por_clinica(cliente_http, org_a):
     cob = cliente_http.get("/api/cobranzas/", params={"cliente_id": vitacura}, headers=h).json()[0]
     ficha = cliente_http.get(f"/api/cobranzas/{cob['id']}", headers=h).json()
     assert "FONASA" in ficha["datos_extra"].values()
+
+
+def test_filtrar_por_etapa_del_cliente(cliente_http, org_a):
+    """La etapa de la planilla ("Judicial", "Pre-judicial"…) se puede usar para filtrar la cartera."""
+    h = login(cliente_http, org_a["email"])
+    cliente = _cliente(cliente_http, h, 620)
+    cargar(cliente_http, h, "/api/importar/cobranzas", _libro({"Santiago": [
+        _fila("SANTIAGO", "8001-1", 621, estado="Judicial"), _fila("SANTIAGO", "8002-2", 622, estado="Judicial"),
+        _fila("SANTIAGO", "8003-3", 623, estado="Pre-judicial")]}), {"cliente_id": cliente})
+    etapas = cliente_http.get("/api/cobranzas/etapas-cliente", headers=h, params={"cliente_id": cliente}).json()
+    assert etapas == [{"etapa": "Judicial", "cantidad": 2}, {"etapa": "Pre-judicial", "cantidad": 1}]
+    r = cliente_http.get("/api/cobranzas/", headers=h, params={"cliente_id": cliente, "etapa_cliente": "Judicial"})
+    assert r.headers["x-total-count"] == "2" and {c["id_externo"] for c in r.json()} == {"8001-1", "8002-2"}
+    assert all(c["etapa_cobranza"] == "Judicial" for c in r.json())

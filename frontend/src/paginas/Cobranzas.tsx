@@ -35,6 +35,7 @@ export default function Cobranzas() {
   const [clienteId, setClienteId] = useState('')
   const [ejecutivo, setEjecutivo] = useState('')   // '' | 'sin' | id
   const [etapa, setEtapa] = useState('')
+  const [etapaCliente, setEtapaCliente] = useState('')
   const [saldoMin, setSaldoMin] = useState('')
   const [saldoMax, setSaldoMax] = useState('')
   const [pagina, setPagina] = useState(0)
@@ -61,11 +62,21 @@ export default function Cobranzas() {
     })).data,
   })
 
+  // Etapas que informa el cliente en su planilla (Judicial, Pre-judicial…): en Cartera esas
+  // cuentas están "Activa" hasta que haya demanda o acuerdo registrado, así que se filtran aparte.
+  const { data: etapasCliente } = useQuery({
+    queryKey: ['cobranzas', 'etapas-cliente', clienteId],
+    queryFn: async () => (await api.get<{ etapa: string; cantidad: number }[]>('/cobranzas/etapas-cliente', {
+      params: { cliente_id: clienteId || undefined },
+    })).data,
+  })
+
   // El mismo filtro sirve para la lista y para "todas las del filtro".
   const filtro: Record<string, string | boolean> = {}
   if (estado) filtro.estado = estado
   if (clienteId) filtro.cliente_id = clienteId
   if (etapa && etapa !== 'termino') filtro.etapa = etapa
+  if (etapaCliente) filtro.etapa_cliente = etapaCliente
   if (ejecutivo === 'sin') filtro.sin_ejecutivo = true
   else if (ejecutivo) filtro.ejecutivo_id = ejecutivo
   if (saldoMin) filtro.saldo_min = saldoMin
@@ -74,7 +85,7 @@ export default function Cobranzas() {
   // Si hay texto de búsqueda usa /buscar (resultados acotados); si no, lista
   // paginada del servidor (de a POR_PAGINA, con el total en un header).
   const { data, isLoading } = useQuery({
-    queryKey: ['cobranzas', busqueda, estado, clienteId, etapa, ejecutivo, saldoMin, saldoMax, pagina],
+    queryKey: ['cobranzas', busqueda, estado, clienteId, etapa, etapaCliente, ejecutivo, saldoMin, saldoMax, pagina],
     queryFn: async () => {
       if (busqueda.trim()) {
         const res = await api.get<Cobranza[]>('/cobranzas/buscar', { params: { q: busqueda.trim() } })
@@ -159,6 +170,15 @@ export default function Cobranzas() {
           <option value="">Todos los estados</option>
           {ESTADOS.map((e) => <option key={e} value={e}>{NOMBRE_ESTADO[e]}</option>)}
         </select>
+        {etapasCliente && etapasCliente.length > 0 && (
+          <select value={etapaCliente} onChange={(e) => cambiarFiltro(setEtapaCliente)(e.target.value)}
+            aria-label="Etapa según el cliente" title="La etapa que informa el cliente en su planilla">
+            <option value="">Etapa del cliente: todas</option>
+            {etapasCliente.map((e) => (
+              <option key={e.etapa} value={e.etapa}>{e.etapa} ({e.cantidad.toLocaleString('es-CL')})</option>
+            ))}
+          </select>
+        )}
         <div className="filtro-saldo">
           <input type="number" min="0" placeholder="Saldo mín." value={saldoMin} aria-label="Saldo mínimo"
             onChange={(e) => cambiarFiltro(setSaldoMin)(e.target.value)} />
@@ -242,7 +262,10 @@ export default function Cobranzas() {
                   </td>
                   <td>{c.ejecutivo_nombre ?? <span className="suave">Sin asignar</span>}</td>
                   <td className="suave">{TERMINADAS.includes(c.estado) ? 'Terminada' : NOMBRE_ETAPA[c.etapa ?? ''] ?? '—'}</td>
-                  <td><EtiquetaEstado estado={c.estado} /></td>
+                  <td>
+                    <EtiquetaEstado estado={c.estado} />
+                    {c.etapa_cobranza && <div className="suave etapa-cliente" title="Etapa según el cliente">{c.etapa_cobranza}</div>}
+                  </td>
                   <td className="der"><Plata valor={c.monto_original} /></td>
                   <td className="der"><Plata valor={c.monto_actual} /></td>
                   <td>{fechaLegible(c.fecha_ingreso)}</td>
