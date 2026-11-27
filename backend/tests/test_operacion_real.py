@@ -398,3 +398,30 @@ def test_fila_que_falla_no_deja_rastros_en_la_carga(cliente_http, org_a):
     assert res["deudores_nuevos"] == 1 and res["filiales_creadas"] == ["Vitacura"]
     cobs = cliente_http.get("/api/cobranzas/", params={"cliente_id": cliente}, headers=h).json()
     assert [c["filial_nombre"] for c in cobs] == ["Vitacura"]
+
+
+def test_pasar_a_produccion_no_espera_para_siempre(cliente_http, monkeypatch):
+    """Si otra conexión tiene tomada una tabla, responde 409 al rato (antes quedaba "Borrando…" sin fin)."""
+    from app import produccion
+    from app.database import engine
+
+    monkeypatch.setattr(produccion, "ESPERA_BLOQUEO", "1s")
+    org = crear_organizacion()
+    h = login(cliente_http, org["email"])
+    crear_cartera(cliente_http, h, n=590)
+    otra = engine.connect()
+    transaccion = otra.begin()
+    try:
+        otra.execute(text("LOCK TABLE cobranzas IN ROW EXCLUSIVE MODE"))
+        r = cliente_http.post("/api/organizacion/produccion", headers=h,
+                              json={"confirmacion": cliente_http.get("/api/organizacion", headers=h).json()["nombre"]})
+        assert r.status_code == 409 and "No se borró nada" in r.json()["detail"]
+    finally:
+        transaccion.rollback()
+        otra.close()
+    # Liberada la tabla, sí se puede.
+    r = cliente_http.post("/api/organizacion/produccion", headers=h,
+                          json={"confirmacion": cliente_http.get("/api/organizacion", headers=h).json()["nombre"]})
+    assert r.status_code == 200, r.text
+    assert r.json()["datos_de_prueba"]["cobranzas"] == 0
+

@@ -23,7 +23,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.calculos import COMISION_FLOW_DEFECTO, PCT_JUDICIAL_DEFECTO
@@ -341,7 +341,18 @@ def pasar_a_produccion(datos: PasarAProduccion, request: Request, db: Session = 
     if " ".join(datos.confirmacion.split()).lower() != " ".join(org.nombre.split()).lower():
         raise HTTPException(status_code=422, detail=f"Para confirmar, escribe el nombre exacto: {org.nombre}")
     with sesion_sistema() as sis:
-        borrado = produccion.pasar_a_produccion(sis, org.id, datos.numero_inicial, admin.id)
+        try:
+            borrado = produccion.pasar_a_produccion(sis, org.id, datos.numero_inicial, admin.id)
+        except OperationalError as e:
+            sis.rollback()
+            # 55P03 = lock_not_available: otra conexión tenía una tabla tomada. No se borró nada.
+            if getattr(e.orig, "pgcode", None) == "55P03":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="La base está ocupada por otra operación (una carga en curso u otra pestaña). "
+                           "No se borró nada: espera un par de minutos y vuelve a intentarlo.",
+                )
+            raise
         registrar_evento(sis, "pasar_a_produccion", True, request=request, usuario_id=admin.id,
                          organizacion_id=org.id, detalle={"borrado": borrado, "numero_inicial": datos.numero_inicial})
         sis.commit()

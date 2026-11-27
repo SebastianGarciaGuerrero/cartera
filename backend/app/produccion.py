@@ -23,6 +23,11 @@ from sqlalchemy.orm import Session
 
 from app.indicadores import hoy_chile
 
+# Cuánto esperar si otra conexión tiene tomada una tabla (una carga en curso,
+# una transacción colgada): sin esto el borrado esperaba para siempre y la
+# pantalla quedaba "Borrando…" sin respuesta.
+ESPERA_BLOQUEO = "20s"
+
 CONSERVAR = {"organizaciones", "usuarios", "empresa", "sesiones", "tokens_un_uso", "eventos_acceso",
              "audit_log", "tipos_gestion", "tipos_tramite", "tribunales", "campos_personalizados", "roles"}
 ESPECIALES = {"clientes", "filiales"}  # se borran aparte (un cliente con usuarios del portal se conserva)
@@ -65,6 +70,7 @@ def conteos(db: Session, organizacion_id: UUID) -> dict:
 def pasar_a_produccion(db: Session, organizacion_id: UUID, numero_inicial: int, usuario_id: UUID) -> dict:
     """db: sesión en modo sistema. No hace commit (lo hace quien llama)."""
     org = {"org": organizacion_id}
+    db.execute(text(f"SET LOCAL lock_timeout = '{ESPERA_BLOQUEO}'"))
     tablas = _tablas_de_cartera(db)
     con_triggers = {r[0] for r in db.execute(text(
         "SELECT DISTINCT tgrelid::regclass::text FROM pg_trigger WHERE NOT tgisinternal"))}
